@@ -1,0 +1,79 @@
+services:
+  wiki-agent:
+    image: ghcr.io/nmdimas/a2a-wiki-agent:main
+    build:
+      context: ./brama-core/apps/wiki-agent
+      dockerfile: Dockerfile
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.wiki-agent-web.rule=PathPrefix(`/wiki`) || PathPrefix(`/wiki-admin`) || PathPrefix(`/api/v1/wiki`)
+      - traefik.http.routers.wiki-agent-web.entrypoints=web
+      - traefik.http.routers.wiki-agent-web.priority=100
+      - traefik.http.routers.wiki-agent-web.service=wiki-agent
+      - traefik.http.routers.wiki-agent.rule=PathPrefix(`/`)
+      - traefik.http.routers.wiki-agent.entrypoints=wiki
+      - traefik.http.services.wiki-agent.loadbalancer.server.port=3000
+      - ai.platform.agent=true
+    environment:
+      PORT: "3000"
+      DATABASE_URL: postgresql://app:app@postgres:5432/ai_community_platform
+      PG_SCHEMA: wiki_agent
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_INDEX: wiki_agent_pages
+      RABBITMQ_URL: amqp://app:app@rabbitmq:5672
+      RABBITMQ_EXCHANGE: wiki_agent.events
+      RABBITMQ_QUEUE: wiki_agent.jobs
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_API_KEY: dev-key
+      LLM_MODEL: minimax/minimax-m2.5
+      SESSION_SECRET: wiki-agent-dev-session-secret
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: test-password
+      PUBLIC_BASE_URL: http://localhost
+      INTERNAL_BASE_URL: http://wiki-agent:3000
+    volumes:
+      - ./brama-core/apps/wiki-agent:/app
+      - /app/node_modules
+    depends_on:
+      - postgres
+      - opensearch
+      - rabbitmq
+      - litellm
+    networks:
+      - dev-edge
+
+  wiki-agent-e2e:
+    profiles: [e2e]
+    image: ghcr.io/nmdimas/a2a-wiki-agent:main
+    build:
+      context: ./brama-core/apps/wiki-agent
+      dockerfile: Dockerfile
+    environment:
+      PORT: "3000"
+      DATABASE_URL: postgresql://app:app@postgres:5432/ai_community_platform_test
+      PG_SCHEMA: wiki_agent
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_INDEX: wiki_agent_pages_test
+      RABBITMQ_URL: amqp://app:app@rabbitmq:5672/test
+      RABBITMQ_EXCHANGE: wiki_agent.events.test
+      RABBITMQ_QUEUE: wiki_agent.jobs.test
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_API_KEY: dev-key
+      LLM_MODEL: minimax/minimax-m2.5
+      SESSION_SECRET: wiki-agent-dev-session-secret
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: test-password
+      PUBLIC_BASE_URL: http://localhost:18090
+      INTERNAL_BASE_URL: http://wiki-agent-e2e:3000
+    ports:
+      - "18090:3000"
+    volumes:
+      - ./brama-core/apps/wiki-agent:/app
+      - /app/node_modules
+    depends_on:
+      - postgres
+      - opensearch
+      - rabbitmq
+      - litellm
+    networks:
+      - dev-edge

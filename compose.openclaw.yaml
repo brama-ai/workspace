@@ -1,0 +1,98 @@
+services:
+  openclaw-gateway:
+    image: ghcr.io/openclaw/openclaw@sha256:d60f848db7d5019336dfa17412588881a42774ad34a3429f03dd06d0a71c2848
+    entrypoint:
+      - /bin/sh
+      - -lc
+    env_file:
+      - ./docker/openclaw/.env
+    environment:
+      PLATFORM_CORE_URL: http://core
+      PLATFORM_DISCOVERY_URL: http://core/api/v1/a2a/discovery
+      PLATFORM_INVOKE_URL: http://core/api/v1/a2a/send-message
+      OPENSEARCH_URL: http://opensearch:9200
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:3000/api/public/otel
+      OTEL_EXPORTER_OTLP_HEADERS: Authorization=Basic bGZfcGtfbG9jYWxfZGV2OmxmX3NrX2xvY2FsX2Rldg==
+    ports:
+      - "18789:18789"
+    command:
+      - cd /home/node/.openclaw/extensions/platform-tools && npm install --production 2>/dev/null; cd /home/node/.openclaw && openclaw config set gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback true && exec openclaw gateway run --dev --allow-unconfigured --auth token --bind lan --port 18789 --token $$OPENCLAW_GATEWAY_TOKEN
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=brama_dev-edge
+      - traefik.http.routers.openclaw-ui.rule=Host(`openclaw.brama.localhost`) || Host(`openclaw.localhost`)
+      - traefik.http.routers.openclaw-ui.entrypoints=web
+      - traefik.http.routers.openclaw-ui.middlewares=edge-auth@docker
+      - traefik.http.routers.openclaw-ui.service=openclaw-ui
+      # Webhook endpoints bypass edge-auth (needed for Telegram, etc.)
+      - traefik.http.routers.openclaw-webhook.rule=(Host(`openclaw.brama.localhost`) || Host(`openclaw.localhost`)) && PathPrefix(`/api/channels/`)
+      - traefik.http.routers.openclaw-webhook.entrypoints=web
+      - traefik.http.routers.openclaw-webhook.priority=200
+      - traefik.http.routers.openclaw-webhook.service=openclaw-ui
+      - traefik.http.services.openclaw-ui.loadbalancer.server.port=18789
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    volumes:
+      - ./.local/openclaw/state:/home/node/.openclaw
+      - ./docker/openclaw/plugins/platform-tools:/home/node/.openclaw/extensions/platform-tools
+    depends_on:
+      - opensearch
+    restart: unless-stopped
+    networks:
+      - dev-edge
+
+  openclaw-cli:
+    image: ghcr.io/openclaw/openclaw@sha256:d60f848db7d5019336dfa17412588881a42774ad34a3429f03dd06d0a71c2848
+    env_file:
+      - ./docker/openclaw/.env
+    depends_on:
+      - openclaw-gateway
+    network_mode: "service:openclaw-gateway"
+    healthcheck:
+      disable: true
+    entrypoint:
+      - /bin/sh
+      - -lc
+    command:
+      - sleep infinity
+    volumes:
+      - ./.local/openclaw/state:/home/node/.openclaw
+
+  openclaw-gateway-e2e:
+    profiles: [e2e]
+    image: ghcr.io/openclaw/openclaw@sha256:d60f848db7d5019336dfa17412588881a42774ad34a3429f03dd06d0a71c2848
+    entrypoint:
+      - /bin/sh
+      - -lc
+    env_file:
+      - ./docker/openclaw/.env
+    environment:
+      PLATFORM_CORE_URL: http://core-e2e
+      PLATFORM_DISCOVERY_URL: http://core-e2e/api/v1/a2a/discovery
+      PLATFORM_INVOKE_URL: http://core-e2e/api/v1/a2a/send-message
+      OPENSEARCH_URL: http://opensearch:9200
+    ports:
+      - "28789:28789"
+    command:
+      - cd /home/node/.openclaw/extensions/platform-tools && npm install --production 2>/dev/null; cd /home/node/.openclaw && openclaw config set gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback true && exec openclaw gateway run --dev --allow-unconfigured --auth token --bind lan --port 28789 --token $$OPENCLAW_GATEWAY_TOKEN
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://127.0.0.1:28789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
+    volumes:
+      - ./.local/openclaw/e2e-state:/home/node/.openclaw
+      - ./docker/openclaw/plugins/platform-tools:/home/node/.openclaw/extensions/platform-tools
+    depends_on:
+      - opensearch
+    networks:
+      - dev-edge

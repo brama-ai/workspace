@@ -1,0 +1,27 @@
+{
+  "name": "Brama Workspace",
+
+  "dockerComposeFile": ["../compose.yaml", "../compose.core.yaml", "docker-compose.yml"],
+  "service": "devcontainer",
+  "workspaceFolder": "/workspaces/brama",
+
+  "remoteUser": "vscode",
+
+  "postCreateCommand": "bash /workspaces/brama/.devcontainer/post-create.sh",
+  "postStartCommand": "bash /workspaces/brama/.devcontainer/post-start.sh",
+
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code"
+      ],
+      "settings": {
+        "claude-code.permissions.defaultMode": "bypassPermissions"
+      }
+    }
+  }
+}

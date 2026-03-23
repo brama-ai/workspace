@@ -1,0 +1,59 @@
+# =============================================================================
+# compose.fragments/example-agent.yaml.template
+# =============================================================================
+#
+# This is a reference template for an external agent compose fragment.
+# Copy this file from your agent repository into compose.fragments/<agent-name>.yaml
+# in the platform workspace.
+#
+# Naming rules:
+#   - File name: compose.fragments/<agent-name>.yaml
+#   - Service name: must end with -agent (e.g. my-agent, example-agent)
+#   - Docker label: ai.platform.agent=true  (required for discovery)
+#
+# Usage:
+#   cp projects/example-agent/compose.fragment.yaml compose.fragments/example-agent.yaml
+#   make external-agent-up name=example-agent
+#
+# =============================================================================
+
+services:
+  example-agent:
+    # Build from the checked-out agent repository
+    build:
+      context: ./projects/example-agent
+      dockerfile: Dockerfile
+    labels:
+      # Required: marks this service for platform discovery
+      - ai.platform.agent=true
+      # Required: Traefik routing (adjust entrypoint name and port as needed)
+      - traefik.enable=true
+      - traefik.http.routers.example-agent.rule=PathPrefix(`/`)
+      - traefik.http.routers.example-agent.entrypoints=example
+      - traefik.http.routers.example-agent.middlewares=edge-auth@docker
+      - traefik.http.services.example-agent.loadbalancer.server.port=80
+    environment:
+      # Platform integration — always required
+      PLATFORM_CORE_URL: http://core
+      APP_INTERNAL_TOKEN: dev-internal-token
+      # Agent-specific env — adjust as needed
+      # DATABASE_URL: postgresql://example_agent:example_agent@postgres:5432/example_agent
+      # REDIS_URL: redis://redis:6379/4
+    env_file:
+      # Optional: agent-specific secrets (gitignored on the platform side)
+      - path: ./projects/example-agent/.env.local
+        required: false
+    healthcheck:
+      # Required: platform polls /health every 60s
+      test: ["CMD-SHELL", "curl -sf http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      - postgres
+    networks:
+      - dev-edge
+
+# Note: do NOT redefine the dev-edge network here.
+# It is already declared in compose.yaml and shared across all fragments.

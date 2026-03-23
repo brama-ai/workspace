@@ -1,0 +1,46 @@
+services:
+  openclaw-gateway-main:
+    image: ghcr.io/openclaw/openclaw@sha256:d60f848db7d5019336dfa17412588881a42774ad34a3429f03dd06d0a71c2848
+    env_file:
+      - ./docker/openclaw/main/.env
+    environment:
+      PLATFORM_CORE_URL: http://core
+      PLATFORM_DISCOVERY_URL: http://core/api/v1/a2a/discovery
+      PLATFORM_INVOKE_URL: http://core/api/v1/a2a/send-message
+      PLATFORM_BOT_ID: main
+      OPENCLAW_END_USER_ID: openclaw-main
+      OPENSEARCH_URL: http://opensearch:9200
+    ports:
+      - "18789:18789"
+    volumes:
+      - ./.local/openclaw/main:/home/node/.openclaw
+      - ./docker/openclaw/plugins/platform-tools:/home/node/.openclaw/extensions/platform-tools
+    command: >
+      /bin/sh -lc "
+      cd /home/node/.openclaw/extensions/platform-tools &&
+      npm install --production 2>/dev/null;
+      exec openclaw gateway run --dev --auth token --bind lan --port 18789 --token $$OPENCLAW_GATEWAY_TOKEN
+      "
+
+  openclaw-gateway-support:
+    image: ghcr.io/openclaw/openclaw@sha256:d60f848db7d5019336dfa17412588881a42774ad34a3429f03dd06d0a71c2848
+    env_file:
+      - ./docker/openclaw/support/.env
+    environment:
+      PLATFORM_CORE_URL: http://core
+      PLATFORM_DISCOVERY_URL: http://core/api/v1/a2a/discovery
+      PLATFORM_INVOKE_URL: http://core/api/v1/a2a/send-message
+      PLATFORM_BOT_ID: support
+      OPENCLAW_END_USER_ID: openclaw-support
+      OPENSEARCH_URL: http://opensearch:9200
+    ports:
+      - "18790:18789"
+    volumes:
+      - ./.local/openclaw/support:/home/node/.openclaw
+      - ./docker/openclaw/plugins/platform-tools:/home/node/.openclaw/extensions/platform-tools
+    command: >
+      /bin/sh -lc "
+      cd /home/node/.openclaw/extensions/platform-tools &&
+      npm install --production 2>/dev/null;
+      exec openclaw gateway run --dev --auth token --bind lan --port 18789 --token $$OPENCLAW_GATEWAY_TOKEN
+      "

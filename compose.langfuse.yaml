@@ -1,0 +1,165 @@
+services:
+  langfuse-web:
+    image: langfuse/langfuse:3
+    depends_on:
+      - langfuse-postgres
+      - langfuse-clickhouse
+      - langfuse-redis
+      - langfuse-minio
+      - langfuse-minio-init
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@langfuse-postgres:5432/postgres
+      SALT: 7f74f72f8c2a4ed7a9935726ff6f9b31
+      ENCRYPTION_KEY: 5f246ea22fb645e2892eea4b6f9dc7445f246ea22fb645e2892eea4b6f9dc744
+      NEXTAUTH_SECRET: 8f2e7c58ea8449f1a70e1e6c5ea53dcf
+      NEXTAUTH_URL: ${LANGFUSE_PUBLIC_URL:-https://langfuse.brama.localhost}
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+      REDIS_CONNECTION_STRING: redis://langfuse-redis:6379
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+      LANGFUSE_INIT_ORG_ID: local
+      LANGFUSE_INIT_ORG_NAME: AI Community Platform
+      LANGFUSE_INIT_PROJECT_ID: local
+      LANGFUSE_INIT_PROJECT_NAME: Local
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: lf_pk_local_dev
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: lf_sk_local_dev
+      LANGFUSE_INIT_USER_EMAIL: admin@local.dev
+      LANGFUSE_INIT_USER_NAME: Admin
+      LANGFUSE_INIT_USER_PASSWORD: test-password
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=brama_dev-edge
+      - traefik.http.routers.langfuse.rule=Host(`langfuse.brama.localhost`) || Host(`langfuse.localhost`)
+      - traefik.http.routers.langfuse.entrypoints=web
+      - traefik.http.routers.langfuse.middlewares=edge-auth@docker
+      - traefik.http.routers.langfuse.service=langfuse
+      - traefik.http.services.langfuse.loadbalancer.server.port=3000
+    networks:
+      - dev-edge
+
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3
+    depends_on:
+      - langfuse-postgres
+      - langfuse-clickhouse
+      - langfuse-redis
+      - langfuse-minio
+      - langfuse-minio-init
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@langfuse-postgres:5432/postgres
+      SALT: 7f74f72f8c2a4ed7a9935726ff6f9b31
+      ENCRYPTION_KEY: 5f246ea22fb645e2892eea4b6f9dc7445f246ea22fb645e2892eea4b6f9dc744
+      NEXTAUTH_SECRET: 8f2e7c58ea8449f1a70e1e6c5ea53dcf
+      NEXTAUTH_URL: ${LANGFUSE_PUBLIC_URL:-https://langfuse.brama.localhost}
+      TELEMETRY_ENABLED: "false"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+      REDIS_CONNECTION_STRING: redis://langfuse-redis:6379
+      CLICKHOUSE_MIGRATION_URL: clickhouse://langfuse-clickhouse:9000
+      CLICKHOUSE_URL: http://langfuse-clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: events/
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://langfuse-minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: media/
+      LANGFUSE_INIT_ORG_ID: local
+      LANGFUSE_INIT_ORG_NAME: AI Community Platform
+      LANGFUSE_INIT_PROJECT_ID: local
+      LANGFUSE_INIT_PROJECT_NAME: Local
+      LANGFUSE_INIT_PROJECT_PUBLIC_KEY: lf_pk_local_dev
+      LANGFUSE_INIT_PROJECT_SECRET_KEY: lf_sk_local_dev
+      LANGFUSE_INIT_USER_EMAIL: admin@local.dev
+      LANGFUSE_INIT_USER_NAME: Admin
+      LANGFUSE_INIT_USER_PASSWORD: test-password
+    networks:
+      - dev-edge
+
+  langfuse-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - langfuse-postgres-data:/var/lib/postgresql/data
+    networks:
+      - dev-edge
+
+  langfuse-clickhouse:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    environment:
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+    volumes:
+      - langfuse-clickhouse-data:/var/lib/clickhouse
+    networks:
+      - dev-edge
+
+  langfuse-redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - langfuse-redis-data:/data
+    networks:
+      - dev-edge
+
+  langfuse-minio:
+    image: minio/minio:RELEASE.2025-02-28T09-55-16Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniosecret
+    volumes:
+      - langfuse-minio-data:/data
+    networks:
+      - dev-edge
+
+  langfuse-minio-init:
+    image: minio/mc:RELEASE.2025-02-21T16-00-46Z
+    depends_on:
+      - langfuse-minio
+    entrypoint:
+      - /bin/sh
+      - -c
+    command:
+      - >
+        until mc alias set local http://langfuse-minio:9000 minio miniosecret; do sleep 1; done &&
+        mc mb --ignore-existing local/langfuse &&
+        mc anonymous set download local/langfuse
+    networks:
+      - dev-edge
+
+volumes:
+  langfuse-postgres-data:
+  langfuse-clickhouse-data:
+  langfuse-redis-data:
+  langfuse-minio-data:

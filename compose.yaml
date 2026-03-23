@@ -1,0 +1,173 @@
+name: brama
+
+services:
+  traefik:
+    image: traefik:v3.6
+    command:
+      - --configFile=/etc/traefik/traefik.yml
+    ports:
+      - "80:80"
+      - "8080:8080"
+      - "8082:8082"
+      - "8083:8083"
+      - "8084:8084"
+      - "8085:8085"
+      - "8086:8086"
+      - "8087:8087"
+      - "8088:8088"
+      - "8090:8090"
+    volumes:
+      - ./docker/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=brama_dev-edge
+      - traefik.http.routers.traefik-dashboard.rule=Host(`traefik.brama.localhost`) || Host(`traefik.localhost`)
+      - traefik.http.routers.traefik-dashboard.entrypoints=web
+      - traefik.http.routers.traefik-dashboard.middlewares=edge-auth@docker
+      - traefik.http.routers.traefik-dashboard.service=api@internal
+    networks:
+      - dev-edge
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ai_community_platform
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d ai_community_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dev-edge
+      - agents-internal
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dev-edge
+      - agents-internal
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.11.1
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+      OPENSEARCH_USERNAME: admin
+      OPENSEARCH_PASSWORD: admin
+    ports:
+      - "5601:5601"
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=brama_dev-edge
+      - traefik.http.routers.opensearch-dashboards.rule=Host(`opensearch-dashboards.brama.localhost`) || Host(`opensearch-dashboards.localhost`)
+      - traefik.http.routers.opensearch-dashboards.entrypoints=web
+      - traefik.http.routers.opensearch-dashboards.middlewares=edge-auth@docker
+      - traefik.http.services.opensearch-dashboards.loadbalancer.server.port=5601
+    depends_on:
+      - opensearch
+    networks:
+      - dev-edge
+
+  opensearch:
+    image: opensearchproject/opensearch:2.11.1
+    environment:
+      discovery.type: single-node
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+      bootstrap.memory_lock: "true"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - "9200:9200"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    networks:
+      - dev-edge
+      - agents-internal
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: app
+      RABBITMQ_DEFAULT_PASS: app
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - dev-edge
+      - agents-internal
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    env_file:
+      - path: ./.env.local
+        required: false
+    environment:
+      LITELLM_MASTER_KEY: dev-key
+      DATABASE_URL: postgresql://app:app@postgres:5432/litellm
+      LANGFUSE_PUBLIC_KEY: lf_pk_local_dev
+      LANGFUSE_SECRET_KEY: lf_sk_local_dev
+      LANGFUSE_HOST: http://langfuse-web:3000
+    command:
+      - "--config=/app/config.yaml"
+      - "--host=0.0.0.0"
+      - "--port=4000"
+      - "--detailed_debug"
+    ports:
+      - "4000:4000"
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=brama_dev-edge
+      - traefik.http.routers.litellm.rule=Host(`litellm.brama.localhost`) || Host(`litellm.localhost`)
+      - traefik.http.routers.litellm.entrypoints=web
+      - traefik.http.routers.litellm.middlewares=edge-auth@docker
+      - traefik.http.routers.litellm.service=litellm
+      - traefik.http.services.litellm.loadbalancer.server.port=4000
+    volumes:
+      - ./docker/litellm/config.yaml:/app/config.yaml:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - dev-edge
+      - agents-internal
+
+networks:
+  dev-edge:
+    driver: bridge
+  agents-internal:
+    driver: bridge
+    internal: true
+
+volumes:
+  postgres-data:
+  redis-data:
+  opensearch-data:
+  rabbitmq-data:
