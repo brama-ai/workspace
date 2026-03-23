@@ -1,11 +1,32 @@
 .DS_Store
 .idea/
-.vscode/
-.claude/
-.cursor/
-.opencode/
-.agent/
 
+# Claude Code — only local settings are personal
+.claude/settings.local.json
+
+# Cursor — track skills, ignore the rest
+.cursor/*
+!.cursor/skills/
+
+# OpenCode — track skills/agents/commands, ignore runtime
+.opencode/node_modules/
+.opencode/bun.lock
+.opencode/.DS_Store
+.opencode/pipeline/
+.opencode/oh-my-opencode.jsonc
+.opencode/opencode.json
+.opencode/package.json
+.opencode/.gitignore
+
+# Agent — track workflows, ignore the rest
+.agent/*
+!.agent/workflows/
+
+# VS Code — track extensions, ignore settings (contains credentials)
+.vscode/*
+!.vscode/extensions.json
+
+# Secrets and local state
 .env.local
 .env.deployment
 .env.*.local
@@ -17,6 +38,7 @@ compose.override.yaml
 compose.override.yml
 projects/
 
+# External repositories
 brama-core/
 builder/
 langind/

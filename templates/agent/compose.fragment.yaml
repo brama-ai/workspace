@@ -1,12 +1,19 @@
 # =============================================================================
-# DEPRECATED — use templates/agent/compose.fragment.yaml instead
+# templates/agent/compose.fragment.yaml
 # =============================================================================
 #
-# All scaffold templates have moved to the templates/ directory.
-# See: templates/agent/compose.fragment.yaml
+# Reference template for an external agent compose fragment.
+# Copy this file into compose.fragments/<agent-name>.yaml in the platform
+# workspace and replace "example-agent" with your agent name.
+#
+# Naming rules:
+#   - File name: compose.fragments/<agent-name>.yaml
+#   - Service name: must end with -agent (e.g. my-agent, example-agent)
+#   - Docker label: ai.platform.agent=true  (required for discovery)
 #
 # Usage:
 #   cp templates/agent/compose.fragment.yaml compose.fragments/<agent-name>.yaml
+#   # edit the file: replace "example-agent" with your agent name
 #   make external-agent-up name=<agent-name>
 #
 # =============================================================================
