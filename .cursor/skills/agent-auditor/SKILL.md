@@ -90,7 +90,7 @@ After tables, output a prioritized action list:
 |----------|------|
 | Agent source | `agents/<agent>/` |
 | Dockerfiles | `docker/<agent>/Dockerfile` |
-| Compose config | `compose.yaml` |
+| Compose config | `docker/compose.yaml` |
 | Convention spec | `core/docs/agent-requirements/conventions.md` |
 | Agent Card schema | `core/src/config/agent-card.schema.json` |
 | Observability spec | `core/docs/agent-requirements/observability-requirements.md` |

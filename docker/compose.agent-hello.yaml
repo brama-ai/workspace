@@ -2,7 +2,7 @@ services:
   hello-agent:
     image: ghcr.io/nmdimas/a2a-hello-agent:main
     build:
-      context: ./agents/hello-agent
+      context: ../agents/hello-agent
       dockerfile: Dockerfile
     labels:
       - traefik.enable=true
@@ -23,12 +23,12 @@ services:
       OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
       CORE_PLATFORM_URL: ${CORE_PLATFORM_URL:-http://core}
     env_file:
-      - path: ./docker/openclaw/.env
+      - path: ./openclaw/.env
         required: false
-      - path: ./.env.deployment
+      - path: ../.env.deployment
         required: false
     volumes:
-      - ./agents/hello-agent:/var/www/html
+      - ../agents/hello-agent:/var/www/html
     depends_on:
       - opensearch
       - litellm
@@ -39,7 +39,7 @@ services:
     profiles: [e2e]
     image: ghcr.io/nmdimas/a2a-hello-agent:main
     build:
-      context: ./agents/hello-agent
+      context: ../agents/hello-agent
       dockerfile: Dockerfile
     environment:
       LANGFUSE_ENABLED: "false"
@@ -49,12 +49,12 @@ services:
       OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
       CORE_PLATFORM_URL: http://core-e2e
     env_file:
-      - path: ./.env.deployment
+      - path: ../.env.deployment
         required: false
     ports:
       - "18085:80"
     volumes:
-      - ./agents/hello-agent:/var/www/html
+      - ../agents/hello-agent:/var/www/html
     depends_on:
       - opensearch
       - litellm

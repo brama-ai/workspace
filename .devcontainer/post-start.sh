@@ -61,9 +61,27 @@ if [ -S /var/run/docker.sock ]; then
   sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
 fi
 
+# SSH agent: start once per container lifecycle so git push doesn't re-ask for passphrase.
+# Keys are not auto-added — each developer runs `ssh-add <key>` once after container start.
+ssh_env="/home/vscode/.ssh/agent.env"
+if [ -f "$ssh_env" ]; then
+  . "$ssh_env" > /dev/null
+fi
+if ! ssh-add -l &>/dev/null; then
+  eval "$(ssh-agent -s)" > /dev/null
+  echo "export SSH_AUTH_SOCK=$SSH_AUTH_SOCK" > "$ssh_env"
+  echo "export SSH_AGENT_PID=$SSH_AGENT_PID" >> "$ssh_env"
+fi
+
+ssh_snippet='# SSH agent: reuse running agent across shell sessions
+if [ -f "$HOME/.ssh/agent.env" ]; then . "$HOME/.ssh/agent.env" > /dev/null; fi'
+
 # Claude Code: always run in dangerously-skip-permissions mode inside devcontainer.
 claude_alias='alias claude="claude --dangerously-skip-permissions"'
 for rc_file in /home/vscode/.bashrc /home/vscode/.zshrc; do
+  if [ -f "$rc_file" ] && ! grep -Fq 'agent.env' "$rc_file"; then
+    printf '\n%s\n' "$ssh_snippet" >> "$rc_file"
+  fi
   if [ -f "$rc_file" ] && ! grep -Fq 'dangerously-skip-permissions' "$rc_file"; then
     printf '\n# Claude Code: bypass permissions in devcontainer\n%s\n' "$claude_alias" >> "$rc_file"
   fi

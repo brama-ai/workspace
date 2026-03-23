@@ -24,7 +24,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-FRAGMENTS_DIR="$REPO_ROOT/compose.fragments"
+FRAGMENTS_DIR="$REPO_ROOT/docker/compose.fragments"
 PROJECTS_DIR="$REPO_ROOT/projects"
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -37,20 +37,20 @@ fail()  { printf '  \033[1;31m✗\033[0m %s\n' "$*" >&2; exit 1; }
 # Build the compose command with all current fragments included
 compose_cmd() {
     local agent_files fragment_files override_file override_flag
-    agent_files=$(cd "$REPO_ROOT" && ls compose.agent-*.yaml 2>/dev/null | sort | sed 's/^/-f /' | tr '\n' ' ')
-    fragment_files=$(cd "$REPO_ROOT" && ls compose.fragments/*.yaml 2>/dev/null | sort | sed 's/^/-f /' | tr '\n' ' ')
-    override_file=$(cd "$REPO_ROOT" && ls compose.override.yaml compose.override.yml 2>/dev/null | head -1 || true)
+    agent_files=$(cd "$REPO_ROOT" && ls docker/compose.agent-*.yaml 2>/dev/null | sort | sed 's/^/-f /' | tr '\n' ' ')
+    fragment_files=$(cd "$REPO_ROOT" && ls docker/compose.fragments/*.yaml 2>/dev/null | sort | sed 's/^/-f /' | tr '\n' ' ')
+    override_file=$(cd "$REPO_ROOT" && ls docker/compose.override.yaml docker/compose.override.yml 2>/dev/null | head -1 || true)
     override_flag=""
     [ -n "$override_file" ] && override_flag="-f $override_file"
 
-    echo "docker compose \
-        -f compose.yaml \
-        -f compose.core.yaml \
+    echo "docker compose --project-directory . \
+        -f docker/compose.yaml \
+        -f docker/compose.core.yaml \
         $agent_files \
         $fragment_files \
-        -f compose.langfuse.yaml \
-        -f compose.openclaw.yaml \
-        -f compose.slides.yaml \
+        -f docker/compose.langfuse.yaml \
+        -f docker/compose.openclaw.yaml \
+        -f docker/compose.slides.yaml \
         $override_flag"
 }
 
@@ -74,7 +74,7 @@ cmd_list() {
     done
 
     if [ "$found" -eq 0 ]; then
-        echo "  (none — add fragments to compose.fragments/)"
+        echo "  (none — add fragments to docker/compose.fragments/)"
         echo ""
         echo "  To onboard an external agent:"
         echo "    make external-agent-clone repo=<git-url> name=<agent-name>"
@@ -87,7 +87,7 @@ cmd_up() {
     local name="$1"
     local fragment="$FRAGMENTS_DIR/$name.yaml"
 
-    [ -f "$fragment" ] || fail "Fragment not found: compose.fragments/$name.yaml\n  Run: make external-agent-clone repo=<url> name=$name"
+    [ -f "$fragment" ] || fail "Fragment not found: docker/docker/compose.fragments/$name.yaml\n  Run: make external-agent-clone repo=<url> name=$name"
 
     info "Starting external agent: $name"
     local compose
@@ -106,7 +106,7 @@ cmd_down() {
     local name="$1"
     local fragment="$FRAGMENTS_DIR/$name.yaml"
 
-    [ -f "$fragment" ] || fail "Fragment not found: compose.fragments/$name.yaml"
+    [ -f "$fragment" ] || fail "Fragment not found: docker/docker/compose.fragments/$name.yaml"
 
     info "Stopping external agent: $name"
     local compose
@@ -143,16 +143,16 @@ cmd_clone() {
     local agent_fragment="$checkout/compose.fragment.yaml"
     if [ -f "$agent_fragment" ]; then
         cp "$agent_fragment" "$fragment"
-        ok "Installed compose fragment: compose.fragments/$name.yaml"
+        ok "Installed compose fragment: docker/compose.fragments/$name.yaml"
     else
         warn "No compose.fragment.yaml found in $checkout"
-        warn "Create compose.fragments/$name.yaml manually."
+        warn "Create docker/compose.fragments/$name.yaml manually."
         warn "See compose.fragments/example-agent.yaml.template for reference."
     fi
 
     echo ""
     echo "  Next steps:"
-    echo "    1. Review compose.fragments/$name.yaml"
+    echo "    1. Review docker/compose.fragments/$name.yaml"
     echo "    2. Add any required env vars to agents/$name/.env.local"
     echo "    3. make external-agent-up name=$name"
     echo "    4. make agent-discover"

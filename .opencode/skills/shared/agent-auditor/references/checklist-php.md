@@ -12,7 +12,7 @@ Checks for agents built with PHP 8.5 + Symfony 7.
 | S-04 | `Kernel.php` exists | Glob `apps/<agent>/src/Kernel.php` | Exists | — | Missing |
 | S-05 | Dockerfile exists | Glob `docker/<agent>/Dockerfile` | Exists | — | Missing |
 | S-06 | Dockerfile uses php:8.5 base | Read Dockerfile, check FROM line | Matches `php:8.5` | Different PHP version | No Dockerfile |
-| S-07 | Compose service defined | Grep `compose.yaml` for service name | Found | — | Missing |
+| S-07 | Compose service defined | Grep `docker/compose.yaml` for service name | Found | — | Missing |
 | S-08 | `composer.json` exists | Glob `apps/<agent>/composer.json` | Exists | — | Missing |
 | S-09 | `composer.lock` exists | Glob `apps/<agent>/composer.lock` | Exists | — | Missing (deps not locked) |
 | S-10 | `bin/console` exists | Glob `apps/<agent>/bin/console` | Exists | — | Missing |
@@ -44,7 +44,7 @@ Checks for agents built with PHP 8.5 + Symfony 7.
 | C-05 | Agent Card has `capabilities` | Check for `capabilities` object `{streaming, pushNotifications}` | Present | — | Missing |
 | C-06 | Agent Card has `provider` | Check for `provider` object `{organization, url}` | Present | — | Missing |
 | C-07 | Agent Card has I/O modes | Check for `defaultInputModes`, `defaultOutputModes` arrays | Both present | One only | Neither |
-| C-08 | Compose label `ai.platform.agent=true` | Grep compose.yaml | Found | — | Missing |
+| C-08 | Compose label `ai.platform.agent=true` | Grep docker/compose.yaml | Found | — | Missing |
 | C-09 | `config/reference.php` exists | Glob | Exists | — | Missing |
 | C-10 | Environment variables documented | `.env` or `.env.dev` exists with content | Exists | Empty | Missing |
 | C-11 | `services.yaml` exists | Glob `apps/<agent>/config/services.yaml` | Exists | — | Missing |
@@ -70,7 +70,7 @@ Checks for agents built with PHP 8.5 + Symfony 7.
 | O-01 | Observability module exists | Glob `apps/<agent>/src/Observability/` | Exists with files | — | Missing |
 | O-02 | TraceContext class exists | Glob for `TraceContext.php` | Exists | — | Missing |
 | O-03 | Langfuse integration present | Grep src/ for `Langfuse` or `langfuse` | Found | — | Not found |
-| O-04 | Compose env has LANGFUSE vars | Grep compose.yaml for LANGFUSE_ env vars | Present | — | Missing |
+| O-04 | Compose env has LANGFUSE vars | Grep docker/compose.yaml for LANGFUSE_ env vars | Present | — | Missing |
 | O-05 | Structured logging used | Grep src/ for `LoggerInterface` | Found | — | Not found |
 | O-06 | Health endpoint exists | Grep src/ for `'/health'` route | Found | — | Missing |
 | O-07 | Log messages include `trace_id` | Grep src/ for `trace_id` in logger calls; every controller/handler that receives trace_id must pass it to logger context | All pass trace_id | Some missing | No trace_id usage |
@@ -100,7 +100,7 @@ Checks for agents built with PHP 8.5 + Symfony 7.
 | M-03 | Naming follows convention | Filenames match `Version*.php` | All match | — | Non-conforming |
 | M-04 | `doctrine_migrations.yaml` exists | Glob config/packages/ | Exists | — | Missing (if has DB) |
 | M-05 | Makefile has migrate target | Grep Makefile for `<agent>-migrate` or `migrate:` | Found | — | Missing (if has DB) |
-| M-06 | Compose env has DATABASE_URL | Grep compose.yaml for DATABASE_URL | Present | — | Missing (if has DB) |
+| M-06 | Compose env has DATABASE_URL | Grep docker/compose.yaml for DATABASE_URL | Present | — | Missing (if has DB) |
 
 ## Q: Standards Compliance
 

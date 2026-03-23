@@ -9,8 +9,7 @@ Application source code stays in [`core`](/Users/nmdimas/work/brama-workspace/co
 ## Repository Layout
 
 - [`.devcontainer/`](/Users/nmdimas/work/brama-workspace/.devcontainer) contains the workspace devcontainer image, hooks, and bootstrap helpers.
-- [`compose.yaml`](/Users/nmdimas/work/brama-workspace/compose.yaml) and related `compose.*.yaml` files define the local platform topology.
-- [`docker/`](/Users/nmdimas/work/brama-workspace/docker) contains shared Docker assets used by the local stack.
+- [`docker/`](/Users/nmdimas/work/brama-workspace/docker) contains all Docker Compose files (`compose.yaml`, `compose.*.yaml`), Dockerfiles, and shared Docker assets.
 - [`scripts/`](/Users/nmdimas/work/brama-workspace/scripts) contains bootstrap and operator helper scripts.
 - [`Makefile`](/Users/nmdimas/work/brama-workspace/Makefile) is the main entry point for day-to-day commands.
 - [`core/`](/Users/nmdimas/work/brama-workspace/core) contains the product codebase, tests, docs, and application-level assets.
@@ -55,6 +54,7 @@ After the container starts:
 ```bash
 make bootstrap
 make setup
+make sync-skills   # sync shared skills to Claude, Cursor, Codex, OpenCode
 make up
 make litellm-db-init
 make migrate
@@ -73,6 +73,7 @@ cp .env.local.example .env.local
 
 make bootstrap
 make setup
+make sync-skills   # sync shared skills to Claude, Cursor, Codex, OpenCode
 make up
 make litellm-db-init
 make migrate
@@ -167,13 +168,14 @@ The workspace intentionally exposes a small set of high-value entry points:
 
 ## Compose Model
 
-The local runtime is split into focused Compose files:
+All Compose files live in the `docker/` directory:
 
-- [`compose.yaml`](/Users/nmdimas/work/brama-workspace/compose.yaml): shared infrastructure such as Traefik, Postgres, Redis, OpenSearch, RabbitMQ, and LiteLLM.
-- [`compose.core.yaml`](/Users/nmdimas/work/brama-workspace/compose.core.yaml): core application services.
-- `compose.agent-*.yaml`: platform agents and their local development services.
-- [`compose.openclaw.yaml`](/Users/nmdimas/work/brama-workspace/compose.openclaw.yaml): OpenClaw gateway and CLI services.
-- [`compose.langfuse.yaml`](/Users/nmdimas/work/brama-workspace/compose.langfuse.yaml): observability services.
+- [`docker/compose.yaml`](/Users/nmdimas/work/brama-workspace/docker/compose.yaml): shared infrastructure such as Traefik, Postgres, Redis, OpenSearch, RabbitMQ, and LiteLLM.
+- [`docker/compose.core.yaml`](/Users/nmdimas/work/brama-workspace/docker/compose.core.yaml): core application services.
+- `docker/compose.agent-*.yaml`: platform agents and their local development services.
+- [`docker/compose.openclaw.yaml`](/Users/nmdimas/work/brama-workspace/docker/compose.openclaw.yaml): OpenClaw gateway and CLI services.
+- [`docker/compose.langfuse.yaml`](/Users/nmdimas/work/brama-workspace/docker/compose.langfuse.yaml): observability services.
+- `docker/compose.fragments/`: external agent compose fragments.
 
 The [`Makefile`](/Users/nmdimas/work/brama-workspace/Makefile) assembles the full stack for normal usage, so prefer `make` targets over manually typing long `docker compose -f ...` commands.
 
@@ -215,7 +217,7 @@ The workspace repo and `core` repo are intentionally independent. Commit infra/r
 Run:
 
 ```bash
-docker compose -f compose.yaml -f compose.core.yaml config
+docker compose --project-directory . -f docker/compose.yaml -f docker/compose.core.yaml config
 ```
 
 If this fails, the issue is usually a broken relative path in a compose file or Dockerfile.

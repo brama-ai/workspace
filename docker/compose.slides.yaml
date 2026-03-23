@@ -1,7 +1,7 @@
 services:
   slides:
     build:
-      context: .
+      context: ..
       dockerfile: docker/slides/Dockerfile
     labels:
       - traefik.enable=true

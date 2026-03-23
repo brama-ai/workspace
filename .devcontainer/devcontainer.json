@@ -1,7 +1,7 @@
 {
   "name": "Brama Workspace",
 
-  "dockerComposeFile": ["../compose.yaml", "../compose.core.yaml", "docker-compose.yml"],
+  "dockerComposeFile": ["../docker/compose.yaml", "../docker/compose.core.yaml", "docker-compose.yml"],
   "service": "devcontainer",
   "workspaceFolder": "/workspaces/brama",
 

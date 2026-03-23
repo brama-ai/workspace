@@ -3,19 +3,20 @@ CORE_SRC  := $(CORE_ROOT)/src
 AGENTS_DIR := agents
 TEST_ROOT := $(CORE_ROOT)/tests
 
-AGENT_FILES := $(sort $(wildcard compose.agent-*.yaml))
-EXTERNAL_AGENT_FILES := $(sort $(wildcard compose.fragments/*.yaml))
-OVERRIDE_FILE := $(firstword $(wildcard compose.override.yaml compose.override.yml))
+DOCKER_DIR := docker
+AGENT_FILES := $(sort $(wildcard $(DOCKER_DIR)/compose.agent-*.yaml))
+EXTERNAL_AGENT_FILES := $(sort $(wildcard $(DOCKER_DIR)/compose.fragments/*.yaml))
+OVERRIDE_FILE := $(firstword $(wildcard $(DOCKER_DIR)/compose.override.yaml $(DOCKER_DIR)/compose.override.yml))
 OVERRIDE_COMPOSE := $(if $(OVERRIDE_FILE),-f $(OVERRIDE_FILE),)
-COMPOSE_FILES := -f compose.yaml -f compose.core.yaml \
+COMPOSE_FILES := -f $(DOCKER_DIR)/compose.yaml -f $(DOCKER_DIR)/compose.core.yaml \
         $(addprefix -f ,$(AGENT_FILES)) \
         $(addprefix -f ,$(EXTERNAL_AGENT_FILES)) \
-        -f compose.langfuse.yaml -f compose.openclaw.yaml \
-        -f compose.slides.yaml \
+        -f $(DOCKER_DIR)/compose.langfuse.yaml -f $(DOCKER_DIR)/compose.openclaw.yaml \
+        -f $(DOCKER_DIR)/compose.slides.yaml \
         $(OVERRIDE_COMPOSE)
-COMPOSE ?= docker compose $(COMPOSE_FILES)
-VERIFY_LOCAL_COMPOSE ?= docker compose -f compose.yaml -f compose.core.yaml -f compose.website.yaml
-E2E_COMPOSE ?= docker compose $(COMPOSE_FILES) --profile e2e
+COMPOSE ?= docker compose --project-directory . $(COMPOSE_FILES)
+VERIFY_LOCAL_COMPOSE ?= docker compose --project-directory . -f $(DOCKER_DIR)/compose.yaml -f $(DOCKER_DIR)/compose.core.yaml -f $(DOCKER_DIR)/compose.website.yaml
+E2E_COMPOSE ?= docker compose --project-directory . $(COMPOSE_FILES) --profile e2e
 E2E_CORE_DB ?= brama_test
 E2E_BASE_URL ?= http://localhost:18080
 # Load devcontainer-specific E2E URLs when running inside devcontainer
@@ -100,7 +101,7 @@ help:
 		'make news-migrate         Run Alembic migrations for news-maker-agent (stack must be up)' \
 		'make agent-discover       Run Traefik-based agent discovery and refresh registry' \
 		'make conventions-test     Run Codecept.js agent-convention compliance tests (AGENT_URL required)' \
-		'make external-agent-list  List detected external agent compose fragments in compose.fragments/' \
+		'make external-agent-list  List detected external agent compose fragments in docker/compose.fragments/' \
 		'make external-agent-up name=X    Start/update a named external agent (e.g. make external-agent-up name=my-agent)' \
 		'make external-agent-down name=X  Stop a named external agent (e.g. make external-agent-down name=my-agent)' \
 		'make external-agent-clone repo=URL name=X  Clone an agent repo into agents/<name> (e.g. make external-agent-clone repo=https://github.com/org/my-agent name=my-agent)' \

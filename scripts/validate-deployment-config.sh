@@ -30,10 +30,10 @@ echo
 echo "🐳 Checking Docker Compose files use environment variables..."
 
 compose_files=(
-    "compose.core.yaml"
-    "compose.agent-hello.yaml"
-    "compose.agent-knowledge.yaml"
-    "compose.agent-news-maker.yaml"
+    "docker/compose.core.yaml"
+    "docker/compose.agent-hello.yaml"
+    "docker/compose.agent-knowledge.yaml"
+    "docker/compose.agent-news-maker.yaml"
 )
 
 for file in "${compose_files[@]}"; do

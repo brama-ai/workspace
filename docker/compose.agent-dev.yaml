@@ -1,8 +1,8 @@
 services:
   dev-agent:
     build:
-      context: .
-      dockerfile: docker/dev-agent/Dockerfile
+      context: ../agents/dev-agent
+      dockerfile: Dockerfile
     labels:
       - traefik.enable=true
       - traefik.http.routers.dev-agent.rule=PathPrefix(`/`)
@@ -28,8 +28,8 @@ services:
       LANGFUSE_SECRET_KEY: lf_sk_local_dev
       LANGFUSE_ENV: local
     volumes:
-      - ./agents/dev-agent:/var/www/html
-      - .:/repo:rw
+      - ../agents/dev-agent:/var/www/html
+      - ..:/repo:rw
     depends_on:
       - postgres
       - opensearch
@@ -40,8 +40,8 @@ services:
   dev-agent-e2e:
     profiles: [e2e]
     build:
-      context: .
-      dockerfile: docker/dev-agent/Dockerfile
+      context: ../agents/dev-agent
+      dockerfile: Dockerfile
     environment:
       MIGRATE_ON_START: "1"
       DATABASE_URL: postgresql://dev_agent:dev_agent@postgres:5432/dev_agent_test?serverVersion=16&charset=utf8
@@ -58,8 +58,8 @@ services:
     ports:
       - "18088:80"
     volumes:
-      - ./agents/dev-agent:/var/www/html
-      - .:/repo:ro
+      - ../agents/dev-agent:/var/www/html
+      - ..:/repo:ro
     depends_on:
       - postgres
       - opensearch

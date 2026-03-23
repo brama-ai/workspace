@@ -2,7 +2,7 @@ services:
   openclaw-gateway-main:
     image: ghcr.io/openclaw/openclaw@sha256:d60f848db7d5019336dfa17412588881a42774ad34a3429f03dd06d0a71c2848
     env_file:
-      - ./docker/openclaw/main/.env
+      - ./openclaw/main/.env
     environment:
       PLATFORM_CORE_URL: http://core
       PLATFORM_DISCOVERY_URL: http://core/api/v1/a2a/discovery
@@ -13,8 +13,8 @@ services:
     ports:
       - "18789:18789"
     volumes:
-      - ./.local/openclaw/main:/home/node/.openclaw
-      - ./docker/openclaw/plugins/platform-tools:/home/node/.openclaw/extensions/platform-tools
+      - ../.local/openclaw/main:/home/node/.openclaw
+      - ./openclaw/plugins/platform-tools:/home/node/.openclaw/extensions/platform-tools
     command: >
       /bin/sh -lc "
       cd /home/node/.openclaw/extensions/platform-tools &&
@@ -25,7 +25,7 @@ services:
   openclaw-gateway-support:
     image: ghcr.io/openclaw/openclaw@sha256:d60f848db7d5019336dfa17412588881a42774ad34a3429f03dd06d0a71c2848
     env_file:
-      - ./docker/openclaw/support/.env
+      - ./openclaw/support/.env
     environment:
       PLATFORM_CORE_URL: http://core
       PLATFORM_DISCOVERY_URL: http://core/api/v1/a2a/discovery
@@ -36,8 +36,8 @@ services:
     ports:
       - "18790:18789"
     volumes:
-      - ./.local/openclaw/support:/home/node/.openclaw
-      - ./docker/openclaw/plugins/platform-tools:/home/node/.openclaw/extensions/platform-tools
+      - ../.local/openclaw/support:/home/node/.openclaw
+      - ./openclaw/plugins/platform-tools:/home/node/.openclaw/extensions/platform-tools
     command: >
       /bin/sh -lc "
       cd /home/node/.openclaw/extensions/platform-tools &&

@@ -1,11 +1,11 @@
 services:
   core:
     build:
-      context: .
+      context: ..
       dockerfile: docker/core/Dockerfile
     env_file:
-      - ./docker/openclaw/.env
-      - path: ./.env.deployment
+      - ./openclaw/.env
+      - path: ../.env.deployment
         required: false
     labels:
       - traefik.enable=true
@@ -45,18 +45,18 @@ services:
       # Direct access bypass (useful when Traefik has issues; does not conflict with Traefik ports)
       - "8081:80"
     volumes:
-      - ./core/src:/var/www/html
+      - ../core/src:/var/www/html
     networks:
       - dev-edge
       - agents-internal
 
   core-scheduler:
     build:
-      context: .
+      context: ..
       dockerfile: docker/core/Dockerfile
     env_file:
-      - ./docker/openclaw/.env
-      - path: ./.env.deployment
+      - ./openclaw/.env
+      - path: ../.env.deployment
         required: false
     command: ["php", "bin/console", "scheduler:run"]
     environment:
@@ -79,7 +79,7 @@ services:
       EDGE_AUTH_LOGIN_BASE_URL: ${EDGE_AUTH_LOGIN_BASE_URL:-http://localhost}
       EDGE_AUTH_COOKIE_DOMAIN: ${EDGE_AUTH_COOKIE_DOMAIN:-localhost}
     volumes:
-      - ./core/src:/var/www/html
+      - ../core/src:/var/www/html
     depends_on:
       - core
     restart: unless-stopped
@@ -90,11 +90,11 @@ services:
   core-e2e:
     profiles: [e2e]
     build:
-      context: .
+      context: ..
       dockerfile: docker/core/Dockerfile
     env_file:
-      - ./docker/openclaw/.env
-      - path: ./.env.deployment
+      - ./openclaw/.env
+      - path: ../.env.deployment
         required: false
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/brama_test?serverVersion=16&charset=utf8
@@ -112,7 +112,7 @@ services:
     ports:
       - "18080:80"
     volumes:
-      - ./core/src:/var/www/html
+      - ../core/src:/var/www/html
     depends_on:
       - postgres
     networks:

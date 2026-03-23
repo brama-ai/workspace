@@ -1,7 +1,7 @@
 services:
   website:
     build:
-      context: ./website
+      context: ../website
       dockerfile: Dockerfile
     labels:
       - traefik.enable=true

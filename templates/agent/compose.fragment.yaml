@@ -3,16 +3,16 @@
 # =============================================================================
 #
 # Reference template for an external agent compose fragment.
-# Copy this file into compose.fragments/<agent-name>.yaml in the platform
+# Copy this file into docker/compose.fragments/<agent-name>.yaml in the platform
 # workspace and replace "example-agent" with your agent name.
 #
 # Naming rules:
-#   - File name: compose.fragments/<agent-name>.yaml
+#   - File name: docker/compose.fragments/<agent-name>.yaml
 #   - Service name: must end with -agent (e.g. my-agent, example-agent)
 #   - Docker label: ai.platform.agent=true  (required for discovery)
 #
 # Usage:
-#   cp templates/agent/compose.fragment.yaml compose.fragments/<agent-name>.yaml
+#   cp templates/agent/compose.fragment.yaml docker/compose.fragments/<agent-name>.yaml
 #   # edit the file: replace "example-agent" with your agent name
 #   make external-agent-up name=<agent-name>
 #
@@ -22,7 +22,7 @@ services:
   example-agent:
     # Build from the checked-out agent repository
     build:
-      context: ./agents/example-agent
+      context: ../agents/example-agent
       dockerfile: Dockerfile
     labels:
       # Required: marks this service for platform discovery
@@ -42,7 +42,7 @@ services:
       # REDIS_URL: redis://redis:6379/4
     env_file:
       # Optional: agent-specific secrets (gitignored on the platform side)
-      - path: ./agents/example-agent/.env.local
+      - path: ../agents/example-agent/.env.local
         required: false
     healthcheck:
       # Required: platform polls /health every 60s

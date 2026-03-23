@@ -247,7 +247,7 @@ include/require with user-controlled path
 - `core/src/config/packages/framework.yaml` — session config, CSRF
 - `.env` / `.env.local` — no secrets in committed files
 - `docker/*/Dockerfile` — no secrets in build args
-- `compose.yaml` — no secrets in environment variables
+- `docker/compose.yaml` — no secrets in environment variables
 
 ## References
 
@@ -272,4 +272,4 @@ include/require with user-controlled path
 | Repositories | `agents/*/src/Repository/` |
 | Twig templates | `agents/*/templates/` |
 | Docker configs | `docker/*/Dockerfile` |
-| Compose config | `compose.yaml`, `compose.core.yaml` |
+| Compose config | `docker/compose.yaml`, `docker/compose.core.yaml` |

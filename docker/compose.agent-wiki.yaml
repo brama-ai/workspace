@@ -2,7 +2,7 @@ services:
   wiki-agent:
     image: ghcr.io/nmdimas/a2a-wiki-agent:main
     build:
-      context: ./agents/wiki-agent
+      context: ../agents/wiki-agent
       dockerfile: Dockerfile
     labels:
       - traefik.enable=true
@@ -32,7 +32,7 @@ services:
       PUBLIC_BASE_URL: http://localhost
       INTERNAL_BASE_URL: http://wiki-agent:3000
     volumes:
-      - ./agents/wiki-agent:/app
+      - ../agents/wiki-agent:/app
       - /app/node_modules
     depends_on:
       - postgres
@@ -46,7 +46,7 @@ services:
     profiles: [e2e]
     image: ghcr.io/nmdimas/a2a-wiki-agent:main
     build:
-      context: ./agents/wiki-agent
+      context: ../agents/wiki-agent
       dockerfile: Dockerfile
     environment:
       PORT: "3000"
@@ -68,7 +68,7 @@ services:
     ports:
       - "18090:3000"
     volumes:
-      - ./agents/wiki-agent:/app
+      - ../agents/wiki-agent:/app
       - /app/node_modules
     depends_on:
       - postgres

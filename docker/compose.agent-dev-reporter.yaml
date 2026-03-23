@@ -1,8 +1,8 @@
 services:
   dev-reporter-agent:
     build:
-      context: .
-      dockerfile: docker/dev-reporter-agent/Dockerfile
+      context: ../agents/dev-reporter-agent
+      dockerfile: Dockerfile
     labels:
       - traefik.enable=true
       - traefik.http.routers.dev-reporter-agent.rule=PathPrefix(`/`)
@@ -23,7 +23,7 @@ services:
       LANGFUSE_SECRET_KEY: lf_sk_local_dev
       LANGFUSE_ENV: local
     volumes:
-      - ./agents/dev-reporter-agent:/var/www/html
+      - ../agents/dev-reporter-agent:/var/www/html
     depends_on:
       - postgres
       - opensearch
@@ -33,8 +33,8 @@ services:
   dev-reporter-agent-e2e:
     profiles: [e2e]
     build:
-      context: .
-      dockerfile: docker/dev-reporter-agent/Dockerfile
+      context: ../agents/dev-reporter-agent
+      dockerfile: Dockerfile
     environment:
       MIGRATE_ON_START: "1"
       DATABASE_URL: postgresql://dev_reporter_agent:dev_reporter_agent@postgres:5432/dev_reporter_agent_test?serverVersion=16&charset=utf8
@@ -46,7 +46,7 @@ services:
     ports:
       - "18087:80"
     volumes:
-      - ./agents/dev-reporter-agent:/var/www/html
+      - ../agents/dev-reporter-agent:/var/www/html
     depends_on:
       - postgres
       - opensearch

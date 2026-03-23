@@ -74,7 +74,7 @@ A good `design.md` covers:
 | Knowledge agent | PHP 8.5, Symfony 7 | `agents/knowledge-agent/src/` |
 | News maker | Python, FastAPI | `agents/news-maker-agent/app/` |
 | Wiki agent | Node.js, TS | `agents/wiki-agent/src/` |
-| Infra | Postgres, Redis, RabbitMQ | `compose.yaml`, `compose.core.yaml` |
+| Infra | Postgres, Redis, RabbitMQ | `docker/compose.yaml`, `docker/compose.core.yaml` |
 
 ## Rules
 

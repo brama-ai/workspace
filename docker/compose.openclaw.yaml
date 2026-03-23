@@ -5,7 +5,7 @@ services:
       - /bin/sh
       - -lc
     env_file:
-      - ./docker/openclaw/.env
+      - ./openclaw/.env
     environment:
       PLATFORM_CORE_URL: http://core
       PLATFORM_DISCOVERY_URL: http://core/api/v1/a2a/discovery
@@ -39,8 +39,8 @@ services:
       retries: 6
       start_period: 15s
     volumes:
-      - ./.local/openclaw/state:/home/node/.openclaw
-      - ./docker/openclaw/plugins/platform-tools:/home/node/.openclaw/extensions/platform-tools
+      - ../.local/openclaw/state:/home/node/.openclaw
+      - ./openclaw/plugins/platform-tools:/home/node/.openclaw/extensions/platform-tools
     depends_on:
       - opensearch
     restart: unless-stopped
@@ -50,7 +50,7 @@ services:
   openclaw-cli:
     image: ghcr.io/openclaw/openclaw@sha256:d60f848db7d5019336dfa17412588881a42774ad34a3429f03dd06d0a71c2848
     env_file:
-      - ./docker/openclaw/.env
+      - ./openclaw/.env
     depends_on:
       - openclaw-gateway
     network_mode: "service:openclaw-gateway"
@@ -62,7 +62,7 @@ services:
     command:
       - sleep infinity
     volumes:
-      - ./.local/openclaw/state:/home/node/.openclaw
+      - ../.local/openclaw/state:/home/node/.openclaw
 
   openclaw-gateway-e2e:
     profiles: [e2e]
@@ -71,7 +71,7 @@ services:
       - /bin/sh
       - -lc
     env_file:
-      - ./docker/openclaw/.env
+      - ./openclaw/.env
     environment:
       PLATFORM_CORE_URL: http://core-e2e
       PLATFORM_DISCOVERY_URL: http://core-e2e/api/v1/a2a/discovery
@@ -90,8 +90,8 @@ services:
       retries: 6
       start_period: 15s
     volumes:
-      - ./.local/openclaw/e2e-state:/home/node/.openclaw
-      - ./docker/openclaw/plugins/platform-tools:/home/node/.openclaw/extensions/platform-tools
+      - ../.local/openclaw/e2e-state:/home/node/.openclaw
+      - ./openclaw/plugins/platform-tools:/home/node/.openclaw/extensions/platform-tools
     depends_on:
       - opensearch
     networks:

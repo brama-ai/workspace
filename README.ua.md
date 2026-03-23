@@ -9,8 +9,7 @@
 ## Структура Репозиторію
 
 - [`.devcontainer/`](/Users/nmdimas/work/brama-workspace/.devcontainer) містить образ devcontainer, lifecycle hooks і bootstrap helper-и.
-- [`compose.yaml`](/Users/nmdimas/work/brama-workspace/compose.yaml) та `compose.*.yaml` описують локальну топологію платформи.
-- [`docker/`](/Users/nmdimas/work/brama-workspace/docker) містить спільні Docker-асети локального середовища.
+- [`docker/`](/Users/nmdimas/work/brama-workspace/docker) містить усі Docker Compose файли (`compose.yaml`, `compose.*.yaml`), Dockerfile-и та спільні Docker-асети.
 - [`scripts/`](/Users/nmdimas/work/brama-workspace/scripts) містить bootstrap та operator helper scripts.
 - [`Makefile`](/Users/nmdimas/work/brama-workspace/Makefile) є головною точкою входу для щоденних команд.
 - [`core/`](/Users/nmdimas/work/brama-workspace/core) містить продуктовий код, тести, документацію та app-рівневі ресурси.
@@ -167,13 +166,14 @@ make e2e
 
 ## Compose Модель
 
-Локальне середовище поділене на кілька Compose-файлів:
+Усі Compose-файли знаходяться в директорії `docker/`:
 
-- [`compose.yaml`](/Users/nmdimas/work/brama-workspace/compose.yaml): спільна інфраструктура на кшталт Traefik, Postgres, Redis, OpenSearch, RabbitMQ та LiteLLM.
-- [`compose.core.yaml`](/Users/nmdimas/work/brama-workspace/compose.core.yaml): core-сервіси платформи.
-- `compose.agent-*.yaml`: агенти платформи та їхні локальні dev-сервіси.
-- [`compose.openclaw.yaml`](/Users/nmdimas/work/brama-workspace/compose.openclaw.yaml): OpenClaw gateway і CLI.
-- [`compose.langfuse.yaml`](/Users/nmdimas/work/brama-workspace/compose.langfuse.yaml): observability сервіси.
+- [`docker/compose.yaml`](/Users/nmdimas/work/brama-workspace/docker/compose.yaml): спільна інфраструктура на кшталт Traefik, Postgres, Redis, OpenSearch, RabbitMQ та LiteLLM.
+- [`docker/compose.core.yaml`](/Users/nmdimas/work/brama-workspace/docker/compose.core.yaml): core-сервіси платформи.
+- `docker/compose.agent-*.yaml`: агенти платформи та їхні локальні dev-сервіси.
+- [`docker/compose.openclaw.yaml`](/Users/nmdimas/work/brama-workspace/docker/compose.openclaw.yaml): OpenClaw gateway і CLI.
+- [`docker/compose.langfuse.yaml`](/Users/nmdimas/work/brama-workspace/docker/compose.langfuse.yaml): observability сервіси.
+- `docker/compose.fragments/`: compose-фрагменти зовнішніх агентів.
 
 [`Makefile`](/Users/nmdimas/work/brama-workspace/Makefile) збирає повний стек автоматично, тому для рутини краще використовувати `make` targets, а не писати вручну довгі `docker compose -f ...` команди.
 
@@ -215,7 +215,7 @@ Workspace repo і `core` repo навмисно незалежні. Infra/runtime
 Запустіть:
 
 ```bash
-docker compose -f compose.yaml -f compose.core.yaml config
+docker compose --project-directory . -f docker/compose.yaml -f docker/compose.core.yaml config
 ```
 
 Якщо команда падає, найчастіше проблема у зламаному відносному шляху в compose-файлі або Dockerfile.
