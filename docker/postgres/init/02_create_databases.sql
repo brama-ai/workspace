@@ -1,5 +1,5 @@
 -- Create production databases for all services.
--- ai_community_platform is created automatically by POSTGRES_DB env var.
+-- brama is created automatically by POSTGRES_DB env var.
 
 -- Knowledge Agent
 SELECT 'CREATE DATABASE knowledge_agent OWNER knowledge_agent'

@@ -4,7 +4,7 @@
 
 `brama-workspace` це локальний workspace-репозиторій для платформи Brama. Він відповідає за devcontainer, Docker Compose топологію, локальні env-шаблони, bootstrap-скрипти та helper-команди для розробника.
 
-Код застосунків живе в [`brama-core`](/Users/nmdimas/work/brama-workspace/brama-core), який залишається окремим Git-репозиторієм. Цей repo відповідає не за продуктову логіку, а за те, як уся платформа піднімається і працює на машині розробника.
+Код застосунків живе в [`core`](/Users/nmdimas/work/brama-workspace/core), який залишається окремим Git-репозиторієм. Цей repo відповідає не за продуктову логіку, а за те, як уся платформа піднімається і працює на машині розробника.
 
 ## Структура Репозиторію
 
@@ -13,7 +13,7 @@
 - [`docker/`](/Users/nmdimas/work/brama-workspace/docker) містить спільні Docker-асети локального середовища.
 - [`scripts/`](/Users/nmdimas/work/brama-workspace/scripts) містить bootstrap та operator helper scripts.
 - [`Makefile`](/Users/nmdimas/work/brama-workspace/Makefile) є головною точкою входу для щоденних команд.
-- [`brama-core/`](/Users/nmdimas/work/brama-workspace/brama-core) містить продуктовий код, тести, документацію та app-рівневі ресурси.
+- [`core/`](/Users/nmdimas/work/brama-workspace/core) містить продуктовий код, тести, документацію та app-рівневі ресурси.
 
 ## Вимоги
 
@@ -188,21 +188,21 @@ Devcontainer розрахований на workspace-рівень:
 
 Якщо змінюєш image-level devcontainer assets, краще rebuild контейнер, а не намагатися лікувати вже запущене середовище вручну.
 
-## Робота З `brama-core`
+## Робота З `core`
 
-`brama-core` це продуктовий репозиторій. Типовий приклад:
+`core` це продуктовий репозиторій. Типовий приклад:
 
 ```bash
-cd brama-core
+cd core
 git status
 ```
 
-Workspace repo і `brama-core` repo навмисно незалежні. Infra/runtime зміни комітяться в workspace repo, а продуктові зміни комітяться в `brama-core`.
+Workspace repo і `core` repo навмисно незалежні. Infra/runtime зміни комітяться в workspace repo, а продуктові зміни комітяться в `core`.
 
 ## Кращі Практики
 
 - Для рутинних задач використовуйте `make` targets, а не сирі `docker compose` команди.
-- Workspace-рівневі зміни тримайте в цьому репозиторії, app-рівневі в `brama-core`.
+- Workspace-рівневі зміни тримайте в цьому репозиторії, app-рівневі в `core`.
 - Використовуйте devcontainer, коли потрібен відтворюваний toolchain або Playwright-ready environment.
 - Перед великим E2E запуском проганяйте `make verify-local-smoke`, якщо потрібна швидка runtime-перевірка.
 - Не комітьте локальний згенерований state на кшталт `.env.local`, `.local/` або `docker/openclaw/.env`.
@@ -249,5 +249,5 @@ make setup
 
 ## Пов’язані Репозиторії
 
-- [`brama-core`](/Users/nmdimas/work/brama-workspace/brama-core): application source code, тести та продуктова документація.
+- [`core`](/Users/nmdimas/work/brama-workspace/core): application source code, тести та продуктова документація.
 

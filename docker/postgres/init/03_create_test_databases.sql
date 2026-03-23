@@ -2,10 +2,10 @@
 -- Convention: {name}_test suffix for all test databases.
 
 -- Core E2E
-SELECT 'CREATE DATABASE ai_community_platform_test'
-WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'ai_community_platform_test')\gexec
+SELECT 'CREATE DATABASE brama_test'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'brama_test')\gexec
 
-GRANT ALL PRIVILEGES ON DATABASE ai_community_platform_test TO app;
+GRANT ALL PRIVILEGES ON DATABASE brama_test TO app;
 
 -- Knowledge Agent E2E
 SELECT 'CREATE DATABASE knowledge_agent_test OWNER knowledge_agent'

@@ -146,7 +146,7 @@ This devcontainer runs **Ubuntu (noble)** with these runtimes pre-installed:
 | Bun | 1.x | `bun` |
 
 Infrastructure services are defined in the workspace root `compose.yaml` and shared with the
-devcontainer via merged Docker Compose project (not duplicated). Product code lives in `brama-core/`:
+devcontainer via merged Docker Compose project (not duplicated). Product code lives in `core/`:
 
 | Service | Host | Port | Image |
 |---------|------|------|-------|
@@ -155,7 +155,7 @@ devcontainer via merged Docker Compose project (not duplicated). Product code li
 | OpenSearch 2.11 | `opensearch` | 9200 | opensearchproject/opensearch:2.11.1 |
 | RabbitMQ 3.13 | `rabbitmq` | 5672/15672 | rabbitmq:3.13-management-alpine |
 
-Apps under `brama-core/apps/` use Docker service hostnames (`postgres`, `redis`, `opensearch`, `rabbitmq`)
+Apps under `agents/` use Docker service hostnames (`postgres`, `redis`, `opensearch`, `rabbitmq`)
 as defined in their app env files — no `.env.local` overrides needed for service discovery.
 
 See `references/runtime-map.md` for the full command reference.
@@ -233,7 +233,7 @@ npm install -g <package>
 ```bash
 npm install <package>
 # or for a specific app:
-cd brama-core/apps/<app> && npm install
+cd agents/<app> && npm install
 ```
 
 **Composer packages:**
@@ -318,10 +318,10 @@ When multiple packages are needed (e.g., a Python project's requirements.txt):
 
 ```bash
 # Python project dependencies
-pip3 install --break-system-packages -q -r brama-core/apps/<app>/requirements.txt
+pip3 install --break-system-packages -q -r agents/<app>/requirements.txt
 
 # Node project dependencies
-cd brama-core/apps/<app> && npm install
+cd agents/<app> && npm install
 
 # PHP project dependencies
 composer install
@@ -363,7 +363,7 @@ docker compose logs <service> --tail 50
 
 ```bash
 pip3 install --break-system-packages -q psycopg2-binary
-pip3 install --break-system-packages -q -r brama-core/apps/news-maker-agent/requirements.txt
+pip3 install --break-system-packages -q -r agents/news-maker-agent/requirements.txt
 ```
 
 ### PostgreSQL database missing for an agent
@@ -392,19 +392,19 @@ psql -h postgres -U postgres -d <dbname> -c "CREATE EXTENSION IF NOT EXISTS vect
 
 ```bash
 # PHP (Doctrine — Core)
-php brama-core/apps/core/bin/console doctrine:migrations:migrate --no-interaction
+php core/src/bin/console doctrine:migrations:migrate --no-interaction
 
 # PHP (Doctrine — Knowledge Agent)
-php brama-core/apps/knowledge-agent/bin/console doctrine:migrations:migrate --no-interaction
+php agents/knowledge-agent/bin/console doctrine:migrations:migrate --no-interaction
 
 # Python (Alembic — news-maker-agent)
-cd brama-core/apps/news-maker-agent && alembic upgrade head
+cd agents/news-maker-agent && alembic upgrade head
 ```
 
 ### Playwright/E2E test dependencies
 
 ```bash
-cd brama-core/tests/e2e && npm install && npx playwright install --with-deps
+cd core/tests/e2e && npm install && npx playwright install --with-deps
 ```
 
 ## Error Patterns Quick Reference

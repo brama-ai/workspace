@@ -23,7 +23,7 @@ services:
       - traefik.http.routers.edge-auth-subdomain.service=core
     environment:
       # Use environment variables with Docker Compose defaults
-      DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@postgres:5432/ai_community_platform?serverVersion=16&charset=utf8}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@postgres:5432/brama?serverVersion=16&charset=utf8}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       POSTGRES_PROVISIONER_URL: ${POSTGRES_PROVISIONER_URL:-postgresql://app:app@postgres:5432/postgres?serverVersion=16&charset=utf8}
       OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
@@ -45,7 +45,7 @@ services:
       # Direct access bypass (useful when Traefik has issues; does not conflict with Traefik ports)
       - "8081:80"
     volumes:
-      - ./brama-core/apps/core:/var/www/html
+      - ./core/src:/var/www/html
     networks:
       - dev-edge
       - agents-internal
@@ -60,7 +60,7 @@ services:
         required: false
     command: ["php", "bin/console", "scheduler:run"]
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@postgres:5432/ai_community_platform?serverVersion=16&charset=utf8}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://app:app@postgres:5432/brama?serverVersion=16&charset=utf8}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       POSTGRES_PROVISIONER_URL: ${POSTGRES_PROVISIONER_URL:-postgresql://app:app@postgres:5432/postgres?serverVersion=16&charset=utf8}
       OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
@@ -79,7 +79,7 @@ services:
       EDGE_AUTH_LOGIN_BASE_URL: ${EDGE_AUTH_LOGIN_BASE_URL:-http://localhost}
       EDGE_AUTH_COOKIE_DOMAIN: ${EDGE_AUTH_COOKIE_DOMAIN:-localhost}
     volumes:
-      - ./brama-core/apps/core:/var/www/html
+      - ./core/src:/var/www/html
     depends_on:
       - core
     restart: unless-stopped
@@ -97,7 +97,7 @@ services:
       - path: ./.env.deployment
         required: false
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/ai_community_platform_test?serverVersion=16&charset=utf8
+      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/brama_test?serverVersion=16&charset=utf8
       POSTGRES_PROVISIONER_URL: ${POSTGRES_PROVISIONER_URL:-postgresql://app:app@postgres:5432/postgres?serverVersion=16&charset=utf8}
       LANGFUSE_ENABLED: "false"
       EDGE_AUTH_JWT_SECRET: ${EDGE_AUTH_JWT_SECRET:-dev-edge-auth-secret-change-me}
@@ -112,7 +112,7 @@ services:
     ports:
       - "18080:80"
     volumes:
-      - ./brama-core/apps/core:/var/www/html
+      - ./core/src:/var/www/html
     depends_on:
       - postgres
     networks:

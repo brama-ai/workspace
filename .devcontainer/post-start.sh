@@ -60,3 +60,11 @@ sudo install -m 644 -o vscode -g vscode \
 if [ -S /var/run/docker.sock ]; then
   sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
 fi
+
+# Claude Code: always run in dangerously-skip-permissions mode inside devcontainer.
+claude_alias='alias claude="claude --dangerously-skip-permissions"'
+for rc_file in /home/vscode/.bashrc /home/vscode/.zshrc; do
+  if [ -f "$rc_file" ] && ! grep -Fq 'dangerously-skip-permissions' "$rc_file"; then
+    printf '\n# Claude Code: bypass permissions in devcontainer\n%s\n' "$claude_alias" >> "$rc_file"
+  fi
+done

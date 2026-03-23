@@ -4,7 +4,7 @@
 
 `brama-workspace` is the local development workspace for the Brama platform. It owns the developer runtime layer: devcontainer setup, Docker Compose topology, local environment templates, bootstrap scripts, and operator-focused helper commands.
 
-Application source code stays in [`brama-core`](/Users/nmdimas/work/brama-workspace/brama-core), which remains a separate Git repository. The workspace repository is responsible for how the whole platform is assembled and run on a developer machine.
+Application source code stays in [`core`](/Users/nmdimas/work/brama-workspace/core), which remains a separate Git repository. The workspace repository is responsible for how the whole platform is assembled and run on a developer machine.
 
 ## Repository Layout
 
@@ -13,7 +13,7 @@ Application source code stays in [`brama-core`](/Users/nmdimas/work/brama-worksp
 - [`docker/`](/Users/nmdimas/work/brama-workspace/docker) contains shared Docker assets used by the local stack.
 - [`scripts/`](/Users/nmdimas/work/brama-workspace/scripts) contains bootstrap and operator helper scripts.
 - [`Makefile`](/Users/nmdimas/work/brama-workspace/Makefile) is the main entry point for day-to-day commands.
-- [`brama-core/`](/Users/nmdimas/work/brama-workspace/brama-core) contains the product codebase, tests, docs, and application-level assets.
+- [`core/`](/Users/nmdimas/work/brama-workspace/core) contains the product codebase, tests, docs, and application-level assets.
 
 ## Requirements
 
@@ -188,21 +188,21 @@ The devcontainer is designed for workspace-level development:
 
 If you update devcontainer image assets, rebuild the container instead of trying to patch an already running environment.
 
-## Working With `brama-core`
+## Working With `core`
 
-`brama-core` is the application repository. Typical examples:
+`core` is the application repository. Typical examples:
 
 ```bash
-cd brama-core
+cd core
 git status
 ```
 
-The workspace repo and `brama-core` repo are intentionally independent. Commit infra/runtime changes in the workspace repo, and commit application changes in `brama-core`.
+The workspace repo and `core` repo are intentionally independent. Commit infra/runtime changes in the workspace repo, and commit application changes in `core`.
 
 ## Best Practices
 
 - Prefer `make` targets over raw `docker compose` commands for routine tasks.
-- Keep workspace-level changes in this repository and application-level changes in `brama-core`.
+- Keep workspace-level changes in this repository and application-level changes in `core`.
 - Use the devcontainer when you need a reproducible toolchain or Playwright-ready environment.
 - Run `make verify-local-smoke` before larger E2E runs if you only need a quick runtime check.
 - Avoid committing generated local state such as `.env.local`, `.local/`, or `docker/openclaw/.env`.
@@ -249,5 +249,5 @@ or rebuild the devcontainer if the issue is image-level rather than project-leve
 
 ## Related Repositories
 
-- [`brama-core`](/Users/nmdimas/work/brama-workspace/brama-core): application source, tests, and product documentation.
+- [`core`](/Users/nmdimas/work/brama-workspace/core): application source, tests, and product documentation.
 

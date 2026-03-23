@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-COPY brama-core/apps/dev-reporter-agent/ /var/www/html/
+COPY agents/dev-reporter-agent/ /var/www/html/
 COPY docker/dev-reporter-agent/entrypoint.sh /usr/local/bin/dev-reporter-agent-entrypoint
 
 RUN a2enmod rewrite \

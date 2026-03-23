@@ -22,7 +22,7 @@ services:
   example-agent:
     # Build from the checked-out agent repository
     build:
-      context: ./projects/example-agent
+      context: ./agents/example-agent
       dockerfile: Dockerfile
     labels:
       # Required: marks this service for platform discovery
@@ -42,7 +42,7 @@ services:
       # REDIS_URL: redis://redis:6379/4
     env_file:
       # Optional: agent-specific secrets (gitignored on the platform side)
-      - path: ./projects/example-agent/.env.local
+      - path: ./agents/example-agent/.env.local
         required: false
     healthcheck:
       # Required: platform polls /health every 60s

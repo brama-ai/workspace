@@ -7,7 +7,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 echo "==> Installing PHP dependencies..."
-for app_dir in brama-core/apps/core brama-core/apps/knowledge-agent brama-core/apps/dev-agent brama-core/apps/dev-reporter-agent brama-core/apps/hello-agent; do
+for app_dir in core/src agents/knowledge-agent agents/dev-agent agents/dev-reporter-agent agents/hello-agent; do
   if [ -f "${app_dir}/composer.json" ]; then
     echo "  composer install (${app_dir})"
     (

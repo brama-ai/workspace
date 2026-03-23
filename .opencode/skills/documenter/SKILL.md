@@ -6,7 +6,7 @@ description: "Documenter role: bilingual docs workflow, templates, INDEX.md rule
 ## Documentation Structure
 
 ```
-brama-core/docs/
+core/docs/
 ├── INDEX.md                        # Agent-facing index (English-only, always update)
 ├── agents/{ua,en}/*.md             # Agent PRDs and feature docs (bilingual)
 ├── specs/{ua,en}/*.md              # Interface specifications (bilingual)
@@ -66,7 +66,7 @@ brama-core/docs/
 ## Workflow
 
 1. Determine what needs documenting from context
-2. Read `brama-core/docs/INDEX.md` for current landscape
+2. Read `core/docs/INDEX.md` for current landscape
 3. Write UA version first (canonical)
 4. Mirror to EN with matching headings
 5. Update `INDEX.md` with new entries
@@ -77,6 +77,6 @@ brama-core/docs/
 | What | Path | When |
 |------|------|------|
 | Full doc conventions | `.cursor/skills/documentation/SKILL.md` | Complex doc tasks |
-| Current index | `brama-core/docs/INDEX.md` | Always — check before writing |
-| Agent template | `brama-core/docs/templates/` | New agent docs |
-| Existing agents | `brama-core/docs/agents/en/` | Pattern reference |
+| Current index | `core/docs/INDEX.md` | Always — check before writing |
+| Agent template | `core/docs/templates/` | New agent docs |
+| Existing agents | `core/docs/agents/en/` | Pattern reference |

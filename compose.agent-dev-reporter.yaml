@@ -23,7 +23,7 @@ services:
       LANGFUSE_SECRET_KEY: lf_sk_local_dev
       LANGFUSE_ENV: local
     volumes:
-      - ./brama-core/apps/dev-reporter-agent:/var/www/html
+      - ./agents/dev-reporter-agent:/var/www/html
     depends_on:
       - postgres
       - opensearch
@@ -46,7 +46,7 @@ services:
     ports:
       - "18087:80"
     volumes:
-      - ./brama-core/apps/dev-reporter-agent:/var/www/html
+      - ./agents/dev-reporter-agent:/var/www/html
     depends_on:
       - postgres
       - opensearch

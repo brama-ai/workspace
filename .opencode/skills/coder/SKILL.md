@@ -20,12 +20,12 @@ description: "Coder role: implementation workflow, tech stack, per-app targets, 
 
 | App | Test | Analyse | CS Fix | Migrate |
 |-----|------|---------|--------|---------|
-| brama-core/apps/core/ | `make test` | `make analyse` | `make cs-fix` | `make migrate` |
-| brama-core/apps/knowledge-agent/ | `make knowledge-test` | `make knowledge-analyse` | `make knowledge-cs-fix` | `make knowledge-migrate` |
-| brama-core/apps/hello-agent/ | `make hello-test` | `make hello-analyse` | `make hello-cs-fix` | — |
-| brama-core/apps/dev-reporter-agent/ | `make dev-reporter-test` | `make dev-reporter-analyse` | `make dev-reporter-cs-fix` | `make dev-reporter-migrate` |
-| brama-core/apps/news-maker-agent/ | `make news-test` | `make news-analyse` | `make news-cs-fix` | `make news-migrate` |
-| brama-core/apps/wiki-agent/ | `make wiki-test` | `make wiki-build` | — | — |
+| core/src/ | `make test` | `make analyse` | `make cs-fix` | `make migrate` |
+| agents/knowledge-agent/ | `make knowledge-test` | `make knowledge-analyse` | `make knowledge-cs-fix` | `make knowledge-migrate` |
+| agents/hello-agent/ | `make hello-test` | `make hello-analyse` | `make hello-cs-fix` | — |
+| agents/dev-reporter-agent/ | `make dev-reporter-test` | `make dev-reporter-analyse` | `make dev-reporter-cs-fix` | `make dev-reporter-migrate` |
+| agents/news-maker-agent/ | `make news-test` | `make news-analyse` | `make news-cs-fix` | `make news-migrate` |
+| agents/wiki-agent/ | `make wiki-test` | `make wiki-build` | — | — |
 
 ## Scope Rules (CRITICAL)
 
@@ -80,9 +80,9 @@ Every agent MUST expose:
 
 | What | Path | When |
 |------|------|------|
-| Agent conventions | `brama-core/docs/agent-requirements/conventions.md` | Creating/modifying agents |
-| OpenSpec proposal | `brama-core/openspec/changes/<id>/proposal.md` | Any spec-driven task |
-| Spec deltas | `brama-core/openspec/changes/<id>/specs/` | Implementation details |
+| Agent conventions | `core/docs/agent-requirements/conventions.md` | Creating/modifying agents |
+| OpenSpec proposal | `core/openspec/changes/<id>/proposal.md` | Any spec-driven task |
+| Spec deltas | `core/openspec/changes/<id>/specs/` | Implementation details |
 | Existing specs | `openspec list --specs` | Avoid duplication |
-| Test cases | `brama-core/docs/agent-requirements/test-cases.md` | Agent endpoint implementation |
-| E2E patterns | `brama-core/docs/agent-requirements/e2e-testing.md` | Integration test setup |
+| Test cases | `core/docs/agent-requirements/test-cases.md` | Agent endpoint implementation |
+| E2E patterns | `core/docs/agent-requirements/e2e-testing.md` | Integration test setup |

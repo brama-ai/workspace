@@ -28,7 +28,7 @@ services:
       LANGFUSE_SECRET_KEY: lf_sk_local_dev
       LANGFUSE_ENV: local
     volumes:
-      - ./brama-core/apps/dev-agent:/var/www/html
+      - ./agents/dev-agent:/var/www/html
       - .:/repo:rw
     depends_on:
       - postgres
@@ -58,7 +58,7 @@ services:
     ports:
       - "18088:80"
     volumes:
-      - ./brama-core/apps/dev-agent:/var/www/html
+      - ./agents/dev-agent:/var/www/html
       - .:/repo:ro
     depends_on:
       - postgres

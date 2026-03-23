@@ -1,5 +1,7 @@
-APP_ROOT := brama-core
-TEST_ROOT := $(APP_ROOT)/tests
+CORE_ROOT := core
+CORE_SRC  := $(CORE_ROOT)/src
+AGENTS_DIR := agents
+TEST_ROOT := $(CORE_ROOT)/tests
 
 AGENT_FILES := $(sort $(wildcard compose.agent-*.yaml))
 EXTERNAL_AGENT_FILES := $(sort $(wildcard compose.fragments/*.yaml))
@@ -12,16 +14,19 @@ COMPOSE_FILES := -f compose.yaml -f compose.core.yaml \
         -f compose.slides.yaml \
         $(OVERRIDE_COMPOSE)
 COMPOSE ?= docker compose $(COMPOSE_FILES)
-VERIFY_LOCAL_COMPOSE ?= docker compose -f compose.yaml -f compose.core.yaml -f compose.langind.yaml
+VERIFY_LOCAL_COMPOSE ?= docker compose -f compose.yaml -f compose.core.yaml -f compose.website.yaml
 E2E_COMPOSE ?= docker compose $(COMPOSE_FILES) --profile e2e
-E2E_CORE_DB ?= ai_community_platform_test
+E2E_CORE_DB ?= brama_test
 E2E_BASE_URL ?= http://localhost:18080
+# Load devcontainer-specific E2E URLs when running inside devcontainer
+E2E_ENV_FILE := $(if $(IS_DEVCONTAINER),$(wildcard .env.e2e.devcontainer),)
+E2E_ENV_EXPORT := $(if $(E2E_ENV_FILE),set -a && . ./$(E2E_ENV_FILE) && set +a &&,)
 
 # Devcontainer detection: run commands locally when inside a devcontainer
 IS_DEVCONTAINER := $(or $(REMOTE_CONTAINERS),$(CODESPACES))
-# run-in <service> <app-dir> <command...>  — run locally (cd brama-core/apps/<dir>) or via docker compose exec
+# run-in <service> <local-path> <command...>  — run locally (cd <local-path>) or via docker compose exec
 define run-in
-$(if $(IS_DEVCONTAINER),cd $(APP_ROOT)/apps/$(2) && $(3),$(COMPOSE) exec $(1) $(3))
+$(if $(IS_DEVCONTAINER),cd $(2) && $(3),$(COMPOSE) exec $(1) $(3))
 endef
 
 .PHONY: help bootstrap setup infra-setup core-setup knowledge-setup news-setup hello-setup dev-reporter-setup wiki-setup dev-agent-setup claw-setup \
@@ -98,7 +103,7 @@ help:
 		'make external-agent-list  List detected external agent compose fragments in compose.fragments/' \
 		'make external-agent-up name=X    Start/update a named external agent (e.g. make external-agent-up name=my-agent)' \
 		'make external-agent-down name=X  Stop a named external agent (e.g. make external-agent-down name=my-agent)' \
-		'make external-agent-clone repo=URL name=X  Clone an agent repo into projects/<name> (e.g. make external-agent-clone repo=https://github.com/org/my-agent name=my-agent)' \
+		'make external-agent-clone repo=URL name=X  Clone an agent repo into agents/<name> (e.g. make external-agent-clone repo=https://github.com/org/my-agent name=my-agent)' \
 		'make verify-local-up      Start the minimal local stack for admin login, LiteLLM, and landing verification' \
 		'make verify-local-smoke   Verify admin login, LiteLLM, and landing endpoints via curl-based smoke checks' \
 		'make verify-local         Run local smoke verification and then the full E2E suite' \
@@ -123,25 +128,25 @@ infra-setup:
 	$(if $(IS_DEVCONTAINER),@echo "Devcontainer: PostgreSQL and Redis already running locally",$(COMPOSE) pull traefik postgres redis opensearch rabbitmq litellm)
 
 core-setup:
-	$(if $(IS_DEVCONTAINER),cd $(APP_ROOT)/apps/core && composer install && ./vendor/bin/codecept build,$(COMPOSE) build core && $(COMPOSE) run --rm core composer install && $(COMPOSE) run --rm core ./vendor/bin/codecept build)
+	$(if $(IS_DEVCONTAINER),cd $(CORE_SRC) && composer install && ./vendor/bin/codecept build,$(COMPOSE) build core && $(COMPOSE) run --rm core composer install && $(COMPOSE) run --rm core ./vendor/bin/codecept build)
 
 knowledge-setup:
-	$(if $(IS_DEVCONTAINER),cd $(APP_ROOT)/apps/knowledge-agent && composer install && ./vendor/bin/codecept build,$(COMPOSE) build knowledge-agent && $(COMPOSE) run --rm knowledge-agent composer install && $(COMPOSE) run --rm knowledge-agent ./vendor/bin/codecept build)
+	$(if $(IS_DEVCONTAINER),cd $(AGENTS_DIR)/knowledge-agent && composer install && ./vendor/bin/codecept build,$(COMPOSE) build knowledge-agent && $(COMPOSE) run --rm knowledge-agent composer install && $(COMPOSE) run --rm knowledge-agent ./vendor/bin/codecept build)
 
 hello-setup:
-	$(if $(IS_DEVCONTAINER),cd $(APP_ROOT)/apps/hello-agent && composer install && ./vendor/bin/codecept build,$(COMPOSE) build hello-agent && $(COMPOSE) run --rm hello-agent composer install && $(COMPOSE) run --rm hello-agent ./vendor/bin/codecept build)
+	$(if $(IS_DEVCONTAINER),cd $(AGENTS_DIR)/hello-agent && composer install && ./vendor/bin/codecept build,$(COMPOSE) build hello-agent && $(COMPOSE) run --rm hello-agent composer install && $(COMPOSE) run --rm hello-agent ./vendor/bin/codecept build)
 
 dev-reporter-setup:
-	$(if $(IS_DEVCONTAINER),cd $(APP_ROOT)/apps/dev-reporter-agent && composer install && ./vendor/bin/codecept build,$(COMPOSE) build dev-reporter-agent && $(COMPOSE) run --rm dev-reporter-agent composer install && $(COMPOSE) run --rm dev-reporter-agent ./vendor/bin/codecept build)
+	$(if $(IS_DEVCONTAINER),cd $(AGENTS_DIR)/dev-reporter-agent && composer install && ./vendor/bin/codecept build,$(COMPOSE) build dev-reporter-agent && $(COMPOSE) run --rm dev-reporter-agent composer install && $(COMPOSE) run --rm dev-reporter-agent ./vendor/bin/codecept build)
 
 dev-agent-setup:
-	$(if $(IS_DEVCONTAINER),cd $(APP_ROOT)/apps/dev-agent && composer install && ./vendor/bin/codecept build,$(COMPOSE) build dev-agent && $(COMPOSE) run --rm dev-agent composer install && $(COMPOSE) run --rm dev-agent ./vendor/bin/codecept build)
+	$(if $(IS_DEVCONTAINER),cd $(AGENTS_DIR)/dev-agent && composer install && ./vendor/bin/codecept build,$(COMPOSE) build dev-agent && $(COMPOSE) run --rm dev-agent composer install && $(COMPOSE) run --rm dev-agent ./vendor/bin/codecept build)
 
 wiki-setup:
-	$(if $(IS_DEVCONTAINER),cd $(APP_ROOT)/apps/wiki-agent && npm install,$(COMPOSE) build wiki-agent && $(COMPOSE) run --rm wiki-agent npm install)
+	$(if $(IS_DEVCONTAINER),cd $(AGENTS_DIR)/wiki-agent && npm install,$(COMPOSE) build wiki-agent && $(COMPOSE) run --rm wiki-agent npm install)
 
 news-setup:
-	$(if $(IS_DEVCONTAINER),cd $(APP_ROOT)/apps/news-maker-agent && pip install -r requirements.txt,$(COMPOSE) build news-maker-agent && $(COMPOSE) run --rm news-maker-agent pip install -r requirements.txt)
+	$(if $(IS_DEVCONTAINER),cd $(AGENTS_DIR)/news-maker-agent && pip install -r requirements.txt,$(COMPOSE) build news-maker-agent && $(COMPOSE) run --rm news-maker-agent pip install -r requirements.txt)
 
 claw-setup:
 	mkdir -p .local/openclaw/state .local/openclaw/e2e-state
@@ -151,31 +156,31 @@ slides-setup:
 	$(if $(IS_DEVCONTAINER),@echo "Devcontainer: skipping slides Docker build",$(COMPOSE) build slides)
 
 install:
-	$(if $(IS_DEVCONTAINER),cd $(APP_ROOT)/apps/core && composer install,$(COMPOSE) run --rm core composer install)
+	$(if $(IS_DEVCONTAINER),cd $(CORE_SRC) && composer install,$(COMPOSE) run --rm core composer install)
 
 knowledge-install:
-	$(if $(IS_DEVCONTAINER),cd $(APP_ROOT)/apps/knowledge-agent && composer install,$(COMPOSE) run --rm knowledge-agent composer install)
+	$(if $(IS_DEVCONTAINER),cd $(AGENTS_DIR)/knowledge-agent && composer install,$(COMPOSE) run --rm knowledge-agent composer install)
 
 hello-install:
-	$(if $(IS_DEVCONTAINER),cd $(APP_ROOT)/apps/hello-agent && composer install,$(COMPOSE) run --rm hello-agent composer install)
+	$(if $(IS_DEVCONTAINER),cd $(AGENTS_DIR)/hello-agent && composer install,$(COMPOSE) run --rm hello-agent composer install)
 
 dev-reporter-install:
-	$(if $(IS_DEVCONTAINER),cd $(APP_ROOT)/apps/dev-reporter-agent && composer install,$(COMPOSE) run --rm dev-reporter-agent composer install)
+	$(if $(IS_DEVCONTAINER),cd $(AGENTS_DIR)/dev-reporter-agent && composer install,$(COMPOSE) run --rm dev-reporter-agent composer install)
 
 dev-agent-install:
-	$(if $(IS_DEVCONTAINER),cd $(APP_ROOT)/apps/dev-agent && composer install,$(COMPOSE) run --rm dev-agent composer install)
+	$(if $(IS_DEVCONTAINER),cd $(AGENTS_DIR)/dev-agent && composer install,$(COMPOSE) run --rm dev-agent composer install)
 
 news-install:
-	$(if $(IS_DEVCONTAINER),cd $(APP_ROOT)/apps/news-maker-agent && pip install -r requirements.txt,$(COMPOSE) run --rm news-maker-agent pip install -r requirements.txt)
+	$(if $(IS_DEVCONTAINER),cd $(AGENTS_DIR)/news-maker-agent && pip install -r requirements.txt,$(COMPOSE) run --rm news-maker-agent pip install -r requirements.txt)
 
 wiki-install:
-	$(if $(IS_DEVCONTAINER),cd $(APP_ROOT)/apps/wiki-agent && npm install,$(COMPOSE) run --rm wiki-agent npm install)
+	$(if $(IS_DEVCONTAINER),cd $(AGENTS_DIR)/wiki-agent && npm install,$(COMPOSE) run --rm wiki-agent npm install)
 
 up:
-	$(if $(IS_DEVCONTAINER),@echo "Devcontainer: services (PostgreSQL, Redis) already running. Use 'php $(APP_ROOT)/apps/core/bin/console server:start' to run Symfony.",$(COMPOSE) up --build -d)
+	$(if $(IS_DEVCONTAINER),@echo "Devcontainer: services (PostgreSQL, Redis) already running. Use 'php $(CORE_SRC)/bin/console server:start' to run Symfony.",$(COMPOSE) up --build -d)
 
 agent-up:
-	$(if $(IS_DEVCONTAINER),@echo "Devcontainer: start agents directly — e.g. cd $(APP_ROOT)/apps/$(name) && php bin/console server:start",$(COMPOSE) up --build -d $(name))
+	$(if $(IS_DEVCONTAINER),@echo "Devcontainer: start agents directly — e.g. cd $(AGENTS_DIR)/$(name) && php bin/console server:start",$(COMPOSE) up --build -d $(name))
 
 agent-down:
 	$(if $(IS_DEVCONTAINER),@echo "Devcontainer: stop agents directly",$(COMPOSE) stop $(name))
@@ -227,12 +232,12 @@ logs-langfuse:
 
 litellm-db-init:
 	$(COMPOSE) up -d postgres
-	@printf "SELECT 'CREATE DATABASE litellm' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'litellm')\\gexec\n" | $(COMPOSE) exec -T postgres psql -U app -d ai_community_platform
+	@printf "SELECT 'CREATE DATABASE litellm' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'litellm')\\gexec\n" | $(COMPOSE) exec -T postgres psql -U app -d brama
 	$(COMPOSE) up -d litellm
 
 e2e-db-init:
 	$(COMPOSE) up -d postgres
-	@printf "SELECT 'CREATE DATABASE ai_community_platform_test' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'ai_community_platform_test')\\gexec\n" | $(COMPOSE) exec -T postgres psql -U app -d postgres
+	@printf "SELECT 'CREATE DATABASE brama_test' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'brama_test')\\gexec\n" | $(COMPOSE) exec -T postgres psql -U app -d postgres
 	@printf "SELECT 'CREATE DATABASE knowledge_agent_test OWNER knowledge_agent' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'knowledge_agent_test')\\gexec\n" | $(COMPOSE) exec -T postgres psql -U app -d postgres
 	@printf "SELECT 'CREATE DATABASE news_maker_agent_test OWNER news_maker_agent' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'news_maker_agent_test')\\gexec\n" | $(COMPOSE) exec -T postgres psql -U app -d postgres
 	@printf "SELECT 'CREATE DATABASE dev_reporter_agent_test OWNER dev_reporter_agent' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'dev_reporter_agent_test')\\gexec\n" | $(COMPOSE) exec -T postgres psql -U app -d postgres
@@ -264,9 +269,9 @@ e2e-register-agents:
 		-H "X-Platform-Internal-Token: dev-internal-token" \
 		-d '{"name":"dev-reporter-agent","version":"1.0.0","description":"Pipeline observability agent","url":"http://dev-reporter-agent-e2e/api/v1/a2a","admin_url":"http://localhost:18087/admin/pipeline","skills":[{"id":"devreporter.ingest","name":"Pipeline Ingest","description":"Ingest pipeline run reports"},{"id":"devreporter.status","name":"Pipeline Status","description":"Query pipeline run status"},{"id":"devreporter.notify","name":"Pipeline Notify","description":"Send notification messages"}]}' \
 		&& echo "  registered dev-reporter-agent" || echo "  FAILED dev-reporter-agent"
-	@$(E2E_COMPOSE) exec -T postgres psql -U app -d ai_community_platform_test -q \
+	@$(E2E_COMPOSE) exec -T postgres psql -U app -d brama_test -q \
 		-c "UPDATE agent_registry SET enabled = true, installed_at = now() WHERE name IN ('hello-agent', 'knowledge-agent', 'news-maker-agent', 'dev-reporter-agent') AND tenant_id = '00000000-0000-4000-a000-000000000001'"
-	@$(E2E_COMPOSE) exec -T postgres psql -U app -d ai_community_platform_test -q \
+	@$(E2E_COMPOSE) exec -T postgres psql -U app -d brama_test -q \
 		-c "INSERT INTO scheduled_jobs (agent_name, job_name, skill_id, payload, cron_expression, next_run_at, max_retries, retry_delay_seconds, timezone, tenant_id) VALUES ('hello-agent', 'daily-greeting', 'hello.greet', '{\"name\": \"Дмитро\"}', '0 9 * * *', now() + interval '1 day', 2, 120, 'Europe/Kyiv', '00000000-0000-4000-a000-000000000001') ON CONFLICT (agent_name, job_name, tenant_id) DO NOTHING"
 	@echo "E2E agents registered and enabled."
 
@@ -282,112 +287,113 @@ e2e-cleanup:
 	$(E2E_COMPOSE) stop core-e2e knowledge-agent-e2e knowledge-worker-e2e news-maker-agent-e2e hello-agent-e2e dev-reporter-agent-e2e openclaw-gateway-e2e 2>/dev/null || true
 
 migrate:
-	$(call run-in,core,core,php bin/console doctrine:migrations:migrate --no-interaction)
+	$(call run-in,core,$(CORE_SRC),php bin/console doctrine:migrations:migrate --no-interaction)
 
 knowledge-migrate:
-	$(call run-in,knowledge-agent,knowledge-agent,php bin/console doctrine:migrations:migrate --no-interaction)
+	$(call run-in,knowledge-agent,$(AGENTS_DIR)/knowledge-agent,php bin/console doctrine:migrations:migrate --no-interaction)
 
 dev-reporter-migrate:
-	$(call run-in,dev-reporter-agent,dev-reporter-agent,php bin/console doctrine:migrations:migrate --no-interaction)
+	$(call run-in,dev-reporter-agent,$(AGENTS_DIR)/dev-reporter-agent,php bin/console doctrine:migrations:migrate --no-interaction)
 
 dev-agent-migrate:
-	$(call run-in,dev-agent,dev-agent,php bin/console doctrine:migrations:migrate --no-interaction)
+	$(call run-in,dev-agent,$(AGENTS_DIR)/dev-agent,php bin/console doctrine:migrations:migrate --no-interaction)
 
 news-migrate:
-	$(call run-in,news-maker-agent,news-maker-agent,alembic upgrade head)
+	$(call run-in,news-maker-agent,$(AGENTS_DIR)/news-maker-agent,alembic upgrade head)
 
 wiki-build:
-	$(call run-in,wiki-agent,wiki-agent,npm run build)
+	$(call run-in,wiki-agent,$(AGENTS_DIR)/wiki-agent,npm run build)
 
 wiki-test:
-	$(call run-in,wiki-agent,wiki-agent,npm run test)
+	$(call run-in,wiki-agent,$(AGENTS_DIR)/wiki-agent,npm run test)
 
 test:
-	$(call run-in,core,core,./vendor/bin/codecept run)
+	$(call run-in,core,$(CORE_SRC),./vendor/bin/codecept run)
 
 knowledge-test:
-	$(call run-in,knowledge-agent,knowledge-agent,./vendor/bin/codecept run)
+	$(call run-in,knowledge-agent,$(AGENTS_DIR)/knowledge-agent,./vendor/bin/codecept run)
 
 hello-test:
-	$(call run-in,hello-agent,hello-agent,./vendor/bin/codecept run)
+	$(call run-in,hello-agent,$(AGENTS_DIR)/hello-agent,./vendor/bin/codecept run)
 
 dev-reporter-test:
-	$(call run-in,dev-reporter-agent,dev-reporter-agent,./vendor/bin/codecept run)
+	$(call run-in,dev-reporter-agent,$(AGENTS_DIR)/dev-reporter-agent,./vendor/bin/codecept run)
 
 dev-agent-test:
-	$(call run-in,dev-agent,dev-agent,./vendor/bin/codecept run)
+	$(call run-in,dev-agent,$(AGENTS_DIR)/dev-agent,./vendor/bin/codecept run)
 
 news-test:
-	$(call run-in,news-maker-agent,news-maker-agent,python -m pytest tests/ -v)
+	$(call run-in,news-maker-agent,$(AGENTS_DIR)/news-maker-agent,python -m pytest tests/ -v)
 
 news-analyse:
-	$(call run-in,news-maker-agent,news-maker-agent,ruff check app/ tests/)
+	$(call run-in,news-maker-agent,$(AGENTS_DIR)/news-maker-agent,ruff check app/ tests/)
 
 news-cs-check:
-	$(call run-in,news-maker-agent,news-maker-agent,ruff format --check app/ tests/)
+	$(call run-in,news-maker-agent,$(AGENTS_DIR)/news-maker-agent,ruff format --check app/ tests/)
 
 news-cs-fix:
-	$(call run-in,news-maker-agent,news-maker-agent,ruff format app/ tests/)
+	$(call run-in,news-maker-agent,$(AGENTS_DIR)/news-maker-agent,ruff format app/ tests/)
 
 analyse:
-	$(call run-in,core,core,./vendor/bin/phpstan analyse)
+	$(call run-in,core,$(CORE_SRC),./vendor/bin/phpstan analyse)
 
 hello-analyse:
-	$(call run-in,hello-agent,hello-agent,./vendor/bin/phpstan analyse)
+	$(call run-in,hello-agent,$(AGENTS_DIR)/hello-agent,./vendor/bin/phpstan analyse)
 
 dev-reporter-analyse:
-	$(call run-in,dev-reporter-agent,dev-reporter-agent,./vendor/bin/phpstan analyse)
+	$(call run-in,dev-reporter-agent,$(AGENTS_DIR)/dev-reporter-agent,./vendor/bin/phpstan analyse)
 
 dev-agent-analyse:
-	$(call run-in,dev-agent,dev-agent,./vendor/bin/phpstan analyse)
+	$(call run-in,dev-agent,$(AGENTS_DIR)/dev-agent,./vendor/bin/phpstan analyse)
 
 knowledge-analyse:
-	$(call run-in,knowledge-agent,knowledge-agent,./vendor/bin/phpstan analyse)
+	$(call run-in,knowledge-agent,$(AGENTS_DIR)/knowledge-agent,./vendor/bin/phpstan analyse)
 
 cs-check:
-	$(call run-in,core,core,./vendor/bin/php-cs-fixer check --diff --allow-risky=yes)
+	$(call run-in,core,$(CORE_SRC),./vendor/bin/php-cs-fixer check --diff --allow-risky=yes)
 
 hello-cs-check:
-	$(call run-in,hello-agent,hello-agent,./vendor/bin/php-cs-fixer check --diff --allow-risky=yes)
+	$(call run-in,hello-agent,$(AGENTS_DIR)/hello-agent,./vendor/bin/php-cs-fixer check --diff --allow-risky=yes)
 
 dev-reporter-cs-check:
-	$(call run-in,dev-reporter-agent,dev-reporter-agent,./vendor/bin/php-cs-fixer check --diff --allow-risky=yes)
+	$(call run-in,dev-reporter-agent,$(AGENTS_DIR)/dev-reporter-agent,./vendor/bin/php-cs-fixer check --diff --allow-risky=yes)
 
 dev-agent-cs-check:
-	$(call run-in,dev-agent,dev-agent,./vendor/bin/php-cs-fixer check --diff --allow-risky=yes)
+	$(call run-in,dev-agent,$(AGENTS_DIR)/dev-agent,./vendor/bin/php-cs-fixer check --diff --allow-risky=yes)
 
 knowledge-cs-check:
-	$(call run-in,knowledge-agent,knowledge-agent,./vendor/bin/php-cs-fixer check --diff --allow-risky=yes)
+	$(call run-in,knowledge-agent,$(AGENTS_DIR)/knowledge-agent,./vendor/bin/php-cs-fixer check --diff --allow-risky=yes)
 
 cs-fix:
-	$(call run-in,core,core,./vendor/bin/php-cs-fixer fix --allow-risky=yes)
+	$(call run-in,core,$(CORE_SRC),./vendor/bin/php-cs-fixer fix --allow-risky=yes)
 
 hello-cs-fix:
-	$(call run-in,hello-agent,hello-agent,./vendor/bin/php-cs-fixer fix --allow-risky=yes)
+	$(call run-in,hello-agent,$(AGENTS_DIR)/hello-agent,./vendor/bin/php-cs-fixer fix --allow-risky=yes)
 
 dev-reporter-cs-fix:
-	$(call run-in,dev-reporter-agent,dev-reporter-agent,./vendor/bin/php-cs-fixer fix --allow-risky=yes)
+	$(call run-in,dev-reporter-agent,$(AGENTS_DIR)/dev-reporter-agent,./vendor/bin/php-cs-fixer fix --allow-risky=yes)
 
 dev-agent-cs-fix:
-	$(call run-in,dev-agent,dev-agent,./vendor/bin/php-cs-fixer fix --allow-risky=yes)
+	$(call run-in,dev-agent,$(AGENTS_DIR)/dev-agent,./vendor/bin/php-cs-fixer fix --allow-risky=yes)
 
 knowledge-cs-fix:
-	$(call run-in,knowledge-agent,knowledge-agent,./vendor/bin/php-cs-fixer fix --allow-risky=yes)
+	$(call run-in,knowledge-agent,$(AGENTS_DIR)/knowledge-agent,./vendor/bin/php-cs-fixer fix --allow-risky=yes)
 
 agent-discover:
-	$(call run-in,core,core,php bin/console agent:discovery)
+	$(call run-in,core,$(CORE_SRC),php bin/console agent:discovery)
 
 logs-setup:
-	$(call run-in,core,core,php bin/console logs:index:setup)
+	$(call run-in,core,$(CORE_SRC),php bin/console logs:index:setup)
 
 logs-cleanup:
-	$(call run-in,core,core,php bin/console logs:cleanup)
+	$(call run-in,core,$(CORE_SRC),php bin/console logs:cleanup)
 
 conventions-test:
 	cd $(TEST_ROOT)/agent-conventions && npm install && AGENT_URL=$(AGENT_URL) npx codeceptjs run --steps
 
 e2e: e2e-prepare
 	cd $(TEST_ROOT)/e2e && npm install && npx playwright install chromium --with-deps && \
+		$(E2E_ENV_EXPORT) \
 		BASE_URL=$${BASE_URL:-$(E2E_BASE_URL)} \
 		CORE_DB_NAME=$${CORE_DB_NAME:-$(E2E_CORE_DB)} \
 		KNOWLEDGE_URL=$${KNOWLEDGE_URL:-http://localhost:18083} \
@@ -398,6 +404,7 @@ e2e: e2e-prepare
 
 e2e-smoke: e2e-prepare
 	cd $(TEST_ROOT)/e2e && npm install && \
+		$(E2E_ENV_EXPORT) \
 		BASE_URL=$${BASE_URL:-$(E2E_BASE_URL)} \
 		CORE_DB_NAME=$${CORE_DB_NAME:-$(E2E_CORE_DB)} \
 		KNOWLEDGE_URL=$${KNOWLEDGE_URL:-http://localhost:18083} \
@@ -410,12 +417,12 @@ verify-local-smoke:
 	./scripts/verify-local.sh
 
 verify-local-up:
-	$(VERIFY_LOCAL_COMPOSE) up -d --build traefik postgres redis opensearch rabbitmq core core-scheduler litellm langind
+	$(VERIFY_LOCAL_COMPOSE) up -d --build traefik postgres redis opensearch rabbitmq core core-scheduler litellm website
 
 verify-local: verify-local-smoke e2e
 
 sync-skills:
-	./brama-core/scripts/sync-skills.sh
+	./core/scripts/sync-skills.sh
 
 # ── Monitoring Commands ─────────────────────────────────────
 monitor-builder:

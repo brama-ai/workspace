@@ -27,10 +27,10 @@ and actionable recommendations.
 
 Ask the user or infer from context:
 
-1. **Which agents?** A single agent name (directory under `brama-core/apps/`) or `all`.
+1. **Which agents?** A single agent name (directory under `agents/`) or `all`.
 2. **Which categories?** All by default, or a specific subset.
 
-Agent discovery — list directories under `brama-core/apps/`:
+Agent discovery — list directories under `agents/`:
 - PHP agents: contain `composer.json`
 - Python agents: contain `requirements.txt`
 
@@ -88,16 +88,16 @@ After tables, output a prioritized action list:
 
 | Resource | Path |
 |----------|------|
-| Agent source | `brama-core/apps/<agent>/` |
+| Agent source | `agents/<agent>/` |
 | Dockerfiles | `docker/<agent>/Dockerfile` |
 | Compose config | `compose.yaml` |
-| Convention spec | `brama-core/docs/agent-requirements/conventions.md` |
-| Agent Card schema | `brama-core/apps/core/config/agent-card.schema.json` |
-| Observability spec | `brama-core/docs/agent-requirements/observability-requirements.md` |
-| Storage spec | `brama-core/docs/agent-requirements/storage-provisioning.md` |
-| Test case spec | `brama-core/docs/agent-requirements/test-cases.md` |
-| Agent PRDs | `brama-core/docs/agents/en/<agent-prd>.md` |
-| Doc index | `brama-core/index.md` |
+| Convention spec | `core/docs/agent-requirements/conventions.md` |
+| Agent Card schema | `core/src/config/agent-card.schema.json` |
+| Observability spec | `core/docs/agent-requirements/observability-requirements.md` |
+| Storage spec | `core/docs/agent-requirements/storage-provisioning.md` |
+| Test case spec | `core/docs/agent-requirements/test-cases.md` |
+| Agent PRDs | `core/docs/agents/en/<agent-prd>.md` |
+| Doc index | `core/index.md` |
 | Makefile | `Makefile` |
 
 ## CI Conversion Notes

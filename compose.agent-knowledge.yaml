@@ -29,7 +29,7 @@ services:
       - path: ./.env.deployment
         required: false
     volumes:
-      - ./brama-core/apps/knowledge-agent:/var/www/html
+      - ./agents/knowledge-agent:/var/www/html
     depends_on:
       - postgres
       - opensearch
@@ -52,7 +52,7 @@ services:
       RABBITMQ_URL: amqp://app:app@rabbitmq:5672
       APP_INTERNAL_TOKEN: dev-internal-token
     volumes:
-      - ./brama-core/apps/knowledge-agent:/var/www/html
+      - ./agents/knowledge-agent:/var/www/html
     depends_on:
       - postgres
       - opensearch
@@ -82,7 +82,7 @@ services:
     ports:
       - "18083:80"
     volumes:
-      - ./brama-core/apps/knowledge-agent:/var/www/html
+      - ./agents/knowledge-agent:/var/www/html
     depends_on:
       - postgres
       - opensearch
@@ -106,7 +106,7 @@ services:
       RABBITMQ_URL: amqp://app:app@rabbitmq:5672/test
       APP_INTERNAL_TOKEN: dev-internal-token
     volumes:
-      - ./brama-core/apps/knowledge-agent:/var/www/html
+      - ./agents/knowledge-agent:/var/www/html
     depends_on:
       - postgres
       - opensearch

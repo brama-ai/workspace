@@ -1,5 +1,5 @@
 -- Create dedicated roles for agents that own their own databases.
--- The default 'app' role is created by POSTGRES_USER and owns ai_community_platform + litellm.
+-- The default 'app' role is created by POSTGRES_USER and owns brama + litellm.
 
 DO $$
 BEGIN

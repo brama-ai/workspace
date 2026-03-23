@@ -40,7 +40,7 @@ generate_token() {
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 echo ""
-echo "  AI Community Platform — Bootstrap"
+echo "  Brama — Bootstrap"
 echo "  ─────────────────────────────────"
 echo ""
 

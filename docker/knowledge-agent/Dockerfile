@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-COPY brama-core/apps/knowledge-agent/ /var/www/html/
+COPY agents/knowledge-agent/ /var/www/html/
 COPY docker/knowledge-agent/entrypoint.sh /usr/local/bin/knowledge-agent-entrypoint
 
 RUN a2enmod rewrite \

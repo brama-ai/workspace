@@ -22,7 +22,7 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-COPY brama-core/apps/dev-agent/ /var/www/html/
+COPY agents/dev-agent/ /var/www/html/
 COPY docker/dev-agent/entrypoint.sh /usr/local/bin/dev-agent-entrypoint
 
 RUN a2enmod rewrite \

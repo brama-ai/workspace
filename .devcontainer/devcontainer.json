@@ -20,7 +20,7 @@
         "anthropic.claude-code"
       ],
       "settings": {
-        "claude-code.permissions.defaultMode": "bypassPermissions"
+        "claude-code.allowDangerouslySkipPermissions": true
       }
     }
   }

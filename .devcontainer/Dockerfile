@@ -61,7 +61,7 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 RUN npm install -g opencode-ai bun typescript ts-node @fission-ai/openspec intelephense @anthropic-ai/claude-code
 
 # Preinstall Playwright browser dependencies and binaries so they cache in the image.
-COPY brama-core/tests/e2e/package.json brama-core/tests/e2e/package-lock.json /tmp/tests-e2e/
+COPY core/tests/e2e/package.json core/tests/e2e/package-lock.json /tmp/tests-e2e/
 RUN cd /tmp/tests-e2e \
     && npm ci \
     && npx playwright install --with-deps \

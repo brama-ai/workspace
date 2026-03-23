@@ -4,11 +4,11 @@ FROM node:20-slim AS build
 WORKDIR /app
 
 # Install dependencies first for better caching
-COPY brama-core/slides/package.json brama-core/slides/package-lock.json* ./
+COPY core/slides/package.json core/slides/package-lock.json* ./
 RUN npm install
 
 # Copy the rest of the slides files
-COPY brama-core/slides/ ./
+COPY core/slides/ ./
 
 # Build all .md files (excluding README.md)
 # Each slide deck gets its own subdirectory: /<name>/

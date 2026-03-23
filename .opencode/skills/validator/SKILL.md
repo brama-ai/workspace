@@ -7,12 +7,12 @@ description: "Validator role: static analysis workflow, PHPStan/CS-Fixer rules, 
 
 | App | CS Check | CS Fix | Analyse |
 |-----|----------|--------|---------|
-| brama-core/apps/core/ | `make cs-check` | `make cs-fix` | `make analyse` |
-| brama-core/apps/knowledge-agent/ | `make knowledge-cs-check` | `make knowledge-cs-fix` | `make knowledge-analyse` |
-| brama-core/apps/hello-agent/ | `make hello-cs-check` | `make hello-cs-fix` | `make hello-analyse` |
-| brama-core/apps/dev-reporter-agent/ | `make dev-reporter-cs-check` | `make dev-reporter-cs-fix` | `make dev-reporter-analyse` |
-| brama-core/apps/news-maker-agent/ | `make news-cs-check` | `make news-cs-fix` | `make news-analyse` |
-| brama-core/apps/wiki-agent/ | — | — | `make wiki-build` |
+| core/src/ | `make cs-check` | `make cs-fix` | `make analyse` |
+| agents/knowledge-agent/ | `make knowledge-cs-check` | `make knowledge-cs-fix` | `make knowledge-analyse` |
+| agents/hello-agent/ | `make hello-cs-check` | `make hello-cs-fix` | `make hello-analyse` |
+| agents/dev-reporter-agent/ | `make dev-reporter-cs-check` | `make dev-reporter-cs-fix` | `make dev-reporter-analyse` |
+| agents/news-maker-agent/ | `make news-cs-check` | `make news-cs-fix` | `make news-analyse` |
+| agents/wiki-agent/ | — | — | `make wiki-build` |
 
 ## Tool Configuration
 
@@ -52,6 +52,6 @@ description: "Validator role: static analysis workflow, PHPStan/CS-Fixer rules, 
 
 | What | Path | When |
 |------|------|------|
-| PHPStan config | `brama-core/apps/<app>/phpstan.neon` | Understanding error context |
-| CS Fixer config | `brama-core/apps/<app>/.php-cs-fixer.dist.php` | Understanding rule exceptions |
-| Baseline | `brama-core/apps/<app>/phpstan-baseline.neon` | Checking existing suppressions |
+| PHPStan config | `agents/<app>/phpstan.neon` | Understanding error context |
+| CS Fixer config | `agents/<app>/.php-cs-fixer.dist.php` | Understanding rule exceptions |
+| Baseline | `agents/<app>/phpstan-baseline.neon` | Checking existing suppressions |

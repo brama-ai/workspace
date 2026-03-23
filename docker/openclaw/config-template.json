@@ -1,5 +1,5 @@
 {
-  "_comment": "Example OpenClaw configuration for AI Community Platform integration",
+  "_comment": "Example OpenClaw configuration for Brama integration",
   "_note": "This is a template - actual config is stored in .local/openclaw/state/openclaw.json",
   
   "discovery": {

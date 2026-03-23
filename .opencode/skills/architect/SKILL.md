@@ -6,17 +6,17 @@ description: "Architect role: OpenSpec workflow, proposal scaffold, spec format,
 ## OpenSpec Workflow
 
 Every API/architecture change MUST follow:
-1. **Spec first** — write spec in `brama-core/openspec/changes/<id>/specs/`
+1. **Spec first** — write spec in `core/openspec/changes/<id>/specs/`
 2. **Validate** — `openspec validate <id> --strict`
 3. **Implement** — code matches spec contract
 4. **Test** — tests validate spec scenarios
 
 ## Proposal Structure
 
-Scaffold under `brama-core/openspec/changes/<change-id>/`:
+Scaffold under `core/openspec/changes/<change-id>/`:
 
 ```
-brama-core/openspec/changes/<change-id>/
+core/openspec/changes/<change-id>/
 ├── proposal.md                 # What and why
 ├── design.md                   # Architecture reasoning, trade-offs, component interactions
 ├── tasks.md                    # Ordered work items with - [ ] checkboxes
@@ -70,10 +70,10 @@ A good `design.md` covers:
 
 | Component | Stack | Key Files |
 |-----------|-------|-----------|
-| Core | PHP 8.5, Symfony 7 | `brama-core/apps/core/src/`, `brama-core/apps/core/config/` |
-| Knowledge agent | PHP 8.5, Symfony 7 | `brama-core/apps/knowledge-agent/src/` |
-| News maker | Python, FastAPI | `brama-core/apps/news-maker-agent/app/` |
-| Wiki agent | Node.js, TS | `brama-core/apps/wiki-agent/src/` |
+| Core | PHP 8.5, Symfony 7 | `core/src/src/`, `core/src/config/` |
+| Knowledge agent | PHP 8.5, Symfony 7 | `agents/knowledge-agent/src/` |
+| News maker | Python, FastAPI | `agents/news-maker-agent/app/` |
+| Wiki agent | Node.js, TS | `agents/wiki-agent/src/` |
 | Infra | Postgres, Redis, RabbitMQ | `compose.yaml`, `compose.core.yaml` |
 
 ## Rules
@@ -88,8 +88,8 @@ A good `design.md` covers:
 
 | What | Path | When |
 |------|------|------|
-| OpenSpec conventions | `brama-core/openspec/AGENTS.md` | Always — primary reference |
-| Project state | `brama-core/openspec/project.md` | Understanding current scope |
+| OpenSpec conventions | `core/openspec/AGENTS.md` | Always — primary reference |
+| Project state | `core/openspec/project.md` | Understanding current scope |
 | Existing specs | `openspec list --specs` | Avoiding duplication |
-| Agent conventions | `brama-core/docs/agent-requirements/conventions.md` | Agent-related changes |
-| Existing proposals | `brama-core/openspec/changes/` | Checking for conflicts |
+| Agent conventions | `core/docs/agent-requirements/conventions.md` | Agent-related changes |
+| Existing proposals | `core/openspec/changes/` | Checking for conflicts |

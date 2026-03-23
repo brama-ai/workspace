@@ -243,8 +243,8 @@ include/require with user-controlled path
 - Missing rate limiting on login/registration endpoints
 
 ### Configuration Files to Check
-- `brama-core/apps/core/config/packages/security.yaml` — firewalls, access control, password hashers
-- `brama-core/apps/core/config/packages/framework.yaml` — session config, CSRF
+- `core/src/config/packages/security.yaml` — firewalls, access control, password hashers
+- `core/src/config/packages/framework.yaml` — session config, CSRF
 - `.env` / `.env.local` — no secrets in committed files
 - `docker/*/Dockerfile` — no secrets in build args
 - `compose.yaml` — no secrets in environment variables
@@ -264,12 +264,12 @@ include/require with user-controlled path
 
 | Resource | Path |
 |----------|------|
-| Security config | `brama-core/apps/core/config/packages/security.yaml` |
-| Framework config | `brama-core/apps/core/config/packages/framework.yaml` |
-| Controllers | `brama-core/apps/*/src/Controller/` |
-| Forms | `brama-core/apps/*/src/Form/` |
-| Voters | `brama-core/apps/*/src/Security/Voter/` |
-| Repositories | `brama-core/apps/*/src/Repository/` |
-| Twig templates | `brama-core/apps/*/templates/` |
+| Security config | `core/src/config/packages/security.yaml` |
+| Framework config | `core/src/config/packages/framework.yaml` |
+| Controllers | `agents/*/src/Controller/` |
+| Forms | `agents/*/src/Form/` |
+| Voters | `agents/*/src/Security/Voter/` |
+| Repositories | `agents/*/src/Repository/` |
+| Twig templates | `agents/*/templates/` |
 | Docker configs | `docker/*/Dockerfile` |
 | Compose config | `compose.yaml`, `compose.core.yaml` |

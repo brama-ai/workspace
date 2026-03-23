@@ -7,7 +7,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 echo "==> Installing Node dependencies..."
-for js_dir in . brama-core/apps/knowledge-agent brama-core/apps/wiki-agent; do
+for js_dir in . agents/knowledge-agent agents/wiki-agent; do
   if [ -f "${js_dir}/package.json" ]; then
     echo "  npm install (${js_dir})"
     (

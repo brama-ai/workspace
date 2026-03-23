@@ -36,10 +36,10 @@ docker/openclaw/main/.env
 docker/openclaw/support/.env
 compose.override.yaml
 compose.override.yml
-projects/
+agents/
 
 # External repositories
-brama-core/
+core/
 builder/
-langind/
+website/
 brama-langing/

@@ -1,0 +1,18 @@
+services:
+  website:
+    build:
+      context: ./website
+      dockerfile: Dockerfile
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=brama_dev-edge
+      - traefik.http.routers.website.rule=Host(`localhost`)
+      - traefik.http.routers.website.entrypoints=landing
+      - traefik.http.routers.website.service=website
+      - traefik.http.services.website.loadbalancer.server.port=80
+    networks:
+      - dev-edge
+
+networks:
+  dev-edge:
+    external: false

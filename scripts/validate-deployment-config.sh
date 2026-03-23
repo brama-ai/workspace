@@ -4,7 +4,7 @@
 
 set -e
 
-echo "🔍 Validating AI Community Platform Deployment Configuration..."
+echo "🔍 Validating Brama Deployment Configuration..."
 echo
 
 # Check if required files exist
@@ -17,7 +17,7 @@ else
     exit 1
 fi
 
-if [ -f "brama-core/docs/deployment-configuration.md" ]; then
+if [ -f "core/docs/deployment-configuration.md" ]; then
     echo "✅ docs/deployment-configuration.md exists"
 else
     echo "❌ docs/deployment-configuration.md is missing"
@@ -55,8 +55,8 @@ echo
 echo "🏥 Checking health endpoint implementations..."
 
 # Core health controller
-if [ -f "brama-core/apps/core/src/Controller/HealthController.php" ]; then
-    if grep -q "health/ready" "brama-core/apps/core/src/Controller/HealthController.php"; then
+if [ -f "core/src/src/Controller/HealthController.php" ]; then
+    if grep -q "health/ready" "core/src/src/Controller/HealthController.php"; then
         echo "✅ Core platform has enhanced health endpoints"
     else
         echo "❌ Core platform missing enhanced health endpoints"
@@ -68,8 +68,8 @@ else
 fi
 
 # Hello agent health controller
-if [ -f "brama-core/apps/hello-agent/src/Controller/HealthController.php" ]; then
-    if grep -q "health/ready" "brama-core/apps/hello-agent/src/Controller/HealthController.php"; then
+if [ -f "agents/hello-agent/src/Controller/HealthController.php" ]; then
+    if grep -q "health/ready" "agents/hello-agent/src/Controller/HealthController.php"; then
         echo "✅ Hello agent has enhanced health endpoints"
     else
         echo "❌ Hello agent missing enhanced health endpoints"
@@ -80,8 +80,8 @@ else
 fi
 
 # Knowledge agent health controller
-if [ -f "brama-core/apps/knowledge-agent/src/Controller/HealthController.php" ]; then
-    if grep -q "health/ready" "brama-core/apps/knowledge-agent/src/Controller/HealthController.php"; then
+if [ -f "agents/knowledge-agent/src/Controller/HealthController.php" ]; then
+    if grep -q "health/ready" "agents/knowledge-agent/src/Controller/HealthController.php"; then
         echo "✅ Knowledge agent has enhanced health endpoints"
     else
         echo "❌ Knowledge agent missing enhanced health endpoints"
@@ -92,8 +92,8 @@ else
 fi
 
 # News maker agent health controller
-if [ -f "brama-core/apps/news-maker-agent/app/routers/health.py" ]; then
-    if grep -q "health/ready" "brama-core/apps/news-maker-agent/app/routers/health.py"; then
+if [ -f "agents/news-maker-agent/app/routers/health.py" ]; then
+    if grep -q "health/ready" "agents/news-maker-agent/app/routers/health.py"; then
         echo "✅ News maker agent has enhanced health endpoints"
     else
         echo "❌ News maker agent missing enhanced health endpoints"
@@ -109,9 +109,9 @@ echo
 echo "🔄 Checking signal handling in long-running commands..."
 
 signal_commands=(
-    "brama-core/apps/core/src/Command/CoderWorkerStartCommand.php"
-    "brama-core/apps/core/src/Command/SchedulerRunCommand.php"
-    "brama-core/apps/core/src/Command/TelegramPollCommand.php"
+    "core/src/src/Command/CoderWorkerStartCommand.php"
+    "core/src/src/Command/SchedulerRunCommand.php"
+    "core/src/src/Command/TelegramPollCommand.php"
 )
 
 for cmd in "${signal_commands[@]}"; do
@@ -132,8 +132,8 @@ echo
 # Check E2E tests exist
 echo "🧪 Checking E2E test coverage..."
 
-if [ -f "brama-core/tests/e2e/tests/smoke/health_test.js" ]; then
-    if grep -q "health/ready" "brama-core/tests/e2e/tests/smoke/health_test.js"; then
+if [ -f "core/tests/e2e/tests/smoke/health_test.js" ]; then
+    if grep -q "health/ready" "core/tests/e2e/tests/smoke/health_test.js"; then
         echo "✅ E2E health tests include readiness checks"
     else
         echo "❌ E2E health tests missing readiness checks"
@@ -144,7 +144,7 @@ else
     exit 1
 fi
 
-if [ -f "brama-core/tests/e2e/tests/smoke/deployment_config_test.js" ]; then
+if [ -f "core/tests/e2e/tests/smoke/deployment_config_test.js" ]; then
     echo "✅ Deployment configuration E2E tests exist"
 else
     echo "❌ Deployment configuration E2E tests missing"

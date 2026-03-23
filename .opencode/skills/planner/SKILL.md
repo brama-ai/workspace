@@ -15,14 +15,18 @@ description: "Planner role: task analysis, profile selection, pipeline-plan.json
 | standard+docs | coder, validator, tester, documenter, summarizer | Feature + bilingual docs |
 | complex | coder, validator, tester, summarizer | Multi-service, migrations, API changes |
 | complex+agent | coder, auditor, validator, tester, summarizer | Creates/modifies an agent |
+| bugfix | investigator, coder, validator, tester, summarizer | Bug with investigation, no spec change |
+| bugfix+spec | investigator, architect, coder, validator, tester, summarizer | Bug that changes spec behavior |
 
 ## Timeout Reference
 
-| Profile | Coder | Validator | Architect | Summarizer |
-|---------|-------|-----------|-----------|------------|
-| quick-fix | 900s | 600s | — | 600s |
-| standard | default | default | default | default |
-| complex | 5400s | default | 3600s | 900s |
+| Profile | Investigator | Coder | Validator | Architect | Summarizer |
+|---------|-------------|-------|-----------|-----------|------------|
+| quick-fix | — | 900s | 600s | — | 600s |
+| standard | — | default | default | default | default |
+| complex | — | 5400s | default | 3600s | 900s |
+| bugfix | 900s | default | default | — | default |
+| bugfix+spec | 900s | default | default | default | default |
 
 ## Decision Rules
 
@@ -34,6 +38,14 @@ description: "Planner role: task analysis, profile selection, pipeline-plan.json
 6. Include `validator` for any code change
 7. Be conservative: if unsure, include the agent
 
+### Bug-Specific Rules
+
+8. Include `investigator` as **first agent** when the task is a bug report
+9. Bug that fixes implementation to match existing spec → `bugfix` (no architect, no proposal)
+10. Bug where the spec itself is wrong or incomplete → `bugfix+spec` (includes architect for proposal)
+11. Trivial bug (typo, null check, obvious config error) → `quick-fix` (no investigator needed)
+12. **When in doubt between `quick-fix` and `bugfix`** → choose `bugfix` (investigation is cheap, missed root cause is expensive)
+
 ## Quick Patterns
 
 | Signal | Profile |
@@ -43,6 +55,9 @@ description: "Planner role: task analysis, profile selection, pipeline-plan.json
 | "Implement change" + tasks.md exists | standard (no architect) |
 | "Write docs" / "Update documentation" | docs-only |
 | Modifies `apps/*-agent/` | add auditor |
+| "bug", "broken", "error", "crash", "regression", "не працює" | bugfix |
+| Bug + "wrong behavior in spec" / "spec is incorrect" | bugfix+spec |
+| Obvious typo, missing null check, config value | quick-fix (no investigator) |
 
 ## Analysis Steps
 
@@ -67,6 +82,8 @@ Write `pipeline-plan.json` to repo root:
   "needs_migration": false,
   "needs_api_change": false,
   "is_agent_task": false,
+  "is_bug": false,
+  "bug_severity": null,
   "timeout_overrides": {},
   "model_overrides": {}
 }

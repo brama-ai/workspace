@@ -2,7 +2,7 @@ services:
   hello-agent:
     image: ghcr.io/nmdimas/a2a-hello-agent:main
     build:
-      context: ./brama-core/apps/hello-agent
+      context: ./agents/hello-agent
       dockerfile: Dockerfile
     labels:
       - traefik.enable=true
@@ -28,7 +28,7 @@ services:
       - path: ./.env.deployment
         required: false
     volumes:
-      - ./brama-core/apps/hello-agent:/var/www/html
+      - ./agents/hello-agent:/var/www/html
     depends_on:
       - opensearch
       - litellm
@@ -39,7 +39,7 @@ services:
     profiles: [e2e]
     image: ghcr.io/nmdimas/a2a-hello-agent:main
     build:
-      context: ./brama-core/apps/hello-agent
+      context: ./agents/hello-agent
       dockerfile: Dockerfile
     environment:
       LANGFUSE_ENABLED: "false"
@@ -54,7 +54,7 @@ services:
     ports:
       - "18085:80"
     volumes:
-      - ./brama-core/apps/hello-agent:/var/www/html
+      - ./agents/hello-agent:/var/www/html
     depends_on:
       - opensearch
       - litellm

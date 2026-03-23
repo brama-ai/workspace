@@ -3,7 +3,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TEMPLATE_DIR="$REPO_ROOT/brama-core/docs/templates/openclaw/frontdesk"
+TEMPLATE_DIR="$REPO_ROOT/core/docs/templates/openclaw/frontdesk"
 WORKSPACE_DIR="${WORKSPACE_DIR:-$REPO_ROOT/.local/openclaw/state/workspace}"
 
 FILES=(
