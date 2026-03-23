@@ -117,3 +117,36 @@ services:
       - postgres
     networks:
       - dev-edge
+
+  core-scheduler-e2e:
+    profiles: [e2e]
+    image: brama-core-e2e:latest
+    env_file:
+      - ./openclaw/.env
+      - path: ../.env.deployment
+        required: false
+    command: ["php", "bin/console", "scheduler:run"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@${POSTGRES_HOST:-postgres}:${POSTGRES_PORT:-5432}/brama_test?serverVersion=16&charset=utf8
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      POSTGRES_PROVISIONER_URL: ${POSTGRES_PROVISIONER_URL:-postgresql://app:app@postgres:5432/postgres?serverVersion=16&charset=utf8}
+      OPENSEARCH_URL: ${OPENSEARCH_URL:-http://opensearch:9200}
+      LANGFUSE_ENABLED: "false"
+      EDGE_AUTH_JWT_SECRET: ${EDGE_AUTH_JWT_SECRET:-dev-edge-auth-secret-change-me}
+      EDGE_AUTH_COOKIE_NAME: ${EDGE_AUTH_COOKIE_NAME:-ACP_EDGE_TOKEN}
+      EDGE_AUTH_TOKEN_TTL: ${EDGE_AUTH_TOKEN_TTL:-43200}
+      EDGE_AUTH_LOGIN_BASE_URL: http://localhost:18080
+      EDGE_AUTH_COOKIE_DOMAIN: localhost
+      ADMIN_OPENCLAW_URL: ${ADMIN_OPENCLAW_URL:-http://openclaw.localhost/}
+      ADMIN_LANGFUSE_URL: ${ADMIN_LANGFUSE_URL:-http://langfuse.localhost/}
+      ADMIN_TRAEFIK_URL: ${ADMIN_TRAEFIK_URL:-http://traefik.localhost/dashboard/}
+      ADMIN_LITELLM_URL: ${ADMIN_LITELLM_URL:-http://litellm.localhost/ui/}
+      # Scheduler-specific configuration for async dispatch
+      SCHEDULER_CONCURRENCY_LIMIT: ${SCHEDULER_CONCURRENCY_LIMIT:-20}
+    volumes:
+      - ../core/src:/var/www/html
+    depends_on:
+      - core-e2e
+    networks:
+      - dev-edge
+      - agents-internal

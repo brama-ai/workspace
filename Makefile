@@ -303,7 +303,7 @@ e2e-register-agents:
 	@echo "E2E agents registered and enabled."
 
 e2e-prepare: e2e-db-init e2e-rabbitmq-init
-	$(E2E_COMPOSE) up -d --build core-e2e knowledge-agent-e2e knowledge-worker-e2e news-maker-agent-e2e hello-agent-e2e dev-reporter-agent-e2e openclaw-gateway-e2e
+	$(E2E_COMPOSE) up -d --build core-e2e core-scheduler-e2e knowledge-agent-e2e knowledge-worker-e2e news-maker-agent-e2e hello-agent-e2e dev-reporter-agent-e2e openclaw-gateway-e2e
 	$(E2E_COMPOSE) exec -T core-e2e php bin/console doctrine:migrations:migrate --no-interaction
 	$(E2E_COMPOSE) exec -T knowledge-agent-e2e php bin/console doctrine:migrations:migrate --no-interaction
 	$(E2E_COMPOSE) exec -T dev-reporter-agent-e2e php bin/console doctrine:migrations:migrate --no-interaction
@@ -311,7 +311,7 @@ e2e-prepare: e2e-db-init e2e-rabbitmq-init
 	@$(MAKE) e2e-register-agents
 
 e2e-cleanup:
-	$(E2E_COMPOSE) stop core-e2e knowledge-agent-e2e knowledge-worker-e2e news-maker-agent-e2e hello-agent-e2e dev-reporter-agent-e2e openclaw-gateway-e2e 2>/dev/null || true
+	$(E2E_COMPOSE) stop core-e2e core-scheduler-e2e knowledge-agent-e2e knowledge-worker-e2e news-maker-agent-e2e hello-agent-e2e dev-reporter-agent-e2e openclaw-gateway-e2e 2>/dev/null || true
 
 migrate:
 	$(call run-in,core,$(CORE_SRC),php bin/console doctrine:migrations:migrate --no-interaction)
