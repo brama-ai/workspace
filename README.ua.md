@@ -33,49 +33,133 @@
 - `jq`
 - `gh`
 
-## Швидкий Старт
+## Старт
 
-### Варіант 1: Devcontainer
+Рекомендований перший open-source сценарій: підняти `core` тільки з його storage-level залежностями:
 
-Рекомендований шлях, якщо потрібне стабільне та однакове середовище для PHP, Node, Python, Bun, Playwright і Docker CLI.
+- PostgreSQL
+- Redis
 
-```bash
-git clone <workspace-repo>
-cd brama-workspace
+Після того як цей мінімальний шлях працює, можна переходити до повного Docker Compose стеку або до Helm chart у Kubernetes.
 
-cp .env.local.example .env.local
-# відредагуйте .env.local і додайте хоча б один LLM provider key
+### 1. Local Development через `.devcontainer`
 
-# відкрийте папку у VS Code і виберіть "Reopen in Container"
-```
-
-Після старту контейнера:
-
-```bash
-make bootstrap
-make setup
-make up
-make litellm-db-init
-make migrate
-```
-
-### Варіант 2: Робота З Хоста
-
-Підійде, якщо хочеш піднімати все локально без входу в devcontainer.
+Рекомендований шлях, якщо потрібен відтворюваний toolchain і ти хочеш розробляти `core` напряму з source code.
 
 ```bash
 git clone <workspace-repo>
 cd brama-workspace
 
 cp .env.local.example .env.local
-# відредагуйте .env.local і додайте хоча б один LLM provider key
-
 make bootstrap
+
+# відкрий папку у VS Code і вибери "Reopen in Container"
+```
+
+Всередині devcontainer почни з `core + postgres + redis`:
+
+```bash
+cd core/src
+composer install
+php bin/console doctrine:migrations:migrate --no-interaction
+php bin/console server:start
+```
+
+Нотатки:
+
+- devcontainer сидить у тій самій Docker мережі, що і `postgres` та `redis`
+- `DATABASE_URL` і `REDIS_URL` вже вказують на Docker hostname-и
+- це найзручніший шлях, якщо спочатку хочеш просто підняти storage-backed `core` і редагувати код live
+
+Коли потрібен більший workspace stack:
+
+```bash
 make setup
+make sync-skills
+```
+
+### 2. `.docker compose` Setup
+
+Використовуй це, якщо хочеш запускати платформу контейнерами з хоста без входу в devcontainer.
+
+Мінімальний сценарій `core + postgres + redis`:
+
+```bash
+git clone <workspace-repo>
+cd brama-workspace
+
+cp .env.local.example .env.local
+make bootstrap
+
+docker compose --project-directory . \
+  -f docker/compose.yaml \
+  -f docker/compose.core.yaml \
+  up -d postgres redis core
+
+docker compose --project-directory . \
+  -f docker/compose.yaml \
+  -f docker/compose.core.yaml \
+  exec core php bin/console doctrine:migrations:migrate --no-interaction
+```
+
+Доступ:
+
+- `http://localhost`
+- fallback напряму: `http://localhost:8081`
+
+Коли потрібен повний локальний bundle, а не мінімальний storage-backed запуск:
+
+```bash
+make setup
+make sync-skills
 make up
 make litellm-db-init
 make migrate
 ```
+
+### 3. Kubernetes інсталяція через Chart Values
+
+Використовуй це, якщо хочеш запускати платформу в Kubernetes через Helm chart і values-файли.
+
+Розташування chart:
+
+- [Brama Helm chart](/Users/nmdimas/work/brama-workspace/core/deploy/charts/brama)
+
+Корисні values-файли:
+
+- локальний K3s/dev профіль: [values-k3s-dev.yaml](/Users/nmdimas/work/brama-workspace/core/deploy/charts/brama/values-k3s-dev.yaml)
+- production-oriented приклад: [values-prod.example.yaml](/Users/nmdimas/work/brama-workspace/core/deploy/charts/brama/values-prod.example.yaml)
+
+Для локального K3s через workspace helper-и:
+
+```bash
+make k8s-build
+make k8s-load
+make k8s-secrets
+make k8s-deploy
+make k8s-status
+```
+
+Зараз цей профіль деплоїть:
+
+- `core`
+- `core-scheduler`
+- `hello-agent`
+- PostgreSQL
+- Redis
+- RabbitMQ
+
+Прямий Helm install:
+
+```bash
+helm upgrade --install brama core/deploy/charts/brama \
+  --namespace brama \
+  --create-namespace \
+  -f core/deploy/charts/brama/values-k3s-dev.yaml \
+  --wait --timeout 5m
+```
+
+Для не-локального кластера краще стартувати з `values-prod.example.yaml` і підставити свої образи, секрети, ingress hostnames та persistence policy.
 
 ## Щоденний Workflow
 
@@ -250,4 +334,3 @@ make setup
 ## Пов’язані Репозиторії
 
 - [`core`](/Users/nmdimas/work/brama-workspace/core): application source code, тести та продуктова документація.
-

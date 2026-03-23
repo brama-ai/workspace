@@ -46,6 +46,22 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends postgresql-client-16 redis-tools tmux \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Install kubectl
+RUN ARCH=$(dpkg --print-architecture) \
+    && curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/${ARCH}/kubectl" \
+       -o /usr/local/bin/kubectl \
+    && chmod +x /usr/local/bin/kubectl
+
+# Install Helm
+RUN curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+# Install k9s (Kubernetes TUI)
+RUN ARCH=$(dpkg --print-architecture) \
+    && K9S_VERSION=$(curl -fsSL https://api.github.com/repos/derailed/k9s/releases/latest | grep tag_name | cut -d '"' -f 4) \
+    && if [ "$ARCH" = "amd64" ]; then K9S_ARCH="amd64"; else K9S_ARCH="arm64"; fi \
+    && curl -fsSL "https://github.com/derailed/k9s/releases/download/${K9S_VERSION}/k9s_Linux_${K9S_ARCH}.tar.gz" \
+       | tar -C /usr/local/bin -xzf - k9s
+
 # Install Composer
 RUN php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" \
     && php composer-setup.php --install-dir=/usr/local/bin --filename=composer \

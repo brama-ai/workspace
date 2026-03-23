@@ -33,51 +33,133 @@ Optional but useful:
 - `jq`
 - `gh`
 
-## Quick Start
+## Getting Started
 
-### Option 1: Devcontainer
+The recommended open-source first step is to run `core` with only the storage-level dependencies it needs:
 
-Recommended when you want a consistent toolchain across PHP, Node, Python, Bun, Playwright, and Docker CLI.
+- PostgreSQL
+- Redis
+
+After that baseline works, move to the full Docker Compose stack or the Helm chart install.
+
+### 1. Local Development via `.devcontainer`
+
+Recommended when you want the most reproducible toolchain and you primarily develop `core` from source.
 
 ```bash
 git clone <workspace-repo>
 cd brama-workspace
 
 cp .env.local.example .env.local
-# edit .env.local and set at least one LLM provider key
+make bootstrap
 
 # open the folder in VS Code and choose "Reopen in Container"
 ```
 
-After the container starts:
+Inside the devcontainer, start with `core + postgres + redis`:
 
 ```bash
-make bootstrap
-make setup
-make sync-skills   # sync shared skills to Claude, Cursor, Codex, OpenCode
-make up
-make litellm-db-init
-make migrate
+cd core/src
+composer install
+php bin/console doctrine:migrations:migrate --no-interaction
+php bin/console server:start
 ```
 
-### Option 2: Host Workflow
+Notes:
 
-Use this if you want to run everything from your host machine without entering the devcontainer.
+- The devcontainer shares the same Docker network as `postgres` and `redis`.
+- `DATABASE_URL` and `REDIS_URL` already point to Docker hostnames.
+- This path is best when you want to edit PHP code live and run only the minimal storage-backed app first.
+
+When you want the larger workspace stack later:
+
+```bash
+make setup
+make sync-skills
+```
+
+### 2. Docker Compose Setup
+
+Use this when you want to run the platform from containers on the host without entering the devcontainer.
+
+Minimal `core + postgres + redis` setup:
 
 ```bash
 git clone <workspace-repo>
 cd brama-workspace
 
 cp .env.local.example .env.local
-# edit .env.local and set at least one LLM provider key
-
 make bootstrap
+
+docker compose --project-directory . \
+  -f docker/compose.yaml \
+  -f docker/compose.core.yaml \
+  up -d postgres redis core
+
+docker compose --project-directory . \
+  -f docker/compose.yaml \
+  -f docker/compose.core.yaml \
+  exec core php bin/console doctrine:migrations:migrate --no-interaction
+```
+
+Access:
+
+- `http://localhost`
+- fallback direct port: `http://localhost:8081`
+
+When you want the full supported local bundle instead of the minimal storage-backed setup:
+
+```bash
 make setup
-make sync-skills   # sync shared skills to Claude, Cursor, Codex, OpenCode
+make sync-skills
 make up
 make litellm-db-init
 make migrate
 ```
+
+### 3. Kubernetes via Helm Chart Values
+
+Use this when you want the platform inside Kubernetes and prefer chart-driven configuration.
+
+Chart location:
+
+- [Brama Helm chart](/Users/nmdimas/work/brama-workspace/core/deploy/charts/brama)
+
+Useful values files:
+
+- local K3s/dev profile: [values-k3s-dev.yaml](/Users/nmdimas/work/brama-workspace/core/deploy/charts/brama/values-k3s-dev.yaml)
+- production-oriented example: [values-prod.example.yaml](/Users/nmdimas/work/brama-workspace/core/deploy/charts/brama/values-prod.example.yaml)
+
+For local K3s with the workspace helpers:
+
+```bash
+make k8s-build
+make k8s-load
+make k8s-secrets
+make k8s-deploy
+make k8s-status
+```
+
+This profile currently deploys:
+
+- `core`
+- `core-scheduler`
+- `hello-agent`
+- PostgreSQL
+- Redis
+- RabbitMQ
+
+For a direct Helm install:
+
+```bash
+helm upgrade --install brama core/deploy/charts/brama \
+  --namespace brama \
+  --create-namespace \
+  -f core/deploy/charts/brama/values-k3s-dev.yaml \
+  --wait --timeout 5m
+```
+
+If you deploy to a non-local cluster, start from `values-prod.example.yaml` and provide your own images, secrets, ingress hostnames, and persistence settings.
 
 ## Daily Workflow
 
@@ -252,4 +334,3 @@ or rebuild the devcontainer if the issue is image-level rather than project-leve
 ## Related Repositories
 
 - [`core`](/Users/nmdimas/work/brama-workspace/core): application source, tests, and product documentation.
-

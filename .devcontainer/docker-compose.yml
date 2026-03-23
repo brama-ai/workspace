@@ -16,6 +16,8 @@ services:
       - ${HOME}/.local/share/opencode:/home/vscode/.local/share/opencode:cached
       - ${HOME}/.gitconfig:/home/vscode/.gitconfig:ro
       - ${HOME}/.ssh:/home/vscode/.ssh:ro
+      # Kubernetes access (kubeconfig from host)
+      - ${HOME}/.kube:/home/vscode/.kube:cached
       # Docker-in-Docker support
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
@@ -24,6 +26,7 @@ services:
       - CLAUDE_DANGER_MODE=true
       - CLAUDE_AUTO_APPROVE_ALL=true
       - DOCKER_HOST=unix:///var/run/docker.sock
+      - KUBECONFIG=/home/vscode/.kube/config.devcontainer
       - HISTSIZE=50000
       - HISTFILESIZE=50000
       - SAVEHIST=50000

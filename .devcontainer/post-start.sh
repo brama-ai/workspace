@@ -30,6 +30,7 @@ fix_dir /home/vscode/.vscode-server
 fix_dir /home/vscode/.local
 fix_dir /home/vscode/.claude
 fix_dir /home/vscode/.gemini
+fix_dir /home/vscode/.kube
 fix_dir /home/vscode/.config/opencode
 fix_dir /home/vscode/.local/share/opencode
 fix_dir /commandhistory
@@ -61,6 +62,17 @@ if [ -S /var/run/docker.sock ]; then
   sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
 fi
 
+# Kubernetes: create a devcontainer-local kubeconfig with 127.0.0.1 → host.docker.internal
+# (Rancher Desktop / Docker Desktop K3S API server is on the host, not in-container localhost)
+if [ -f /home/vscode/.kube/config ]; then
+  kube_dev="/home/vscode/.kube/config.devcontainer"
+  cp /home/vscode/.kube/config "$kube_dev" 2>/dev/null || true
+  if grep -q '127\.0\.0\.1' "$kube_dev" 2>/dev/null; then
+    sed -i 's|https://127\.0\.0\.1:|https://host.docker.internal:|g' "$kube_dev" 2>/dev/null || true
+  fi
+  chown vscode:vscode "$kube_dev" 2>/dev/null || true
+fi
+
 # SSH agent: start once per container lifecycle so git push doesn't re-ask for passphrase.
 # Keys are not auto-added — each developer runs `ssh-add <key>` once after container start.
 ssh_env="/home/vscode/.ssh/agent.env"
@@ -76,6 +88,11 @@ fi
 ssh_snippet='# SSH agent: reuse running agent across shell sessions
 if [ -f "$HOME/.ssh/agent.env" ]; then . "$HOME/.ssh/agent.env" > /dev/null; fi'
 
+# Kubernetes: shell completion and aliases for kubectl/helm
+k8s_snippet='# Kubernetes shell helpers
+command -v kubectl &>/dev/null && { source <(kubectl completion $(basename "$SHELL" 2>/dev/null || echo bash)); alias k=kubectl; }
+command -v helm &>/dev/null && source <(helm completion $(basename "$SHELL" 2>/dev/null || echo bash))'
+
 # Claude Code: always run in dangerously-skip-permissions mode inside devcontainer.
 claude_alias='alias claude="claude --dangerously-skip-permissions"'
 for rc_file in /home/vscode/.bashrc /home/vscode/.zshrc; do
@@ -84,5 +101,8 @@ for rc_file in /home/vscode/.bashrc /home/vscode/.zshrc; do
   fi
   if [ -f "$rc_file" ] && ! grep -Fq 'dangerously-skip-permissions' "$rc_file"; then
     printf '\n# Claude Code: bypass permissions in devcontainer\n%s\n' "$claude_alias" >> "$rc_file"
+  fi
+  if [ -f "$rc_file" ] && ! grep -Fq 'kubectl completion' "$rc_file"; then
+    printf '\n%s\n' "$k8s_snippet" >> "$rc_file"
   fi
 done

@@ -4,6 +4,14 @@ AGENTS_DIR := agents
 TEST_ROOT := $(CORE_ROOT)/tests
 
 DOCKER_DIR := docker
+
+# ── Kubernetes / Helm ──────────────────────────────────────────────────────
+HELM_CHART   := $(CORE_ROOT)/deploy/charts/brama
+HELM_RELEASE ?= brama
+K8S_NAMESPACE ?= brama
+K8S_VALUES   ?= $(HELM_CHART)/values-k3s-dev.yaml
+K8S_CORE_IMAGE ?= brama/core:dev
+K8S_HELLO_IMAGE ?= brama/hello-agent:dev
 AGENT_FILES := $(sort $(wildcard $(DOCKER_DIR)/compose.agent-*.yaml))
 EXTERNAL_AGENT_FILES := $(sort $(wildcard $(DOCKER_DIR)/compose.fragments/*.yaml))
 OVERRIDE_FILE := $(firstword $(wildcard $(DOCKER_DIR)/compose.override.yaml $(DOCKER_DIR)/compose.override.yml))
@@ -45,7 +53,9 @@ endef
         agent-discover conventions-test \
         external-agent-list external-agent-up external-agent-down external-agent-clone \
         sync-skills pipeline pipeline-batch monitor-builder monitor-ultraworks \
-        monitor-ultraworks-launch monitor-ultraworks-attach monitor-ultraworks-watch monitor-ultraworks-menu
+        monitor-ultraworks-launch monitor-ultraworks-attach monitor-ultraworks-watch monitor-ultraworks-menu \
+        k8s-ctx k8s-ns k8s-deps k8s-deploy k8s-upgrade k8s-status k8s-logs k8s-destroy k8s-diff k8s-shell \
+        k8s-build k8s-load k8s-secrets k8s-setup
 
 help:
 	@printf '%s\n' \
@@ -114,7 +124,23 @@ help:
 		'make monitor-ultraworks   Monitor ultraworks pipeline (OpenCode/Sisyphus)' \
 		'make monitor-ultraworks-launch TASK="desc"  Launch OpenCode in tmux' \
 		'make monitor-ultraworks-attach  Attach to tmux session' \
-		'make monitor-ultraworks-menu    Interactive menu'
+		'make monitor-ultraworks-menu    Interactive menu' \
+		'' \
+		'── Kubernetes / K3S ──────────────────────────────────────────' \
+		'make k8s-setup             Full setup: build + load + secrets + deploy' \
+		'make k8s-ctx               Show current kubectl context and cluster info' \
+		'make k8s-build             Build Docker images for K3S deployment' \
+		'make k8s-load              Import local Docker images into K3S containerd' \
+		'make k8s-secrets           Create K8S secrets for the platform' \
+		'make k8s-deploy            Deploy (or upgrade) the Helm chart to K3S' \
+		'make k8s-upgrade           Upgrade existing Helm release' \
+		'make k8s-diff              Show diff of pending Helm changes (requires helm-diff plugin)' \
+		'make k8s-status            Show pods, services, ingress, and release status' \
+		'make k8s-logs svc=X        Follow logs for a component (core, core-scheduler, agent-hello)' \
+		'make k8s-logs-all          Follow logs for all platform services' \
+		'make k8s-shell svc=X       Open a shell in a running pod (core, core-scheduler, agent-hello)' \
+		'make k8s-port-forward svc=X port=LOCAL:REMOTE  Port-forward a service (core, agent-hello)' \
+		'make k8s-destroy           Uninstall the Helm release'
 
 bootstrap:
 	@./scripts/bootstrap.sh
@@ -466,3 +492,105 @@ pipeline-batch:
 
 builder-setup:
 	./builder/setup.sh
+
+# ── Kubernetes / K3S Targets ───────────────────────────────────────────────
+
+k8s-ctx:
+	@kubectl config current-context
+	@kubectl cluster-info --short 2>/dev/null || kubectl cluster-info
+
+k8s-ns:
+	@kubectl get ns $(K8S_NAMESPACE) 2>/dev/null || kubectl create namespace $(K8S_NAMESPACE)
+	@echo "Namespace: $(K8S_NAMESPACE)"
+
+k8s-deps:
+	cd $(HELM_CHART) && helm dependency update
+
+# ── Build & Load images into K3S containerd ───────────────────────────────
+
+k8s-build:
+	@echo "Building core..."
+	docker build -t $(K8S_CORE_IMAGE) -f docker/core/Dockerfile .
+	@echo "Building hello-agent..."
+	docker build -t $(K8S_HELLO_IMAGE) agents/hello-agent/
+
+k8s-load:
+	docker save $(K8S_CORE_IMAGE) | rdctl shell sudo k3s ctr images import -
+	docker save $(K8S_HELLO_IMAGE) | rdctl shell sudo k3s ctr images import -
+	@echo "Images imported into K3S containerd"
+
+# ── Secrets ───────────────────────────────────────────────────────────────
+
+k8s-secrets: k8s-ns
+	@kubectl get secret brama-core-secrets -n $(K8S_NAMESPACE) 2>/dev/null && echo "Secret brama-core-secrets already exists (use kubectl delete secret to recreate)" || \
+		kubectl create secret generic brama-core-secrets -n $(K8S_NAMESPACE) \
+			--from-literal=APP_SECRET=$$(openssl rand -hex 16) \
+			--from-literal=EDGE_AUTH_JWT_SECRET=$$(openssl rand -hex 32) \
+			--from-literal=DATABASE_URL="postgresql://app:app@$(HELM_RELEASE)-postgresql:5432/ai_community_platform?serverVersion=16&charset=utf8" \
+			--from-literal=REDIS_URL="redis://$(HELM_RELEASE)-redis-master:6379" \
+			--from-literal=RABBITMQ_URL="amqp://app:app@$(HELM_RELEASE)-rabbitmq:5672" \
+			--from-literal=POSTGRES_PROVISIONER_URL="postgresql://app:app@$(HELM_RELEASE)-postgresql:5432/ai_community_platform?serverVersion=16&charset=utf8"
+	@echo "Secrets ready in namespace $(K8S_NAMESPACE)"
+
+# ── Full setup: build + load + secrets + deploy ───────────────────────────
+
+k8s-setup: k8s-build k8s-load k8s-secrets k8s-deploy
+	@echo ""
+	@echo "K3S deployment complete. Run 'make k8s-status' to check."
+
+# ── Deploy / Upgrade ──────────────────────────────────────────────────────
+
+k8s-deploy: k8s-ns k8s-deps
+	helm upgrade --install $(HELM_RELEASE) $(HELM_CHART) \
+		--namespace $(K8S_NAMESPACE) \
+		-f $(K8S_VALUES) \
+		--wait --timeout 5m
+
+k8s-upgrade: k8s-deps
+	helm upgrade $(HELM_RELEASE) $(HELM_CHART) \
+		--namespace $(K8S_NAMESPACE) \
+		-f $(K8S_VALUES) \
+		--wait --timeout 5m
+
+k8s-diff: k8s-deps
+	helm diff upgrade $(HELM_RELEASE) $(HELM_CHART) \
+		--namespace $(K8S_NAMESPACE) \
+		-f $(K8S_VALUES) 2>/dev/null || \
+		helm upgrade --install $(HELM_RELEASE) $(HELM_CHART) \
+			--namespace $(K8S_NAMESPACE) \
+			-f $(K8S_VALUES) --dry-run
+
+# ── Observe ───────────────────────────────────────────────────────────────
+
+k8s-status:
+	@echo "=== Pods ==="
+	@kubectl get pods -n $(K8S_NAMESPACE) -o wide
+	@echo ""
+	@echo "=== Services ==="
+	@kubectl get svc -n $(K8S_NAMESPACE)
+	@echo ""
+	@echo "=== Ingress ==="
+	@kubectl get ingress -n $(K8S_NAMESPACE) 2>/dev/null || true
+	@echo ""
+	@echo "=== Helm Release ==="
+	@helm status $(HELM_RELEASE) -n $(K8S_NAMESPACE) 2>/dev/null | sed -n '1,8p' || echo "Release not found"
+
+k8s-logs:
+	@test -n "$(svc)" || (echo "Usage: make k8s-logs svc=core|core-scheduler|agent-hello" && exit 1)
+	kubectl logs -n $(K8S_NAMESPACE) -l app.kubernetes.io/component=$(svc) -f --tail=100
+
+k8s-logs-all:
+	kubectl logs -n $(K8S_NAMESPACE) -l app.kubernetes.io/instance=$(HELM_RELEASE) -f --tail=50 --max-log-requests=10
+
+k8s-shell:
+	@test -n "$(svc)" || (echo "Usage: make k8s-shell svc=core|core-scheduler|agent-hello" && exit 1)
+	kubectl exec -it -n $(K8S_NAMESPACE) $$(kubectl get pod -n $(K8S_NAMESPACE) -l app.kubernetes.io/component=$(svc) -o jsonpath='{.items[0].metadata.name}') -- /bin/sh
+
+k8s-destroy:
+	helm uninstall $(HELM_RELEASE) -n $(K8S_NAMESPACE)
+	@echo "Release $(HELM_RELEASE) uninstalled from namespace $(K8S_NAMESPACE)"
+
+k8s-port-forward:
+	@test -n "$(svc)" || (echo "Usage: make k8s-port-forward svc=core|agent-hello port=8080:80" && exit 1)
+	@test -n "$(port)" || (echo "Usage: make k8s-port-forward svc=core|agent-hello port=8080:80" && exit 1)
+	kubectl port-forward -n $(K8S_NAMESPACE) svc/$(HELM_RELEASE)-$(svc) $(port)
