@@ -51,6 +51,13 @@ Agent-facing index of all project documentation. Load this file first to underst
 
 ---
 
+## Workspace Setup (`docs/workspace-setup/`)
+
+- [docs/workspace-setup/en/setup.md](docs/workspace-setup/en/setup.md) — Full workspace setup: clone, devcontainer, providers, Foundry monitor
+- [docs/workspace-setup/ua/setup.md](docs/workspace-setup/ua/setup.md) — Повне налаштування workspace (UA)
+
+---
+
 ## Developer Workflow (`docs/`)
 
 ### Agent Development

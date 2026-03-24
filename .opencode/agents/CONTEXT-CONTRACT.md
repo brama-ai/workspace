@@ -9,8 +9,8 @@ Default rule for pipeline agents:
 
 Allowed exceptions:
 
-- `planner`: may read `.opencode/pipeline/handoff.md` for resume/continuity if it exists.
-- `summarizer`: may read `.opencode/pipeline/handoff.md` as its primary aggregation source.
+- `u-planner`: may read `.opencode/pipeline/handoff.md` for resume/continuity if it exists.
+- `u-summarizer`: may read `.opencode/pipeline/handoff.md` as its primary aggregation source.
 
 Caller responsibilities:
 

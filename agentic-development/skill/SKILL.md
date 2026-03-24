@@ -15,7 +15,7 @@ description: >
 > **IMPORTANT — Sisyphus Orchestrator Exception:**
 > If you are the Sisyphus orchestrator (running via `/auto` or `ultrawork` command in OpenCode),
 > do NOT use this skill to delegate. You ARE the orchestrator.
-> Instead, use `delegate_task()` with `s-*` subagents (s-architect, s-coder, s-validator, s-tester, s-auditor, s-documenter, s-summarizer).
+> Instead, use `delegate_task()` with `u-*` unified agents (u-architect, u-coder, u-validator, u-tester, u-auditor, u-summarizer) .
 > Read `.opencode/pipeline/handoff.md` for context. Follow the pipeline phases from your `prompt_append`.
 > This skill is only for external delegation FROM Claude Code or FROM a user prompt — not for self-delegation within a running pipeline.
 

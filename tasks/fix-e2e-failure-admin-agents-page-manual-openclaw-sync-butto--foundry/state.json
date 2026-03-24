@@ -1,0 +1,36 @@
+{
+  "task_id": "fix-e2e-failure-admin-agents-page-manual-openclaw-sync-butto--foundry",
+  "workflow": "foundry",
+  "started_at": "2026-03-24T21:36:53.249447Z",
+  "attempt": 1,
+  "status": "in_progress",
+  "current_step": "u-coder",
+  "resume_from": "u-coder",
+  "updated_at": "2026-03-24T22:48:01.500214Z",
+  "task_file": "/workspaces/brama/tasks/fix-e2e-failure-admin-agents-page-manual-openclaw-sync-butto--foundry/task.md",
+  "branch": "pipeline/fix-e2e-failure-admin-agents-page-manual-openclaw-sync-butto",
+  "agents": [
+    {
+      "agent": "u-planner",
+      "status": "done",
+      "model": "anthropic/claude-opus-4-6",
+      "duration_seconds": 109,
+      "input_tokens": 16,
+      "output_tokens": 3280,
+      "cost": 1.1744,
+      "call_count": 1,
+      "updated_at": "2026-03-24T22:46:44.463803Z"
+    },
+    {
+      "agent": "u-coder",
+      "status": "done",
+      "model": "anthropic/claude-sonnet-4-6",
+      "duration_seconds": 73,
+      "input_tokens": 15,
+      "output_tokens": 2855,
+      "cost": 0.189,
+      "call_count": 1,
+      "updated_at": "2026-03-24T22:48:01.500202Z"
+    }
+  ]
+}

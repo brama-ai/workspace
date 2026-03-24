@@ -3,6 +3,7 @@
 
 # Claude Code — only local settings are personal
 .claude/settings.local.json
+.claude/pipeline/
 
 # Cursor — track skills, ignore the rest
 .cursor/*

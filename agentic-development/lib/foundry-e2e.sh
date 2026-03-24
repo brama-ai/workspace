@@ -68,14 +68,20 @@ run_e2e_suite() {
   [[ -d "$e2e_dir" ]] || { echo "E2E directory not found: $e2e_dir" >&2; return 1; }
 
   {
-    echo "==> make e2e-prepare"
-    make -C "$REPO_ROOT" e2e-prepare
-    echo "==> make e2e-env-check"
-    make -C "$REPO_ROOT" e2e-env-check
-    echo "==> npm install"
-    (cd "$e2e_dir" && npm install)
-    echo "==> playwright install chromium --with-deps"
-    (cd "$e2e_dir" && npx playwright install chromium --with-deps)
+    # Skip npm install if node_modules already exists
+    if [[ ! -d "$e2e_dir/node_modules" ]]; then
+      echo "==> npm install (first run)"
+      (cd "$e2e_dir" && npm install)
+    fi
+
+    # Skip playwright install if chromium binary already present
+    if [[ -d "/ms-playwright" ]] || [[ -d "$HOME/.cache/ms-playwright" ]]; then
+      : # chromium already installed
+    else
+      echo "==> playwright install chromium"
+      (cd "$e2e_dir" && npx playwright install chromium --with-deps)
+    fi
+
     echo "==> codeceptjs run --reporter json"
     (
       cd "$e2e_dir"
