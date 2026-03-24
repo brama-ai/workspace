@@ -122,7 +122,7 @@ help:
 		'make external-agent-list  List detected external agent compose fragments in docker/compose.fragments/' \
 		'make external-agent-up name=X    Start/update a named external agent (e.g. make external-agent-up name=my-agent)' \
 		'make external-agent-down name=X  Stop a named external agent (e.g. make external-agent-down name=my-agent)' \
-		'make external-agent-clone repo=URL name=X  Clone an agent repo into agents/<name> (e.g. make external-agent-clone repo=https://github.com/org/my-agent name=my-agent)' \
+		'make external-agent-clone repo=URL name=X  Clone an agent repo into brama-agents/<name> (e.g. make external-agent-clone repo=https://github.com/org/my-agent name=my-agent)' \
 		'make verify-local-up      Start the minimal local stack for admin login, LiteLLM, and landing verification' \
 		'make verify-local-smoke   Verify admin login, LiteLLM, and landing endpoints via curl-based smoke checks' \
 		'make verify-local         Run local smoke verification and then the full E2E suite' \

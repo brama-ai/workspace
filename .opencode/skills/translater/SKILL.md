@@ -24,8 +24,8 @@ Context-aware translation agent for the Brama product repository's bilingual (Uk
 
 | Content Type | File Patterns | Translation Direction |
 |-------------|---------------|----------------------|
-| Symfony translations | `agents/*/translations/messages.*.yaml` | EN <-> UK bidirectional |
-| Twig templates | `agents/*/templates/**/*.html.twig` | Extract hardcoded strings to YAML |
+| Symfony translations | `brama-agents/*/translations/messages.*.yaml` | EN <-> UK bidirectional |
+| Twig templates | `brama-agents/*/templates/**/*.html.twig` | Extract hardcoded strings to YAML |
 | Documentation | `brama-core/docs/**/{ua,en}/*.md` | UA -> EN mirror, EN -> UA mirror |
 | Agent prompts | `.opencode/agents/*.md`, `.claude/skills/**/*.md` | Context-dependent |
 | Error messages | `src/**/*Exception.php`, `src/**/*Error.php` | EN -> UK |
@@ -34,7 +34,7 @@ Context-aware translation agent for the Brama product repository's bilingual (Uk
 
 ### Step 1 — Detect What Needs Translation
 
-1. **YAML message files**: Compare keys between `messages.en.yaml` and `messages.uk.yaml` for each app in `agents/`.
+1. **YAML message files**: Compare keys between `messages.en.yaml` and `messages.uk.yaml` for each app in `brama-agents/`.
 2. **Documentation**: Check `brama-core/docs/**/ua/` and `brama-core/docs/**/en/` directories. Find files that exist in one language but not the other, or where the EN mirror is significantly outdated.
 3. **Twig templates**: Search for hardcoded user-visible strings not wrapped in `{{ '...'|trans }}`.
 4. **Changed files**: If given a list of changed files, focus on those first.
@@ -125,8 +125,8 @@ When encountering a new domain term not in this glossary:
 |----------|------|
 | Core EN translations | `brama-core/src/translations/messages.en.yaml` |
 | Core UK translations | `brama-core/src/translations/messages.uk.yaml` |
-| Agent translations | `agents/<agent>/translations/messages.*.yaml` |
-| Twig templates | `agents/*/templates/` |
+| Agent translations | `brama-agents/<agent>/translations/messages.*.yaml` |
+| Twig templates | `brama-agents/*/templates/` |
 | Documentation | `brama-core/docs/` |
 | Doc structure rules | `.opencode/skills/documenter/SKILL.md` |
 

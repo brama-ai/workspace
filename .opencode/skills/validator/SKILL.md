@@ -8,11 +8,11 @@ description: "Validator role: static analysis workflow, PHPStan/CS-Fixer rules, 
 | App | CS Check | CS Fix | Analyse |
 |-----|----------|--------|---------|
 | brama-core/src/ | `make cs-check` | `make cs-fix` | `make analyse` |
-| agents/knowledge-agent/ | `make knowledge-cs-check` | `make knowledge-cs-fix` | `make knowledge-analyse` |
-| agents/hello-agent/ | `make hello-cs-check` | `make hello-cs-fix` | `make hello-analyse` |
-| agents/dev-reporter-agent/ | `make dev-reporter-cs-check` | `make dev-reporter-cs-fix` | `make dev-reporter-analyse` |
-| agents/news-maker-agent/ | `make news-cs-check` | `make news-cs-fix` | `make news-analyse` |
-| agents/wiki-agent/ | — | — | `make wiki-build` |
+| brama-agents/knowledge-agent/ | `make knowledge-cs-check` | `make knowledge-cs-fix` | `make knowledge-analyse` |
+| brama-agents/hello-agent/ | `make hello-cs-check` | `make hello-cs-fix` | `make hello-analyse` |
+| brama-agents/dev-reporter-agent/ | `make dev-reporter-cs-check` | `make dev-reporter-cs-fix` | `make dev-reporter-analyse` |
+| brama-agents/news-maker-agent/ | `make news-cs-check` | `make news-cs-fix` | `make news-analyse` |
+| brama-agents/wiki-agent/ | — | — | `make wiki-build` |
 
 ## Tool Configuration
 
@@ -52,6 +52,6 @@ description: "Validator role: static analysis workflow, PHPStan/CS-Fixer rules, 
 
 | What | Path | When |
 |------|------|------|
-| PHPStan config | `agents/<app>/phpstan.neon` | Understanding error context |
-| CS Fixer config | `agents/<app>/.php-cs-fixer.dist.php` | Understanding rule exceptions |
-| Baseline | `agents/<app>/phpstan-baseline.neon` | Checking existing suppressions |
+| PHPStan config | `brama-agents/<app>/phpstan.neon` | Understanding error context |
+| CS Fixer config | `brama-agents/<app>/.php-cs-fixer.dist.php` | Understanding rule exceptions |
+| Baseline | `brama-agents/<app>/phpstan-baseline.neon` | Checking existing suppressions |

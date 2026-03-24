@@ -68,8 +68,8 @@ else
 fi
 
 # Hello agent health controller
-if [ -f "agents/hello-agent/src/Controller/HealthController.php" ]; then
-    if grep -q "health/ready" "agents/hello-agent/src/Controller/HealthController.php"; then
+if [ -f "brama-agents/hello-agent/src/Controller/HealthController.php" ]; then
+    if grep -q "health/ready" "brama-agents/hello-agent/src/Controller/HealthController.php"; then
         echo "✅ Hello agent has enhanced health endpoints"
     else
         echo "❌ Hello agent missing enhanced health endpoints"
@@ -80,8 +80,8 @@ else
 fi
 
 # Knowledge agent health controller
-if [ -f "agents/knowledge-agent/src/Controller/HealthController.php" ]; then
-    if grep -q "health/ready" "agents/knowledge-agent/src/Controller/HealthController.php"; then
+if [ -f "brama-agents/knowledge-agent/src/Controller/HealthController.php" ]; then
+    if grep -q "health/ready" "brama-agents/knowledge-agent/src/Controller/HealthController.php"; then
         echo "✅ Knowledge agent has enhanced health endpoints"
     else
         echo "❌ Knowledge agent missing enhanced health endpoints"
@@ -92,8 +92,8 @@ else
 fi
 
 # News maker agent health controller
-if [ -f "agents/news-maker-agent/app/routers/health.py" ]; then
-    if grep -q "health/ready" "agents/news-maker-agent/app/routers/health.py"; then
+if [ -f "brama-agents/news-maker-agent/app/routers/health.py" ]; then
+    if grep -q "health/ready" "brama-agents/news-maker-agent/app/routers/health.py"; then
         echo "✅ News maker agent has enhanced health endpoints"
     else
         echo "❌ News maker agent missing enhanced health endpoints"

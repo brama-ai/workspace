@@ -21,11 +21,11 @@ description: "Coder role: implementation workflow, tech stack, per-app targets, 
 | App | Test | Analyse | CS Fix | Migrate |
 |-----|------|---------|--------|---------|
 | brama-core/src/ | `make test` | `make analyse` | `make cs-fix` | `make migrate` |
-| agents/knowledge-agent/ | `make knowledge-test` | `make knowledge-analyse` | `make knowledge-cs-fix` | `make knowledge-migrate` |
-| agents/hello-agent/ | `make hello-test` | `make hello-analyse` | `make hello-cs-fix` | — |
-| agents/dev-reporter-agent/ | `make dev-reporter-test` | `make dev-reporter-analyse` | `make dev-reporter-cs-fix` | `make dev-reporter-migrate` |
-| agents/news-maker-agent/ | `make news-test` | `make news-analyse` | `make news-cs-fix` | `make news-migrate` |
-| agents/wiki-agent/ | `make wiki-test` | `make wiki-build` | — | — |
+| brama-agents/knowledge-agent/ | `make knowledge-test` | `make knowledge-analyse` | `make knowledge-cs-fix` | `make knowledge-migrate` |
+| brama-agents/hello-agent/ | `make hello-test` | `make hello-analyse` | `make hello-cs-fix` | — |
+| brama-agents/dev-reporter-agent/ | `make dev-reporter-test` | `make dev-reporter-analyse` | `make dev-reporter-cs-fix` | `make dev-reporter-migrate` |
+| brama-agents/news-maker-agent/ | `make news-test` | `make news-analyse` | `make news-cs-fix` | `make news-migrate` |
+| brama-agents/wiki-agent/ | `make wiki-test` | `make wiki-build` | — | — |
 
 ## Scope Rules (CRITICAL)
 

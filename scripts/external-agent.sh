@@ -3,14 +3,14 @@
 # external-agent.sh — External agent workspace management
 # =============================================================================
 #
-# Manages external agent checkouts under agents/<agent-name>/ and their
+# Manages external agent checkouts under brama-agents/<agent-name>/ and their
 # compose fragments under compose.fragments/<agent-name>.yaml.
 #
 # Commands:
 #   list                      List detected external agent compose fragments
 #   up   <agent-name>         Start/update a named external agent
 #   down <agent-name>         Stop a named external agent
-#   clone <git-url> <name>    Clone an agent repo into agents/<name>
+#   clone <git-url> <name>    Clone an agent repo into brama-agents/<name>
 #
 # Usage (via Makefile):
 #   make external-agent-list
@@ -68,7 +68,7 @@ cmd_list() {
         name="$(basename "$fragment" .yaml)"
         local checkout="$PROJECTS_DIR/$name"
         local checkout_status="(no checkout)"
-        [ -d "$checkout" ] && checkout_status="agents/$name"
+        [ -d "$checkout" ] && checkout_status="brama-agents/$name"
         printf '  %-30s %s\n' "$name" "$checkout_status"
         found=1
     done
@@ -129,14 +129,14 @@ cmd_clone() {
 
     # Clone the repository
     if [ -d "$checkout" ]; then
-        warn "Checkout already exists at agents/$name — pulling latest..."
+        warn "Checkout already exists at brama-agents/$name — pulling latest..."
         git -C "$checkout" pull
-        ok "Updated agents/$name"
+        ok "Updated brama-agents/$name"
     else
-        info "Cloning $repo into agents/$name..."
+        info "Cloning $repo into brama-agents/$name..."
         mkdir -p "$PROJECTS_DIR"
         git clone "$repo" "$checkout"
-        ok "Cloned into agents/$name"
+        ok "Cloned into brama-agents/$name"
     fi
 
     # Copy compose fragment if available
@@ -153,7 +153,7 @@ cmd_clone() {
     echo ""
     echo "  Next steps:"
     echo "    1. Review docker/compose.fragments/$name.yaml"
-    echo "    2. Add any required env vars to agents/$name/.env.local"
+    echo "    2. Add any required env vars to brama-agents/$name/.env.local"
     echo "    3. make external-agent-up name=$name"
     echo "    4. make agent-discover"
     echo ""

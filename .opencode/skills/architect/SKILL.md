@@ -8,7 +8,7 @@ description: "Architect role: OpenSpec workflow, proposal scaffold, spec format,
 OpenSpec is **per-project** — specs live inside each project, not at the workspace root.
 
 Every API/architecture change MUST follow:
-1. **Identify target project** — determine which project owns the change (`brama-core/`, `agents/<name>/`, etc.)
+1. **Identify target project** — determine which project owns the change (`brama-core/`, `brama-agents/<name>/`, etc.)
 2. **Spec first** — write spec in `<project>/openspec/changes/<id>/specs/`
 3. **Validate** — `cd <project> && openspec validate <id> --strict`
 4. **Implement** — code matches spec contract
@@ -29,7 +29,7 @@ Scaffold under `<project>/openspec/changes/<change-id>/`:
 
 Common project paths:
 - `brama-core/openspec/changes/` — platform core
-- `agents/<name>/openspec/changes/` — individual agents
+- `brama-agents/<name>/openspec/changes/` — individual agents
 - `brama-website/openspec/changes/` — website
 
 ## Spec Delta Format
@@ -79,9 +79,9 @@ A good `design.md` covers:
 | Component | Stack | Key Files |
 |-----------|-------|-----------|
 | Core | PHP 8.5, Symfony 7 | `brama-core/src/src/`, `brama-core/src/config/` |
-| Knowledge agent | PHP 8.5, Symfony 7 | `agents/knowledge-agent/src/` |
-| News maker | Python, FastAPI | `agents/news-maker-agent/app/` |
-| Wiki agent | Node.js, TS | `agents/wiki-agent/src/` |
+| Knowledge agent | PHP 8.5, Symfony 7 | `brama-agents/knowledge-agent/src/` |
+| News maker | Python, FastAPI | `brama-agents/news-maker-agent/app/` |
+| Wiki agent | Node.js, TS | `brama-agents/wiki-agent/src/` |
 | Infra | Postgres, Redis, RabbitMQ | `docker/compose.yaml`, `docker/compose.core.yaml` |
 
 ## Rules
