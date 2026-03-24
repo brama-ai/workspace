@@ -239,31 +239,71 @@ collect_runtime_issue_lines() {
   python3 - "$tmp_file" <<'PYEOF' 2>/dev/null
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 path = Path(sys.argv[1])
 if not path.exists():
     raise SystemExit(0)
 
-patterns = [
+max_age_seconds = 20 * 60
+now = datetime.now(timezone.utc)
+
+positive_patterns = [
     r"syntax error",
     r"ProviderModelNotFoundError",
     r"Model not found",
     r"LOOP_DETECTED",
     r"timed out",
     r"no code changes",
-    r"failed",
+    r"failed to",
+    r"Pipeline FAILED",
+    r"run_failed",
     r"unauthorized",
     r"invalid.*api.?key",
+    r"authentication.*fail",
     r"environment check failed",
     r"preflight failed",
+    r"headless start blocked",
 ]
-regex = re.compile("|".join(f"(?:{p})" for p in patterns), re.IGNORECASE)
+negative_patterns = [
+    r"failed=0\b",
+    r"\bstatus pending=",
+    r"\bstatus in_progress=",
+    r"\bstatus completed=",
+    r"\bcommand=monitor\b",
+    r"\bcommand=stats\b",
+    r"\bheadless started pid=",
+    r"\bheadless workers stopped\b",
+    r"\bheadless already running\b",
+    r"\bpreflight ok\b",
+    r"\benvironment has warnings\b",
+]
+positive = re.compile("|".join(f"(?:{p})" for p in positive_patterns), re.IGNORECASE)
+negative = re.compile("|".join(f"(?:{p})" for p in negative_patterns), re.IGNORECASE)
+bracket_ts = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]")
+
+def is_recent(line: str) -> bool:
+    match = bracket_ts.match(line)
+    if not match:
+        return True
+    try:
+        ts = datetime.strptime(match.group(1), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return True
+    return (now - ts).total_seconds() <= max_age_seconds
+
 lines = []
 seen = set()
 for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines():
     line = raw.strip()
-    if not line or not regex.search(line):
+    if not line:
+        continue
+    if negative.search(line):
+        continue
+    if not positive.search(line):
+        continue
+    if not is_recent(line):
         continue
     if line in seen:
         continue

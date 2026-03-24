@@ -21,13 +21,6 @@ Task → Planner → Preflight → Env-Check → Architect → Coder → Validat
 2. **Env-Check** (`env_check()`): Валідує оточення (PHP, Python, Node, PostgreSQL, Redis, extensions)
 
 Детальніше про env-check дивіться в [README.md](README.md#перевірка-оточення-env-check).
-Task → Planner → Preflight → Env-Check → Architect → Coder → Validator → Tester → Documenter → Summarizer → [Deployer]
-                       ↓           ↓
-                 preflight()  env_check()    ↓
-                                              Auditor (optional)
-                                                                                                              ↑
-                                                                                                    Phase 8 (opt-in, deploy: true)
-```
 
 ### Агенти за ролями
 

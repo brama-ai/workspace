@@ -136,9 +136,18 @@ Document what the deployer needs:
 
 ## Auditor
 
-- **Status**: pending
-- **Verdict**: —
-- **Recommendations**: —
+- **Status**: done
+- **Verdict**: **PASS** (zero blocking findings)
+- **Findings**: 3 non-blocking issues found and fixed by auditor
+  - [S-01] Duplicate pipeline diagram in `agentic-development/AGENTS.md` — removed duplicate lines
+  - [D-01] Broken relative links in `docs/pipeline/en/deployer-agent.md` — fixed `../` → `../../`
+  - [D-02] Broken relative links in `docs/pipeline/ua/deployer-agent.md` — fixed `../` → `../../`
+- **Files fixed**:
+  - `agentic-development/AGENTS.md` — removed duplicate pipeline diagram
+  - `docs/pipeline/en/deployer-agent.md` — fixed 3 broken relative links
+  - `docs/pipeline/ua/deployer-agent.md` — fixed 3 broken relative links
+- **Report**: `.opencode/pipeline/reports/20260324_145955_audit.md`
+- **Recommendations**: Consider adding `docs/pipeline/INDEX.md` when more pipeline docs are added (non-blocking)
 
 ## Documenter
 
@@ -154,3 +163,4 @@ Document what the deployer needs:
 ---
 
 - **Commit (architect)**: d7c2187
+- **Commit (coder)**: 41a1ffc

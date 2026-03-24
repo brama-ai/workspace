@@ -205,6 +205,6 @@ The deployer appends to `.opencode/pipeline/handoff.md`:
 
 ## Related Documentation
 
-- [Pipeline Workflow](../agent-development/en/workflow.md) — full pipeline overview
-- [Foundry](../agent-development/en/foundry.md) — Foundry runtime
-- [Ultraworks](../agent-development/en/ultraworks.md) — Ultraworks runtime
+- [Pipeline Workflow](../../agent-development/en/workflow.md) — full pipeline overview
+- [Foundry](../../agent-development/en/foundry.md) — Foundry runtime
+- [Ultraworks](../../agent-development/en/ultraworks.md) — Ultraworks runtime

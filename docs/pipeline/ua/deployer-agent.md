@@ -205,6 +205,6 @@ Deployer додає до `.opencode/pipeline/handoff.md`:
 
 ## Пов'язана документація
 
-- [Робочий процес пайплайну](../agent-development/en/workflow.md) — повний огляд пайплайну
-- [Foundry](../agent-development/en/foundry.md) — рантайм Foundry
-- [Ultraworks](../agent-development/en/ultraworks.md) — рантайм Ultraworks
+- [Робочий процес пайплайну](../../agent-development/en/workflow.md) — повний огляд пайплайну
+- [Foundry](../../agent-development/en/foundry.md) — рантайм Foundry
+- [Ultraworks](../../agent-development/en/ultraworks.md) — рантайм Ultraworks
