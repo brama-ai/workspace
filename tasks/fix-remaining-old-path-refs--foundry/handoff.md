@@ -66,10 +66,12 @@ Search for and fix stale references in:
 
 ## Validator
 
-- **Status**: pending
-- **PHPStan**: —
-- **CS-check**: —
-- **Files fixed**: —
+- **Status**: done
+- **PHPStan**:
+  - No changed apps under `apps/brama-core/`, `apps/knowledge-agent/`, `apps/hello-agent/`, or `apps/news-maker-agent/`; validation not run per task scope
+- **CS-check**:
+  - No changed apps under `apps/brama-core/`, `apps/knowledge-agent/`, `apps/hello-agent/`, or `apps/news-maker-agent/`; validation not run per task scope
+- **Files fixed**: none
 
 ## Tester
 
@@ -95,3 +97,4 @@ Search for and fix stale references in:
 - **Next task recommendation**: —
 
 ---
+- **Commit (coder)**: 46d3e7d
