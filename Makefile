@@ -1,6 +1,6 @@
-CORE_ROOT := core
+CORE_ROOT := brama-core
 CORE_SRC  := $(CORE_ROOT)/src
-AGENTS_DIR := agents
+AGENTS_DIR := brama-agents
 TEST_ROOT := $(CORE_ROOT)/tests
 
 DOCKER_DIR := docker
@@ -39,7 +39,7 @@ E2E_BASE_URL ?= http://localhost:18080
 IS_DEVCONTAINER := $(or $(REMOTE_CONTAINERS),$(CODESPACES))
 # Load devcontainer-specific E2E URLs when running inside devcontainer
 E2E_ENV_FILE := $(if $(IS_DEVCONTAINER),$(wildcard .env.e2e.devcontainer),)
-E2E_ENV_EXPORT := $(if $(E2E_ENV_FILE),set -a && . ./$(E2E_ENV_FILE) && set +a &&,)
+E2E_ENV_EXPORT := $(if $(E2E_ENV_FILE),set -a && . $(CURDIR)/$(E2E_ENV_FILE) && set +a &&,)
 # run-in <service> <local-path> <command...>  — run locally (cd <local-path>) or via docker compose exec
 define run-in
 $(if $(IS_DEVCONTAINER),cd $(2) && $(3),$(COMPOSE) exec $(1) $(3))

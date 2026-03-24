@@ -1,0 +1,11 @@
+{
+  "task_id": "fix-e2e-test-runner-paths--foundry",
+  "workflow": "foundry",
+  "started_at": "2026-03-24T12:49:55.900319Z",
+  "attempt": 1,
+  "status": "in_progress",
+  "current_step": "planner",
+  "resume_from": "planner",
+  "updated_at": "2026-03-24T12:49:56.029106Z",
+  "branch": "pipeline/fix-e2e-test-runner-verify-tests-pass-after-path-f"
+}
