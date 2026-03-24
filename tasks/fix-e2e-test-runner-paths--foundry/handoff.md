@@ -80,3 +80,4 @@ After the Docker Compose agent paths are fixed (see task: fix-docker-compose-age
 ---
 
 - **Commit (coder)**: d3ce2fd
+- **Commit (validator)**: 36c3c30
