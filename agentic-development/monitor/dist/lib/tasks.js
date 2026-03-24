@@ -1,0 +1,145 @@
+import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+const STATUS_ORDER = {
+    in_progress: 0,
+    completed: 1,
+    failed: 2,
+    suspended: 3,
+};
+function readJson(path) {
+    try {
+        return JSON.parse(readFileSync(path, "utf-8"));
+    }
+    catch {
+        return null;
+    }
+}
+function extractTitle(taskDir, fallback) {
+    const mdPath = join(taskDir, "task.md");
+    try {
+        const content = readFileSync(mdPath, "utf-8");
+        for (const line of content.split("\n")) {
+            if (line.startsWith("# "))
+                return line.slice(2).trim();
+        }
+    }
+    catch { }
+    return fallback;
+}
+function extractPriority(taskDir) {
+    const mdPath = join(taskDir, "task.md");
+    try {
+        const firstLine = readFileSync(mdPath, "utf-8").split("\n")[0];
+        const m = firstLine.match(/<!--\s*priority:\s*(\d+)\s*-->/);
+        if (m)
+            return parseInt(m[1], 10);
+    }
+    catch { }
+    return 1;
+}
+function parseAgents(raw) {
+    return raw.map((a) => ({
+        agent: a.agent ?? a.name ?? "",
+        status: a.status ?? "pending",
+        model: a.model,
+        durationSeconds: typeof a.duration_seconds === "number" ? a.duration_seconds : undefined,
+        inputTokens: typeof a.input_tokens === "number" ? a.input_tokens : undefined,
+        outputTokens: typeof a.output_tokens === "number" ? a.output_tokens : undefined,
+        cost: typeof a.cost === "number" ? a.cost : undefined,
+        callCount: typeof a.call_count === "number" ? a.call_count : undefined,
+    }));
+}
+export function readAllTasks(root) {
+    const counts = {
+        pending: 0,
+        in_progress: 0,
+        completed: 0,
+        failed: 0,
+        suspended: 0,
+        cancelled: 0,
+    };
+    const tasks = [];
+    let entries;
+    try {
+        entries = readdirSync(root).sort();
+    }
+    catch {
+        return { tasks, counts, focusDir: null };
+    }
+    for (const entry of entries) {
+        // Match both --foundry and --ultraworks task dirs
+        let workflow;
+        if (entry.includes("--foundry")) {
+            workflow = "foundry";
+        }
+        else if (entry.includes("--ultraworks")) {
+            workflow = "ultraworks";
+        }
+        else {
+            continue;
+        }
+        const taskDir = join(root, entry);
+        const statePath = join(taskDir, "state.json");
+        const state = existsSync(statePath) ? readJson(statePath) : null;
+        const status = state?.status ?? "pending";
+        // Count
+        if (status in counts) {
+            counts[status]++;
+        }
+        // Skip cancelled from task list
+        if (status === "cancelled")
+            continue;
+        const slug = entry.replace(/--(?:foundry|ultraworks).*/, "");
+        const title = extractTitle(taskDir, slug);
+        const priority = extractPriority(taskDir);
+        const agents = Array.isArray(state?.agents) ? parseAgents(state.agents) : undefined;
+        // Read ultraworks meta.json for session/worktree/branch info
+        let sessionName;
+        let worktreePath;
+        let branchName;
+        if (workflow === "ultraworks") {
+            const meta = readJson(join(taskDir, "meta.json"));
+            if (meta) {
+                sessionName = meta.session_name;
+                worktreePath = meta.worktree_path;
+                branchName = meta.branch_name;
+            }
+        }
+        tasks.push({
+            dir: taskDir,
+            workflow,
+            status,
+            title,
+            priority,
+            currentStep: state?.current_step ?? "",
+            workerId: state?.worker_id ?? "",
+            startedAt: state?.started_at ?? "",
+            updatedAt: state?.updated_at ?? "",
+            agents,
+            sessionName,
+            worktreePath,
+            branchName,
+        });
+    }
+    // Sort: by status order, then pending by priority desc, then by dir name
+    tasks.sort((a, b) => {
+        const oa = STATUS_ORDER[a.status] ?? 4;
+        const ob = STATUS_ORDER[b.status] ?? 4;
+        if (oa !== ob)
+            return oa - ob;
+        if (a.status === "pending" && b.status === "pending") {
+            return b.priority - a.priority;
+        }
+        return a.dir.localeCompare(b.dir);
+    });
+    // Find focus: most recently updated in_progress, or most recent overall
+    let focusDir = null;
+    const inProgress = tasks.filter((t) => t.status === "in_progress");
+    if (inProgress.length > 0) {
+        focusDir = inProgress.reduce((a, b) => (a.updatedAt || "") >= (b.updatedAt || "") ? a : b).dir;
+    }
+    else if (tasks.length > 0) {
+        focusDir = tasks.reduce((a, b) => (a.updatedAt || "") >= (b.updatedAt || "") ? a : b).dir;
+    }
+    return { tasks, counts, focusDir };
+}
