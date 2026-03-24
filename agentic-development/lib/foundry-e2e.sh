@@ -68,31 +68,55 @@ run_e2e_suite() {
   [[ -d "$e2e_dir" ]] || { echo "E2E directory not found: $e2e_dir" >&2; return 1; }
 
   {
-    echo "==> make e2e-prepare"
-    make -C "$REPO_ROOT" e2e-prepare
-    echo "==> make e2e-env-check"
-    make -C "$REPO_ROOT" e2e-env-check
-    echo "==> npm install"
-    (cd "$e2e_dir" && npm install)
-    echo "==> playwright install chromium --with-deps"
-    (cd "$e2e_dir" && npx playwright install chromium --with-deps)
-    echo "==> codeceptjs run --reporter json"
+    # Load devcontainer E2E env vars
+    if [[ -f "$REPO_ROOT/.env.e2e.devcontainer" ]]; then
+      # shellcheck disable=SC1091
+      set -a; source "$REPO_ROOT/.env.e2e.devcontainer"; set +a
+    fi
+    export BASE_URL="${BASE_URL:-http://localhost:18080}"
+    export CORE_DB_NAME="${CORE_DB_NAME:-brama_test}"
+    export KNOWLEDGE_URL="${KNOWLEDGE_URL:-http://localhost:18083}"
+    export NEWS_URL="${NEWS_URL:-http://localhost:18084}"
+    export HELLO_URL="${HELLO_URL:-http://localhost:18085}"
+    export OPENCLAW_URL="${OPENCLAW_URL:-http://localhost:28789}"
+
+    # Quick health check — no docker build, no make e2e-prepare
+    echo "==> E2E env-check"
+    make -C "$REPO_ROOT" e2e-env-check || {
+      echo "E2E stack not healthy. Start it first: make e2e-prepare" >&2
+      return 1
+    }
+
+    # Ensure deps are present (fast if already installed)
+    [[ -d "$e2e_dir/node_modules" ]] || (cd "$e2e_dir" && npm install)
+
+    # Run with --steps for live terminal progress; capture full output for JSON parsing
+    echo "==> codeceptjs run --steps"
+    local e2e_exit=0
     (
       cd "$e2e_dir"
-      if [[ -f "$REPO_ROOT/.env.e2e.devcontainer" ]]; then
-        # shellcheck disable=SC1091
-        set -a; source "$REPO_ROOT/.env.e2e.devcontainer"; set +a
-      fi
-      export BASE_URL="${BASE_URL:-http://localhost:18080}"
-      export CORE_DB_NAME="${CORE_DB_NAME:-brama_test}"
-      export KNOWLEDGE_URL="${KNOWLEDGE_URL:-http://localhost:18083}"
-      export NEWS_URL="${NEWS_URL:-http://localhost:18084}"
-      export HELLO_URL="${HELLO_URL:-http://localhost:18085}"
-      export OPENCLAW_URL="${OPENCLAW_URL:-http://localhost:28789}"
-      local args=(npx codeceptjs run --steps --reporter json)
+      local args=(npx codeceptjs run --steps)
       [[ "$SMOKE_MODE" == true ]] && args+=(--grep @smoke)
       "${args[@]}"
-    ) > "$JSON_REPORT"
+    ) || e2e_exit=$?
+
+    # Parse codeceptjs output dir for failures (output/ has screenshots, logs)
+    # Generate JSON report from a quick --reporter json re-run with --dry-run if available,
+    # otherwise parse the step output we already have
+    if [[ $e2e_exit -ne 0 ]]; then
+      echo "==> E2E had failures (exit $e2e_exit) — generating JSON report for task creation"
+      (
+        cd "$e2e_dir"
+        local args=(npx codeceptjs run --reporter json)
+        [[ "$SMOKE_MODE" == true ]] && args+=(--grep @smoke)
+        "${args[@]}"
+      ) > "$JSON_REPORT" 2>/dev/null || true
+    else
+      echo "==> All E2E tests passed — no fix tasks needed"
+      echo '{"stats":{"passes":0,"failures":0},"passes":[],"failures":[]}' > "$JSON_REPORT"
+    fi
+
+    echo "Report: $JSON_REPORT"
   } 2>&1 | tee "$RUN_LOG"
 }
 
