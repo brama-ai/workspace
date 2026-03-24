@@ -54,3 +54,20 @@ None. The fix is minimal and exactly addresses the root cause.
 ## Recommended follow-up tasks
 
 - **Pre-existing test state isolation in news_maker_admin_test.js**: Tests `can add a news source`, `can toggle source enabled/disabled`, and `can delete a news source` fail when run together because they depend on shared state (the "E2E Test Source" row). The `can add` test has a guard for existing sources but the delete test may leave the source absent for subsequent runs. Consider adding a `Before`/`After` hook that ensures the test source exists/is cleaned up reliably. Affects: `brama-core/tests/e2e/tests/admin/news_maker_admin_test.js`.
+- **Commit (u-coder)**: a905ba3
+
+## Validator
+
+### Changed Apps
+
+- `apps/brama-core/`
+
+### Results
+
+| App | PHPStan result | CS-check result |
+|-----|----------------|-----------------|
+| `apps/brama-core/` | pass | pass |
+
+### Files Fixed
+
+- None
