@@ -90,10 +90,12 @@ Auto-generated Foundry bugfix task from E2E failure analysis.
 
 ## Summarizer
 
-- **Status**: pending
-- **Summary file**: —
-- **Next task recommendation**: —
+- **Status**: done
+- **Summary file**: `/workspaces/brama/tasks/fix-e2e-failure-admin-agents-page-openclaw-sync-badge-is-vis--foundry/summary.md`
+- **Final recommendation**: створити окрему задачу на явне маркування skipped для optional OpenClaw E2E-сценаріїв у тестових звітах.
+- **Pipeline mark**: **PIPELINE COMPLETE**
 
 ---
 
 - **Commit (coder)**: 24591e0
+- **Commit (validator)**: db9a963
