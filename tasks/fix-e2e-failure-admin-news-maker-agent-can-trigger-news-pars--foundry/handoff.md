@@ -67,7 +67,7 @@ None. The fix is minimal and exactly addresses the root cause.
 
 | App | PHPStan result | CS-check result |
 |-----|----------------|-----------------|
-| `apps/brama-core/` | pass (no PHP changes) | pass (no PHP changes) |
+| `apps/brama-core/` | pass | pass |
 
 ### Files Fixed
 
@@ -88,3 +88,4 @@ None. The fix is minimal and exactly addresses the root cause.
 |------|--------|
 | `brama-core/tests/e2e/tests/admin/news_maker_admin_test.js` | Fix verified (line 141: `null` arg, line 142: `{ timeout: 45000 }` options) |
 | `brama-core/tests/e2e/tests/admin/news_digest_pipeline_test.js` | Fix verified (line 171: `null` arg, line 172: `{ timeout: 45000 }` options) |
+- **Commit (u-coder)**: 0dd37e4
