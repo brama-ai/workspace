@@ -57,10 +57,12 @@ All `context:` and volume mount paths in these Docker Compose files:
 
 ## Validator
 
-- **Status**: pending
-- **PHPStan**: —
-- **CS-check**: —
-- **Files fixed**: —
+- **Status**: done
+- **PHPStan**:
+  - No changed apps in validator scope from `.opencode/pipeline/handoff.md`; not run
+- **CS-check**:
+  - No changed apps in validator scope from `.opencode/pipeline/handoff.md`; not run
+- **Files fixed**: none
 
 ## Tester
 
@@ -87,3 +89,4 @@ All `context:` and volume mount paths in these Docker Compose files:
 
 ---
 
+- **Commit (coder)**: 5b651bd
