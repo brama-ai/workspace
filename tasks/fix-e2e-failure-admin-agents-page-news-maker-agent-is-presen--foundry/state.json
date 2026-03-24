@@ -4,9 +4,9 @@
   "started_at": "2026-03-24T17:38:10.771030Z",
   "attempt": 1,
   "status": "in_progress",
-  "current_step": "investigator",
-  "resume_from": "investigator",
-  "updated_at": "2026-03-24T18:35:35.457907Z",
+  "current_step": "coder",
+  "resume_from": "coder",
+  "updated_at": "2026-03-24T18:48:18.407325Z",
   "task_file": "/workspaces/brama/tasks/fix-e2e-failure-admin-agents-page-news-maker-agent-is-presen--foundry/task.md",
   "branch": "pipeline/fix-e2e-failure-admin-agents-page-news-maker-agent-is-presen",
   "agents": [
@@ -25,12 +25,23 @@
       "agent": "investigator",
       "status": "done",
       "model": "anthropic/claude-opus-4-6",
-      "duration_seconds": 0,
+      "duration_seconds": 3,
       "input_tokens": 16,
       "output_tokens": 3262,
       "cost": 1.2541,
       "call_count": 1,
-      "updated_at": "2026-03-24T18:35:35.457899Z"
+      "updated_at": "2026-03-24T18:35:35.614611Z"
+    },
+    {
+      "agent": "coder",
+      "status": "done",
+      "model": "anthropic/claude-sonnet-4-6",
+      "duration_seconds": 760,
+      "input_tokens": 118,
+      "output_tokens": 24941,
+      "cost": 3.7087,
+      "call_count": 1,
+      "updated_at": "2026-03-24T18:48:18.407317Z"
     }
   ]
 }

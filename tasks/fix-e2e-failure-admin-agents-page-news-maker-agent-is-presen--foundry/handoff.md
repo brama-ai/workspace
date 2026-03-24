@@ -52,10 +52,32 @@ Error: Element "//div[contains(@class,"agent-tab-pane") and contains(@class,"act
 
 ## Coder
 
-- **Status**: pending
-- **Files modified**: —
-- **Migrations created**: —
-- **Deviations**: —
+- **Status**: done
+- **Files modified**:
+  - `brama-core/src/src/A2AGateway/Discovery/AgentDiscoveryProviderFactory.php` — changed `string $providerMode` to `?string $providerMode` and added null coalescing `$providerMode ?? ''` to fix TypeError when `AGENT_DISCOVERY_PROVIDER` env var is not set
+  - `brama-core/openspec/changes/fix-remaining-e2e-failures/tasks.md` — marked Task 1 as complete
+- **Migrations created**: none
+- **Deviations**: none
+
+### Root Cause Analysis
+
+The E2E test `'news-maker-agent is present and healthy after discovery'` was failing because:
+
+1. **Primary cause (transient state)**: The `e2e-prepare` step registers agents and runs `app:agent-health-poll`. If the `news-maker-agent-e2e` container is not ready when the inline health check runs during registration, `health_status` stays `'unknown'`. The health poller then also fails if the agent is still starting up.
+
+2. **Secondary cause (discovery button broken)**: The `AgentDiscoveryProviderFactory::create()` was receiving `null` for `$providerMode` because `%env(default::AGENT_DISCOVERY_PROVIDER)%` in `services.yaml` resolves to `null` when the env var is not set and no Symfony parameter named `''` exists. This caused a `TypeError` when clicking the "Виявити агентів" button, making the `'running discovery populates the registry'` test also fail.
+
+### Fix Applied
+
+Changed `AgentDiscoveryProviderFactory::create()` to accept `?string $providerMode` and handle `null` gracefully with `$providerMode ?? ''`. This allows the factory to fall through to the default Traefik provider when no mode is configured.
+
+### Verification
+
+- `'news-maker-agent is present and healthy after discovery'` — **PASSES** ✓
+- `'running discovery populates the registry'` — **PASSES** ✓ (was also failing due to the null bug)
+- `make analyse` — **0 errors** ✓
+- `make cs-check` — **0 violations** ✓
+- Full `agents_test.js`: 7 passing, 2 failing (both `@optional` OpenClaw tests — not related to this fix)
 
 ## Validator
 
@@ -89,3 +111,4 @@ Error: Element "//div[contains(@class,"agent-tab-pane") and contains(@class,"act
 
 ---
 
+- **Commit (investigator)**: 25d0345
