@@ -63,10 +63,12 @@ Error: Element "button[data-action="sync"]" is not visible on page.
 
 ## Validator
 
-- **Status**: pending
-- **PHPStan**: —
-- **CS-check**: —
-- **Files fixed**: —
+- **Status**: done
+- **PHPStan**:
+  - `brama-core`: pass
+- **CS-check**:
+  - `brama-core`: pass
+- **Files fixed**: none
 
 ## Tester
 
@@ -93,3 +95,4 @@ Error: Element "button[data-action="sync"]" is not visible on page.
 
 ---
 
+- **Commit (u-coder)**: d1e3493

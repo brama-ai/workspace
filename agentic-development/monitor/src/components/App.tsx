@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput, useApp, useStdout } from "ink";
+import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
+import { join, basename } from "node:path";
 import { readAllTasks, type ReadResult, type TaskInfo } from "../lib/tasks.js";
 import { formatDuration, formatTokens, formatCost } from "../lib/format.js";
 import {
@@ -542,8 +544,8 @@ function DetailView({ task, rows }: { task: TaskInfo; rows: number }) {
       } else {
         setContent(["No task description found."]);
       }
-    } catch {
-      setContent(["Cannot read task details."]);
+    } catch (err: any) {
+      setContent(["Cannot read task details.", `Error: ${err?.message || err}`, `Dir: ${task.dir}`]);
     }
   }, [task.dir, rows]);
 
