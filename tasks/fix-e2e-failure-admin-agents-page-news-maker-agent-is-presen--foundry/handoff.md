@@ -81,10 +81,12 @@ Changed `AgentDiscoveryProviderFactory::create()` to accept `?string $providerMo
 
 ## Validator
 
-- **Status**: pending
-- **PHPStan**: —
-- **CS-check**: —
-- **Files fixed**: —
+- **Status**: done
+- **PHPStan**:
+  - `brama-core` — pass (`make analyse`)
+- **CS-check**:
+  - `brama-core` — pass (`make cs-check`; `make cs-fix` made no changes)
+- **Files fixed**: none
 
 ## Tester
 
@@ -112,3 +114,4 @@ Changed `AgentDiscoveryProviderFactory::create()` to accept `?string $providerMo
 ---
 
 - **Commit (investigator)**: 25d0345
+- **Commit (coder)**: c22e066
