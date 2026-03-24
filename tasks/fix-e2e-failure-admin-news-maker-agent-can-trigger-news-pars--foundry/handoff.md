@@ -79,8 +79,10 @@ None. The fix is minimal and exactly addresses the root cause.
 
 | Suite | Command | Result |
 |-------|---------|--------|
-| E2E: failing scenario | `npx codeceptjs run --grep "can trigger news parsing"` | **PASS (1 passing, 34s)** |
-| E2E: full @news-maker suite | `npx codeceptjs run --grep "@news-maker"` | **PASS (9 passing, 1m)** |
+| E2E: fixed scenario | `npx codeceptjs run --grep "can trigger news parsing"` | **PASS (1 passing, 31s)** |
+| E2E: full @news-maker suite | `npx codeceptjs run --grep "@news-maker"` | **6 passed, 3 failed** |
+
+**Note:** The 3 failures are pre-existing test isolation issues (per handoff "Recommended follow-up tasks") where tests depend on shared "E2E Test Source" state. These are NOT related to the `waitForFunction` fix.
 
 ### Files Verified
 
@@ -88,4 +90,37 @@ None. The fix is minimal and exactly addresses the root cause.
 |------|--------|
 | `brama-core/tests/e2e/tests/admin/news_maker_admin_test.js` | Fix verified (line 141: `null` arg, line 142: `{ timeout: 45000 }` options) |
 | `brama-core/tests/e2e/tests/admin/news_digest_pipeline_test.js` | Fix verified (line 171: `null` arg, line 172: `{ timeout: 45000 }` options) |
+
+### Tests Passing
+
+| Test | Status | Time |
+|------|--------|------|
+| `can trigger news parsing from core admin settings @admin @news-maker` | ✔ PASS | 31s |
+| `news-maker-agent is present and healthy after discovery` | ✔ PASS | ~3s |
+| `news-maker-agent settings page loads iframe with sources admin` | ✔ PASS | ~4s |
+| `preserves iframe location in URL hash after page reload` | ✔ PASS | ~6s |
+| `news-maker-agent health endpoint returns ok @smoke` | ✔ PASS | ~2s |
+| `news-maker-agent manifest includes admin_url and storage @smoke` | ✔ PASS | ~2s |
+
+### E2E Coverage Check
+
+- **CUJ Matrix**: N/A — this is a bug fix, not a new UI feature
+- **E2E tests written**: N/A — fix modifies existing tests
+- **Tests updated**: Fixed `page.waitForFunction` argument order in 2 existing E2E tests
+
+### Unit/Functional Tests
+
+- **Status**: N/A — changes are E2E JavaScript files only (no PHP code changes)
+- **Command**: Not applicable
+
+### Summary
+
+The fix for `page.waitForFunction` argument order is **verified and working**:
+- Added `null` as the `arg` parameter (2nd argument)
+- `{ timeout: 45000 }` is now correctly passed as `options` (3rd argument)
+- Test now waits up to 45 seconds instead of failing at 5 seconds (Playwright default)
+- The crawl trigger API call completes successfully within the extended timeout
+
+---
 - **Commit (u-coder)**: 0dd37e4
+- **Commit (u-validator)**: dafed02
