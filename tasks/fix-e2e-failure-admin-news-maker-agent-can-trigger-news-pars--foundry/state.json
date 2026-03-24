@@ -6,7 +6,7 @@
   "status": "in_progress",
   "current_step": "u-validator",
   "resume_from": "u-validator",
-  "updated_at": "2026-03-24T23:18:11.297916Z",
+  "updated_at": "2026-03-24T23:42:22.689807Z",
   "task_file": "/workspaces/brama/tasks/fix-e2e-failure-admin-news-maker-agent-can-trigger-news-pars--foundry/task.md",
   "branch": null,
   "agents": [
@@ -14,12 +14,12 @@
       "agent": "u-coder",
       "status": "done",
       "model": "anthropic/claude-sonnet-4-6",
-      "duration_seconds": 931,
-      "input_tokens": 77,
-      "output_tokens": 17274,
-      "cost": 1.802,
+      "duration_seconds": 2393,
+      "input_tokens": 45,
+      "output_tokens": 9540,
+      "cost": 0.6347,
       "call_count": 1,
-      "updated_at": "2026-03-24T23:17:01.208295Z"
+      "updated_at": "2026-03-24T23:42:22.689795Z"
     },
     {
       "agent": "u-validator",

@@ -44,8 +44,9 @@ await page.waitForFunction(
 
 ### Verification
 
-- Ran `npx codeceptjs run --grep "can trigger news parsing from core admin settings"` → **1 passing (36s)**
-- Full `news_maker_admin_test.js` suite: 6 passing, 3 failing (pre-existing failures unrelated to this fix — "E2E Test Source" not found due to test state from prior runs)
+- Ran `npx codeceptjs run --grep "can trigger news parsing from core admin settings"` → **1 passing (34s)**
+- Full `@news-maker` suite: **9 passing (1m)**
+- Fix confirmed: test now waits up to 45s for the crawl trigger result (PHP timeout is 30s, so the test always gets a response)
 
 ### Deviations from Spec
 
@@ -54,20 +55,36 @@ None. The fix is minimal and exactly addresses the root cause.
 ## Recommended follow-up tasks
 
 - **Pre-existing test state isolation in news_maker_admin_test.js**: Tests `can add a news source`, `can toggle source enabled/disabled`, and `can delete a news source` fail when run together because they depend on shared state (the "E2E Test Source" row). The `can add` test has a guard for existing sources but the delete test may leave the source absent for subsequent runs. Consider adding a `Before`/`After` hook that ensures the test source exists/is cleaned up reliably. Affects: `brama-core/tests/e2e/tests/admin/news_maker_admin_test.js`.
-- **Commit (u-coder)**: a905ba3
+- **news-maker-agent `/admin/trigger/crawl` endpoint hangs when crawl pipeline is running**: The endpoint is a sync FastAPI route that hangs when the anyio thread pool is exhausted by concurrent requests. The crawl pipeline runs in a background thread and can take several minutes. During this time, multiple trigger requests pile up and the endpoint stops responding. Fix: convert the endpoint to `async def` to avoid thread pool exhaustion. Affects: `brama-agents/news-maker-agent/app/routers/admin/settings.py`.
 
 ## Validator
 
 ### Changed Apps
 
-- `apps/brama-core/`
+- `apps/brama-core/` (E2E test files only — no PHP changes)
 
 ### Results
 
 | App | PHPStan result | CS-check result |
 |-----|----------------|-----------------|
-| `apps/brama-core/` | pass | pass |
+| `apps/brama-core/` | pass (no PHP changes) | pass (no PHP changes) |
 
 ### Files Fixed
 
-- None
+- None (E2E test files are JavaScript, not PHP)
+
+## Tester
+
+### Test Results
+
+| Suite | Command | Result |
+|-------|---------|--------|
+| E2E: failing scenario | `npx codeceptjs run --grep "can trigger news parsing"` | **PASS (1 passing, 34s)** |
+| E2E: full @news-maker suite | `npx codeceptjs run --grep "@news-maker"` | **PASS (9 passing, 1m)** |
+
+### Files Verified
+
+| File | Status |
+|------|--------|
+| `brama-core/tests/e2e/tests/admin/news_maker_admin_test.js` | Fix verified (line 141: `null` arg, line 142: `{ timeout: 45000 }` options) |
+| `brama-core/tests/e2e/tests/admin/news_digest_pipeline_test.js` | Fix verified (line 171: `null` arg, line 172: `{ timeout: 45000 }` options) |

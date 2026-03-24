@@ -1,0 +1,47 @@
+================================================================================
+HELLO-AGENT KUBERNETES DEPLOYMENT LOG
+================================================================================
+Date       : 2026-03-24
+Operator   : Deployer agent (Claude / OpenCode pipeline)
+Target     : K3S cluster @ 46.62.135.86 | namespace: brama
+Strategy   : helm-upgrade
+Agent      : hello-agent
+Image tag  : brama/hello-agent:dev
+Chart      : brama-core/deploy/charts/brama (ai-community-platform-0.1.0)
+Values     : brama-core/deploy/charts/brama/values-k3s-dev.yaml
+================================================================================
+
+────────────────────────────────────────────────────────────────────────────────
+[STEP 0] PRE-DEPLOY STATE CHECK
+────────────────────────────────────────────────────────────────────────────────
+Timestamp : 2026-03-24T23:37:59Z
+
+Cluster node:
+  ubuntu-8gb-hel1-1   Ready   control-plane   13h   v1.34.5+k3s1
+
+Helm release (before deploy):
+  NAME   NAMESPACE  REVISION  STATUS    CHART                       APP VERSION
+  brama  brama      3         deployed  ai-community-platform-0.1.0  0.1.0
+
+Pods (before deploy):
+  brama-ai-community-platform-agent-hello-67c6c9958b-9kfx8   1/1  Running          0   147m
+  brama-ai-community-platform-core-7f7f4c6d79-lhrxv          1/1  Running          0   147m
+  brama-ai-community-platform-core-scheduler-cd95f68b9-69xn2 0/1  CrashLoopBackOff 25  147m  ← pre-existing issue, unrelated
+  brama-postgresql-0                                          1/1  Running          0   10h
+  brama-rabbitmq-0                                            1/1  Running          0   10h
+  brama-redis-master-0                                        1/1  Running          0   10h
+
+Current hello-agent image : brama/hello-agent:dev
+Health check (pre-deploy) : {"status":"ok","service":"hello-agent","version":"0.1.0"}
+
+Rollback plan (documented BEFORE deploy):
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  helm rollback brama 3 -n brama
+  kubectl rollout status deployment/brama-ai-community-platform-agent-hello -n brama
+
+────────────────────────────────────────────────────────────────────────────────
+[STEP 1] BUILD DOCKER IMAGE (local devcontainer)
+────────────────────────────────────────────────────────────────────────────────
+Command:
+  docker build -t brama/hello-agent:dev brama-agents/hello-agent/
+
