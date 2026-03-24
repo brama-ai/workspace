@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput, useApp, useStdout } from "ink";
+import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
+import { join, basename } from "node:path";
 import { readAllTasks, type ReadResult, type TaskInfo } from "../lib/tasks.js";
 import { formatDuration, formatTokens, formatCost } from "../lib/format.js";
 import {
