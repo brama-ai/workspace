@@ -201,6 +201,8 @@ Planner chooses the profile based on task analysis:
 | `bugfix` | investigator → coder → validator → tester → summarizer | Bug fix (no spec change) |
 | `bugfix+spec` | investigator → architect → coder → validator → tester → summarizer | Bug that changes spec |
 
+> **Phase 8 — Deployer (opt-in):** Any profile can be followed by the deployer phase when `deploy: true` is set in task metadata and all stages pass. The deployer is not a profile itself — it is an optional final stage appended after the summarizer. See [deployer-agent.md](../../pipeline/en/deployer-agent.md).
+
 ## Environment Check
 
 Before running the pipeline, check your environment:
@@ -246,6 +248,7 @@ The Foundry runtime runs env-check automatically before task execution unless ex
 | Documenter | 15 min | `PIPELINE_TIMEOUT_DOCUMENTER` |
 | Auditor | 20 min | `PIPELINE_TIMEOUT_AUDITOR` |
 | Summarizer | 15 min | `PIPELINE_TIMEOUT_SUMMARIZER` |
+| Deployer | 20 min | `PIPELINE_TIMEOUT_DEPLOYER` |
 
 ### Model Configuration
 

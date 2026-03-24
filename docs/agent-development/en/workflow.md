@@ -293,5 +293,8 @@ All agents communicate via the task directory, with **`handoff.md`** as the huma
 | Auditor | Verdict + findings | -- |
 | Documenter | Docs created/updated | -- |
 | **Summarizer** | **Final summary** | **Reads ALL** |
+| **Deployer** | **Deployment result, PR URL, health check** | **Reads ALL (verify stages passed)** |
 
-> **CONTEXT-CONTRACT**: Agents receive context via prompt `CONTEXT`, **not** by reading handoff.md directly (exception: Planner, Summarizer).
+> **CONTEXT-CONTRACT**: Agents receive context via prompt `CONTEXT`, **not** by reading handoff.md directly (exception: Planner, Summarizer, Deployer).
+
+> **Deployer** is Phase 8 — opt-in only. Runs after Summarizer when `deploy: true` is in task metadata and all previous stages passed. See [deployer-agent.md](../../pipeline/en/deployer-agent.md).

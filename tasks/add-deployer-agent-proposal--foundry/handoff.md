@@ -103,10 +103,23 @@ Document what the deployer needs:
 
 ## Coder
 
-- **Status**: pending
-- **Files modified**: —
-- **Migrations created**: —
-- **Deviations**: —
+- **Status**: done
+- **Files created**:
+  - `.opencode/agents/deployer.md` — unified deployer agent (primary, Foundry)
+  - `.opencode/agents/s-deployer.md` — Ultraworks subagent wrapper (Phase 8)
+  - `.opencode/skills/deployer/SKILL.md` — full skill: 4 strategies, 5 safety gates, SSH integration, health verification, rollback procedures
+  - `docs/pipeline/en/deployer-agent.md` — developer-facing English documentation
+  - `docs/pipeline/ua/deployer-agent.md` — Ukrainian mirror documentation
+- **Files modified**:
+  - `agentic-development/AGENTS.md` — added deployer to agent table, matrix, and pipeline diagram
+  - `.opencode/oh-my-opencode.jsonc` — added Phase 8 to Sisyphus prompt_append, added `s-deployer` model config with 6-provider fallback chain, added `deployment` category
+  - `docs/agent-development/en/workflow.md` — added Deployer to inter-agent communication table, CONTEXT-CONTRACT note
+  - `docs/agent-development/en/foundry.md` — added deployer to pipeline profiles note and agent timeouts table
+  - `brama-core/openspec/changes/add-deployer-pipeline-agent/tasks.md` — marked all tasks `[x]`
+- **Migrations created**: none (pipeline-internal agent, no schema changes)
+- **Deviations**:
+  - Task 1.3 says "update agent type enum used by the Task tool" — no such enum file exists in the codebase. The agent index is `agentic-development/AGENTS.md` (updated) and the skill registry is auto-discovered from `.opencode/skills/` directory structure. No separate enum file to update.
+  - Task 2.2 says "register skill in shared skill index" — no skill index file exists. Skills are auto-discovered from `.opencode/skills/<name>/SKILL.md`. The deployer skill is registered by its presence in `.opencode/skills/deployer/SKILL.md`.
 
 ## Validator
 
@@ -140,3 +153,4 @@ Document what the deployer needs:
 
 ---
 
+- **Commit (architect)**: d7c2187

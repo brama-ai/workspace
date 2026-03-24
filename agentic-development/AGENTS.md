@@ -7,10 +7,12 @@
 Builder pipeline використовує спеціалізовані AI агенти, кожен з яких виконує певну роль в процесі розробки:
 
 ```
-Task → Planner → Preflight → Env-Check → Architect → Coder → Validator → Tester → Documenter → Summarizer
+Task → Planner → Preflight → Env-Check → Architect → Coder → Validator → Tester → Documenter → Summarizer → [Deployer]
                        ↓           ↓
                  preflight()  env_check()    ↓
                                               Auditor (optional)
+                                                                                                              ↑
+                                                                                                    Phase 8 (opt-in, deploy: true)
 ```
 
 ### Pre-flight фази
@@ -19,10 +21,12 @@ Task → Planner → Preflight → Env-Check → Architect → Coder → Validat
 2. **Env-Check** (`env_check()`): Валідує оточення (PHP, Python, Node, PostgreSQL, Redis, extensions)
 
 Детальніше про env-check дивіться в [README.md](README.md#перевірка-оточення-env-check).
-Task → Planner → Preflight → Env-Check → Architect → Coder → Validator → Tester → Documenter → Summarizer
+Task → Planner → Preflight → Env-Check → Architect → Coder → Validator → Tester → Documenter → Summarizer → [Deployer]
                        ↓           ↓
                  preflight()  env_check()    ↓
                                               Auditor (optional)
+                                                                                                              ↑
+                                                                                                    Phase 8 (opt-in, deploy: true)
 ```
 
 ### Агенти за ролями
@@ -38,6 +42,7 @@ Task → Planner → Preflight → Env-Check → Architect → Coder → Validat
 | **tester** | Запускає тести, пише нові, виправляє failures | OpenCode Go | kimi-k2.5 |
 | **documenter** | Пише білінгвальну документацію (UA+EN) | OpenAI | gpt-5.4 |
 | **summarizer** | Створює фінальний звіт про виконану роботу | OpenAI | gpt-5.4 |
+| **deployer** | Phase 8 (opt-in): деплоїть завершені зміни до цільового середовища | Anthropic | claude-sonnet-4-6 |
 
 ## Політика неймінгу агентів
 
@@ -56,6 +61,7 @@ Task → Planner → Preflight → Env-Check → Architect → Coder → Validat
 | Primary agent | `coder`, `tester`, `validator` | не використовується напряму | Builder працює з primary-агентами |
 | Subagent | не використовується | `s-coder`, `s-tester`, `s-validator` | Викликаються тільки Sisyphus orchestration |
 | Universal agent | `u-investigator` (via `investigator`) | `u-investigator` (via `s-investigator`) | Спільна логіка, різні mode-обгортки |
+| Opt-in agent | `deployer` | `s-deployer` | Phase 8 — тільки при `deploy: true` в task metadata |
 
 ### Поточна рекомендація для тестування
 
