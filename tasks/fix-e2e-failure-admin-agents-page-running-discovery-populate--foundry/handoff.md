@@ -115,12 +115,20 @@ With 4 E2E agents (hello, knowledge, news-maker, dev-reporter), worst-case total
 
 ## Summarizer
 
-- **Status**: pending
-- **Summary file**: —
-- **Next task recommendation**: —
+- **Status**: done
+- **Summary file**: `/workspaces/brama/tasks/fix-e2e-failure-admin-agents-page-running-discovery-populate--foundry/summary.md`
+- **Next task recommendation**: Fix `AgentRegistryApiCest: Enable disable agent requires authentication`
 
 ---
 
 - **Commit (investigator)**: 0ef9907
 - **Commit (coder)**: 29486ed
 - **Commit (validator)**: 3ad8690
+- **Commit (tester)**: 0a77e35
+
+## Summarizer Finalization
+
+- **Status**: PASS
+- **Summary file path**: `/workspaces/brama/tasks/fix-e2e-failure-admin-agents-page-running-discovery-populate--foundry/summary.md`
+- **Final recommendation**: Fix `AgentRegistryApiCest: Enable disable agent requires authentication`
+- **Pipeline mark**: `PIPELINE COMPLETE`
