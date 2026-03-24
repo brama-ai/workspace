@@ -232,3 +232,18 @@ _No context modifiers detected (no skills, MCP tools, or commands used)._
 - Назва задачі: Stabilize admin agents discovery regression and OpenClaw E2E failures
 - Чому її варто створити зараз: після виправлення `knowledge-agent` у пайплайні лишилися сторонні pre-existing падіння, які заважають мати чистий regression signal для admin agents flows.
 - Очікуваний результат: стабільний повний прогін admin-related E2E і прибрані pre-existing збої discovery/OpenClaw, щоб наступні autofix-задачі не маскувалися інфраструктурними проблемами.
+
+---
+
+## Вартість пайплайну
+
+| Агент | Тривалість | Input | Output | Cache Read | Cache Write | ≈ Вартість |
+|-------|-----------|-------|--------|------------|-------------|-----------|
+| investigator | 3s | 13 | 2737 | 502450 | 62972 | $0.428 |
+| coder | 22m 57s | 167 | 40634 | 15577479 | 164362 | $5.900 |
+| validator | 50s | 19456 | 969 | 138240 | 0 | $0.114 |
+| tester | 4m 41s | 53266 | 3984 | 725760 | 0 | $0.437 |
+| summarizer | 3m 29s | 91461 | 8275 | 502528 | 0 | $0.549 |
+| **Всього** | **32m** | **164363** | **56599** | **17446457** | **227334** | **$7.429** |
+
+_Вартість розрахована приблизно за тарифами Claude Sonnet ($3/$15 per 1M in/out, $0.30/$3.75 cache r/w)._

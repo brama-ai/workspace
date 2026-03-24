@@ -128,3 +128,4 @@ Error: Element "//div[contains(@class,"agent-tab-pane") and contains(@class,"act
 - **Summary file path**: `/workspaces/brama/tasks/fix-e2e-failure-admin-agents-page-knowledge-agent-is-present--foundry/summary.md`
 - **Final recommendation**: `Stabilize admin agents discovery regression and OpenClaw E2E failures`
 - **Mark**: **PIPELINE COMPLETE**
+- **Commit (summarizer)**: 10492f3
