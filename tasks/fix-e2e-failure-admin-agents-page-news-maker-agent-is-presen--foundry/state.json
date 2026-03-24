@@ -3,10 +3,10 @@
   "workflow": "foundry",
   "started_at": "2026-03-24T17:38:10.771030Z",
   "attempt": 1,
-  "status": "in_progress",
-  "current_step": "summarizer",
-  "resume_from": "summarizer",
-  "updated_at": "2026-03-24T19:01:05.550390Z",
+  "status": "completed",
+  "current_step": null,
+  "resume_from": null,
+  "updated_at": "2026-03-24T19:01:09.808640Z",
   "task_file": "/workspaces/brama/tasks/fix-e2e-failure-admin-agents-page-news-maker-agent-is-presen--foundry/task.md",
   "branch": "pipeline/fix-e2e-failure-admin-agents-page-news-maker-agent-is-presen",
   "agents": [
@@ -69,12 +69,12 @@
       "agent": "summarizer",
       "status": "done",
       "model": "openai/gpt-5.4",
-      "duration_seconds": 140,
+      "duration_seconds": 143,
       "input_tokens": 30926,
       "output_tokens": 6152,
       "cost": 0.1827,
       "call_count": 1,
-      "updated_at": "2026-03-24T19:01:05.550382Z"
+      "updated_at": "2026-03-24T19:01:05.713167Z"
     }
   ]
 }

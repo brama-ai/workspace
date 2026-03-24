@@ -197,3 +197,18 @@ _No context modifiers detected (no skills, MCP tools, or commands used)._
 - Назва задачі: Fix pre-existing failure `AgentHealthPollerCommandCest::healthPollerCommandCleansUpStaleMarketplaceAgents`
 - Чому її варто створити зараз: падіння вже видно в поточному pipeline, воно заважає отримати повністю зелений test suite після виправлення E2E-регресії.
 - Очікуваний результат: functional test проходить без `tenant_id NOT NULL` constraint violation, а health-poller cleanup покривається стабільним сценарієм.
+
+---
+
+## Вартість пайплайну
+
+| Агент | Тривалість | Input | Output | Cache Read | Cache Write | ≈ Вартість |
+|-------|-----------|-------|--------|------------|-------------|-----------|
+| investigator | 3s | 16 | 3262 | 672835 | 65235 | $0.495 |
+| coder | 12m 43s | 118 | 24941 | 11114167 | 141260 | $4.238 |
+| validator | 53s | 19065 | 996 | 122624 | 0 | $0.109 |
+| tester | 9m 31s | 42789 | 7599 | 967168 | 0 | $0.533 |
+| summarizer | 2m 23s | 30926 | 6152 | 242816 | 0 | $0.258 |
+| **Всього** | **25m** | **92914** | **42950** | **13119610** | **206495** | **$5.633** |
+
+_Вартість розрахована приблизно за тарифами Claude Sonnet ($3/$15 per 1M in/out, $0.30/$3.75 cache r/w)._

@@ -141,3 +141,4 @@ Changed `AgentDiscoveryProviderFactory::create()` to accept `?string $providerMo
 - **Commit (validator)**: 403bacd
 - **Commit (tester)**: (pending)
 - **Commit (tester)**: e9b2e20
+- **Commit (summarizer)**: 6d5e260
