@@ -104,10 +104,11 @@ trace: -c: line 1: unexpected EOF while looking for matching `''
 
 ## Summarizer
 
-- **Status**: pending
-- **Summary file**: —
-- **Next task recommendation**: —
+- **Status**: done
+- **Summary file**: `/workspaces/brama/tasks/fix-e2e-failure-admin-log-trace-setup-seed-test-trace-data-a--foundry/summary.md`
+- **Next task recommendation**: Repeat the E2E scenario `Admin: Log Trace: setup: seed test trace data @admin @logs @trace` to verify the fix end-to-end and capture either a green result or a new actionable failure.
 
 ---
 
 - **Commit (u-coder)**: 8d78084
+- **Commit (u-validator)**: 80197de
