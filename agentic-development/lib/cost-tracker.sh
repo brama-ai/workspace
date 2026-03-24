@@ -118,6 +118,62 @@ extract_session_tools() {
   ' "$export_file" 2>/dev/null
 }
 
+# Extract context modifiers that influence LLM behavior:
+# - skills loaded (inject agent instructions)
+# - MCP tools used (external capabilities)
+# - agent prompt file (which .md was loaded as identity)
+# Standard file operations (read/edit/write/bash) are excluded.
+extract_session_context() {
+  local export_file="$1"
+  python3 - "$export_file" <<'PYEOF'
+import json, sys
+
+with open(sys.argv[1], 'r') as f:
+    data = json.load(f)
+
+skills = []
+mcp_tools = {}
+agent_prompt = None
+claude_commands = []
+
+for message in data.get("messages", []):
+    for part in message.get("parts", []):
+        if part.get("type") != "tool":
+            continue
+        tool = part.get("tool", "")
+        state = part.get("state", {}) or {}
+        inp = state.get("input", {}) or {}
+        output = state.get("output", "") or ""
+
+        # Skills: inject instructions/persona into agent
+        if tool == "skill":
+            name = inp.get("name", inp.get("skill", ""))
+            if name:
+                entry = {"name": name}
+                # Extract skill type from output if available
+                if "<skill_content" in output:
+                    entry["loaded"] = True
+                skills.append(entry)
+
+        # MCP tools: external capability servers
+        elif tool.startswith("mcp__"):
+            mcp_tools[tool] = mcp_tools.get(tool, 0) + 1
+
+        # Claude commands / slash commands
+        elif tool == "slash_command":
+            cmd = inp.get("command", inp.get("name", ""))
+            if cmd:
+                claude_commands.append(cmd)
+
+result = {
+    "skills": skills,
+    "mcp_tools": [{"name": k, "count": v} for k, v in sorted(mcp_tools.items())],
+    "claude_commands": claude_commands,
+}
+print(json.dumps(result))
+PYEOF
+}
+
 extract_session_files_read() {
   local export_file="$1"
   python3 - "$export_file" <<'PYEOF'
@@ -178,13 +234,17 @@ format_duration_human() {
 }
 
 write_telemetry_record() {
-  local out_file="$1" workflow="$2" agent="$3" model="$4" duration_seconds="$5" exit_code="$6" session_id="$7" tokens_json="$8" tools_json="$9" files_json="${10}" step_cost="${11}"
-  python3 - "$out_file" "$workflow" "$agent" "$model" "$duration_seconds" "$exit_code" "$session_id" "$tokens_json" "$tools_json" "$files_json" "$step_cost" <<'PYEOF'
+  local out_file="$1" workflow="$2" agent="$3" model="$4" duration_seconds="$5" exit_code="$6" session_id="$7" tokens_json="$8" tools_json="$9" files_json="${10}" step_cost="${11}" context_json="${12:-{}}"
+  python3 - "$out_file" "$workflow" "$agent" "$model" "$duration_seconds" "$exit_code" "$session_id" "$tokens_json" "$tools_json" "$files_json" "$step_cost" "$context_json" <<'PYEOF'
 import json, sys
-out_file, workflow, agent, model, duration_seconds, exit_code, session_id, tokens_raw, tools_raw, files_raw, step_cost = sys.argv[1:12]
+out_file, workflow, agent, model, duration_seconds, exit_code, session_id, tokens_raw, tools_raw, files_raw, step_cost, context_raw = sys.argv[1:13]
 tokens = json.loads(tokens_raw)
 tools = json.loads(tools_raw)
 files_read = json.loads(files_raw)
+try:
+    context = json.loads(context_raw)
+except (json.JSONDecodeError, TypeError):
+    context = {}
 payload = {
     "workflow": workflow,
     "agent": agent,
@@ -201,6 +261,7 @@ payload = {
     },
     "tools": tools,
     "files_read": files_read,
+    "context": context,
     "cost": float(step_cost),
 }
 with open(out_file, "w") as f:
@@ -372,6 +433,7 @@ for message in root_export.get("messages", []):
         tokens = bash_json(f'. "{repo_root}/agentic-development/lib/cost-tracker.sh"; summarize_export_tokens "{child_tmp.name}"')
         tools = bash_json(f'. "{repo_root}/agentic-development/lib/cost-tracker.sh"; extract_session_tools "{child_tmp.name}"')
         files_read = bash_json(f'. "{repo_root}/agentic-development/lib/cost-tracker.sh"; extract_session_files_read "{child_tmp.name}"')
+        context = bash_json(f'. "{repo_root}/agentic-development/lib/cost-tracker.sh"; extract_session_context "{child_tmp.name}"')
         model = subprocess.check_output(["bash", "-lc", f'. "{repo_root}/agentic-development/lib/cost-tracker.sh"; extract_export_model "{child_tmp.name}"'], cwd=repo_root, text=True).strip()
         cost = float(subprocess.check_output(["bash", "-lc", f'. "{repo_root}/agentic-development/lib/cost-tracker.sh"; calculate_cost_from_values "{model}" "{tokens.get("input_tokens",0)}" "{tokens.get("output_tokens",0)}" "{tokens.get("cache_read",0)}"'], cwd=repo_root, text=True).strip())
         info = child_data.get("info", {}).get("time", {})
@@ -383,6 +445,7 @@ for message in root_export.get("messages", []):
             "tokens": tokens,
             "tools": tools,
             "files_read": files_read,
+            "context": context,
             "cost": cost,
             "duration_seconds": duration_seconds,
         })
@@ -395,6 +458,7 @@ if not agent_rows:
     tokens = bash_json(f'. "{repo_root}/agentic-development/lib/cost-tracker.sh"; summarize_export_tokens "{root_tmp.name}"')
     tools = bash_json(f'. "{repo_root}/agentic-development/lib/cost-tracker.sh"; extract_session_tools "{root_tmp.name}"')
     files_read = bash_json(f'. "{repo_root}/agentic-development/lib/cost-tracker.sh"; extract_session_files_read "{root_tmp.name}"')
+    context = bash_json(f'. "{repo_root}/agentic-development/lib/cost-tracker.sh"; extract_session_context "{root_tmp.name}"')
     model = subprocess.check_output(["bash", "-lc", f'. "{repo_root}/agentic-development/lib/cost-tracker.sh"; extract_export_model "{root_tmp.name}"'], cwd=repo_root, text=True).strip()
     cost = float(subprocess.check_output(["bash", "-lc", f'. "{repo_root}/agentic-development/lib/cost-tracker.sh"; calculate_cost_from_values "{model}" "{tokens.get("input_tokens",0)}" "{tokens.get("output_tokens",0)}" "{tokens.get("cache_read",0)}"'], cwd=repo_root, text=True).strip())
     info = root_export.get("info", {}).get("time", {})
@@ -406,6 +470,7 @@ if not agent_rows:
         "tokens": tokens,
         "tools": tools,
         "files_read": files_read,
+        "context": context,
         "cost": cost,
         "duration_seconds": duration_seconds,
     })
@@ -454,6 +519,33 @@ for row in agent_rows:
             print(f"- `{tool.get('name','unknown')}` x {tool.get('count', 0)}")
     else:
         print("- none recorded")
+    print("")
+
+print("## Context Modifiers By Agent")
+print("")
+print("_Skills, MCP tools, and commands that influenced LLM behavior._")
+print("")
+has_context = False
+for row in agent_rows:
+    ctx = row.get("context", {})
+    skills = ctx.get("skills", [])
+    mcp = ctx.get("mcp_tools", [])
+    cmds = ctx.get("claude_commands", [])
+    if skills or mcp or cmds:
+        has_context = True
+        print(f"### {row['agent']}")
+        if skills:
+            for s in skills:
+                print(f"- **Skill:** `{s.get('name', '?')}`")
+        if mcp:
+            for m in mcp:
+                print(f"- **MCP:** `{m.get('name', '?')}` x{m.get('count', 0)}")
+        if cmds:
+            for c in cmds:
+                print(f"- **Command:** `/{c}`")
+        print("")
+if not has_context:
+    print("_No context modifiers detected (no skills, MCP tools, or commands used)._")
     print("")
 
 print("## Files Read By Agent")

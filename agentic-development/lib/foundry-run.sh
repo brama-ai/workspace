@@ -1547,12 +1547,14 @@ run_agent() {
       local tokens_json
       local tools_json='[]'
       local files_json='[]'
+      local context_json='{}'
       local actual_model_used
       actual_model_used="$(get_current_model "$agent")"
       if [[ -n "$session_id" ]] && export_session_json "$session_id" "$export_file"; then
         tokens_json=$(summarize_export_tokens "$export_file")
         tools_json=$(extract_session_tools "$export_file")
         files_json=$(extract_session_files_read "$export_file")
+        context_json=$(extract_session_context "$export_file")
       else
         tokens_json='{"input_tokens":0,"output_tokens":0,"cache_read":0,"cache_write":0}'
       fi
@@ -1563,7 +1565,7 @@ run_agent() {
       step_cost=$(calculate_cost_from_values "$actual_model_used" "$in_tok" "$out_tok" "$cache_r")
       tokens_json=$(echo "$tokens_json" | jq --argjson cost "$step_cost" '. + {cost: $cost}' 2>/dev/null || echo "$tokens_json")
       write_agent_meta "$agent" "$actual_model_used" "$agent_start_epoch" "$agent_end_epoch" "2" "$log_file" "$tokens_json" "$step_cost" "$session_id"
-      write_telemetry_record "$TELEMETRY_DIR/${agent}.json" "builder" "$agent" "$actual_model_used" "$(( agent_end_epoch - agent_start_epoch ))" "2" "$session_id" "$tokens_json" "$tools_json" "$files_json" "$step_cost"
+      write_telemetry_record "$TELEMETRY_DIR/${agent}.json" "builder" "$agent" "$actual_model_used" "$(( agent_end_epoch - agent_start_epoch ))" "2" "$session_id" "$tokens_json" "$tools_json" "$files_json" "$step_cost" "$context_json"
       if [[ -f "$export_file" ]]; then
         cp "$export_file" "$ARTIFACTS_DIR/$agent.session.json" 2>/dev/null || true
         cp "$export_file" "$LOG_DIR/${TIMESTAMP}_${agent}.session.json" 2>/dev/null || true
@@ -1602,12 +1604,14 @@ run_agent() {
     local tokens_json
     local tools_json='[]'
     local files_json='[]'
+    local context_json='{}'
     local actual_model_used
     actual_model_used=$(get_current_model "$agent")
     if [[ -n "$session_id" ]] && export_session_json "$session_id" "$export_file"; then
       tokens_json=$(summarize_export_tokens "$export_file")
       tools_json=$(extract_session_tools "$export_file")
       files_json=$(extract_session_files_read "$export_file")
+      context_json=$(extract_session_context "$export_file")
       local detected_model
       detected_model=$(extract_export_model "$export_file" 2>/dev/null || echo "")
       [[ -n "$detected_model" && "$detected_model" != "unknown" ]] && actual_model_used="$detected_model"
@@ -1623,7 +1627,7 @@ run_agent() {
     step_cost=$(calculate_cost_from_values "$actual_model_used" "$in_tok" "$out_tok" "$cache_r")
     tokens_json=$(echo "$tokens_json" | jq --argjson cost "$step_cost" '. + {cost: $cost}' 2>/dev/null || echo "$tokens_json")
     write_agent_meta "$agent" "$actual_model_used" "$agent_start_epoch" "$agent_end_epoch" "$exit_code" "$log_file" "$tokens_json" "$step_cost" "$session_id"
-    write_telemetry_record "$TELEMETRY_DIR/${agent}.json" "builder" "$agent" "$actual_model_used" "$(( agent_end_epoch - agent_start_epoch ))" "$exit_code" "$session_id" "$tokens_json" "$tools_json" "$files_json" "$step_cost"
+    write_telemetry_record "$TELEMETRY_DIR/${agent}.json" "builder" "$agent" "$actual_model_used" "$(( agent_end_epoch - agent_start_epoch ))" "$exit_code" "$session_id" "$tokens_json" "$tools_json" "$files_json" "$step_cost" "$context_json"
     if [[ -f "$export_file" ]]; then
       cp "$export_file" "$ARTIFACTS_DIR/$agent.session.json" 2>/dev/null || true
       cp "$export_file" "$LOG_DIR/${TIMESTAMP}_${agent}.session.json" 2>/dev/null || true

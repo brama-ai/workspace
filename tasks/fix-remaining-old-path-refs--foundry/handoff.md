@@ -92,9 +92,12 @@ Search for and fix stale references in:
 
 ## Summarizer
 
-- **Status**: pending
-- **Summary file**: —
-- **Next task recommendation**: —
+- **Status**: done
+- **Summary file**: `/workspaces/brama/tasks/fix-remaining-old-path-refs--foundry/summary.md`
+- **Next task recommendation**: Sync updated skill paths from `brama-core/skills/` to all agent-local copies via `make sync-skills`
+- **Final recommendation**: Sync `brama-core/skills/` and regenerate local skill copies so all agent toolchains use `brama-agents/` paths consistently
+- **Pipeline Mark**: PIPELINE COMPLETE
 
 ---
 - **Commit (coder)**: 46d3e7d
+- **Commit (validator)**: 5afbe58
