@@ -73,7 +73,6 @@ foundry_preflight_check() {
     "$REPO_ROOT/agentic-development/foundry.sh"
     "$REPO_ROOT/agentic-development/lib/foundry-batch.sh"
     "$REPO_ROOT/agentic-development/lib/foundry-run.sh"
-    "$REPO_ROOT/agentic-development/lib/pipeline-monitor.sh"
   )
 
   for script in "${scripts[@]}"; do
@@ -153,6 +152,7 @@ foundry_stop_headless() {
   pkill -f 'agentic-development/lib/foundry-batch\.sh' 2>/dev/null || true
   pkill -f 'foundry-batch\.sh' 2>/dev/null || true
   runtime_log foundry "headless workers stopped"
+  foundry_cancel_in_progress_tasks
   echo "Foundry headless workers stopped."
 }
 
@@ -193,7 +193,16 @@ run_command() {
   case "$cmd" in
     monitor)
       runtime_log foundry "command=monitor"
-      exec "$REPO_ROOT/agentic-development/lib/pipeline-monitor.sh" "$FOUNDRY_TASK_ROOT"
+      # Auto-start headless workers if not running and there are pending tasks
+      if ! foundry_is_batch_running && [[ -n "$(foundry_find_tasks_by_status pending 2>/dev/null | head -1)" ]]; then
+        foundry_start_headless 2>/dev/null
+      fi
+      local monitor_dir="$REPO_ROOT/agentic-development/monitor"
+      if [[ -f "$monitor_dir/dist/index.js" ]]; then
+        exec node "$monitor_dir/dist/index.js" "$FOUNDRY_TASK_ROOT"
+      else
+        exec "$monitor_dir/node_modules/.bin/tsx" "$monitor_dir/src/index.tsx" "$FOUNDRY_TASK_ROOT"
+      fi
       ;;
     headless|start)
       foundry_start_headless "$@"

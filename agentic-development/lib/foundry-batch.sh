@@ -93,6 +93,8 @@ trap 'cleanup_all; release_lock' EXIT
 
 # ── Worker PID tracking ──────────────────────────────────────────────
 declare -A WORKER_PIDS=()      # worker_id -> PID
+  # Cancel orphaned in_progress tasks
+  foundry_cancel_in_progress_tasks
 declare -A WORKER_TASKS=()     # worker_id -> task_dir
 BATCH_FAILED=false
 
@@ -170,6 +172,8 @@ cleanup_all() {
     fi
   done
   WORKER_PIDS=()
+  # Cancel orphaned in_progress tasks
+  foundry_cancel_in_progress_tasks
 }
 
 # ── Spawn workers ────────────────────────────────────────────────────
@@ -224,9 +228,12 @@ log_batch "Foundry batch starting (workers=${WORKERS}, watch=${WATCH_MODE})"
 
 if [[ "$WATCH_MODE" == true ]]; then
   log_batch "Watch mode active on ${FOUNDRY_TASK_ROOT_REL} (interval=${WATCH_INTERVAL}s)"
+  desired=""
+  pid=""
+  active_count=0
+  to_kill=0
   while true; do
     # Check desired worker count (can be changed at runtime via monitor)
-    local desired
     desired=$(foundry_get_desired_workers 2>/dev/null || echo "$WORKERS")
     WORKERS="$desired"
 
@@ -235,7 +242,7 @@ if [[ "$WATCH_MODE" == true ]]; then
 
     # Reap finished workers
     for wid in "${!WORKER_PIDS[@]}"; do
-      local pid="${WORKER_PIDS[$wid]}"
+      pid="${WORKER_PIDS[$wid]}"
       if ! kill -0 "$pid" 2>/dev/null; then
         wait "$pid" 2>/dev/null || true
         unset "WORKER_PIDS[$wid]"
@@ -243,15 +250,15 @@ if [[ "$WATCH_MODE" == true ]]; then
     done
 
     # Scale down: kill extra workers if desired count decreased
-    local active_count=0
+    active_count=0
     for _ in "${!WORKER_PIDS[@]}"; do
       active_count=$((active_count + 1))
     done
     if [[ $active_count -gt $WORKERS ]]; then
-      local to_kill=$((active_count - WORKERS))
+      to_kill=$((active_count - WORKERS))
       for wid in "${!WORKER_PIDS[@]}"; do
         [[ $to_kill -le 0 ]] && break
-        local pid="${WORKER_PIDS[$wid]}"
+        pid="${WORKER_PIDS[$wid]}"
         kill "$pid" 2>/dev/null || true
         wait "$pid" 2>/dev/null || true
         unset "WORKER_PIDS[$wid]"

@@ -951,5 +951,42 @@ foundry_task_root_empty() {
 }
 
 foundry_is_batch_running() {
-  pgrep -f 'agentic-development/lib/foundry-batch\.sh|agentic-development/foundry\.sh headless|foundry-batch\.sh' &>/dev/null
+  pgrep -f 'agentic-development/lib/foundry-batch\.sh' &>/dev/null
+}
+
+# Check if all agents in a task completed (summarizer done = pipeline finished).
+# Returns 0 if all agents done, 1 otherwise.
+_foundry_all_agents_done() {
+  local task_dir="$1"
+  python3 -c "
+import json, sys
+from pathlib import Path
+state = json.loads((Path(sys.argv[1]) / 'state.json').read_text())
+agents = state.get('agents', [])
+if agents and any(a.get('agent','').endswith('summarizer') and a.get('status')=='done' for a in agents):
+    sys.exit(0)
+sys.exit(1)
+" "$task_dir" 2>/dev/null
+}
+
+# Cancel all in_progress tasks (e.g. when batch workers are stopped).
+# Tasks where all agents completed → completed (stuck in finalization).
+# Tasks still mid-pipeline → cancelled.
+foundry_cancel_in_progress_tasks() {
+  local tasks_root="${PIPELINE_TASKS_ROOT:-$FOUNDRY_TASK_ROOT}"
+  local task_dir
+  for task_dir in "$tasks_root"/*--foundry*/; do
+    [[ -d "$task_dir" ]] || continue
+    local task_status
+    task_status=$(foundry_state_field "$task_dir" status 2>/dev/null || echo "")
+    if [[ "$task_status" == "in_progress" ]]; then
+      if _foundry_all_agents_done "$task_dir"; then
+        foundry_set_state_status "$task_dir" "completed" "" ""
+        pipeline_task_append_event "$task_dir" "stopped" "All agents done — marking completed" ""
+      else
+        foundry_set_state_status "$task_dir" "cancelled" "" ""
+        pipeline_task_append_event "$task_dir" "stopped" "Pipeline stopped by user" ""
+      fi
+    fi
+  done
 }

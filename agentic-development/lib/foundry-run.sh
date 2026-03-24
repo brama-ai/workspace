@@ -62,7 +62,7 @@ emit_event() {
 }
 
 # Agent order
-AGENTS=(architect coder validator tester summarizer)
+AGENTS=(u-architect u-coder u-validator u-tester u-summarizer)
 
 # Timeouts per agent (seconds, override via env)
 PIPELINE_TIMEOUT_INVESTIGATOR="${PIPELINE_TIMEOUT_INVESTIGATOR:-900}" # 15 min
@@ -131,14 +131,14 @@ Options:
   --skip-env-check    Skip environment prerequisites check
   -h, --help          Show this help
 
-Agents: planner, investigator, architect, coder, auditor, validator, tester, e2e, documenter, summarizer
+Agents: u-planner, u-investigator, u-architect, u-coder, u-auditor, u-validator, u-tester, e2e, u-documenter, u-translater, u-summarizer
 
 Profiles:
-  quick-fix    — coder + validator + summarizer
-  standard     — architect + coder + validator + tester + summarizer
-  complex      — standard + auditor + extended timeouts
-  bugfix       — investigator + coder + validator + tester + summarizer
-  bugfix+spec  — investigator + architect + coder + validator + tester + summarizer
+  quick-fix    — u-coder + u-validator + u-summarizer
+  standard     — u-architect + u-coder + u-validator + u-tester + u-summarizer
+  complex      — standard + u-auditor + extended timeouts
+  bugfix       — u-investigator + u-coder + u-validator + u-tester + u-summarizer
+  bugfix+spec  — u-investigator + u-architect + u-coder + u-validator + u-tester + u-summarizer
 
 Timeouts (override via env):
   PIPELINE_TIMEOUT_PLANNER=300     (5 min)
@@ -339,8 +339,8 @@ _detect_task_lifecycle() {
 _task_move_to_in_progress() {
   [[ "$TASK_LIFECYCLE" != true ]] && return
   TASK_ACTIVE_FILE="$TASK_FILE"
-  foundry_set_state_status "$TASK_DIR" "in_progress" "${FROM_AGENT:-planner}" "${FROM_AGENT:-planner}"
-  pipeline_task_append_event "$TASK_DIR" "run_started" "Foundry run started" "${FROM_AGENT:-planner}"
+  foundry_set_state_status "$TASK_DIR" "in_progress" "${FROM_AGENT:-u-planner}" "${FROM_AGENT:-u-planner}"
+  pipeline_task_append_event "$TASK_DIR" "run_started" "Foundry run started" "${FROM_AGENT:-u-planner}"
   echo -e "${BLUE}Task state: pending → in_progress${NC}"
 }
 
@@ -349,14 +349,14 @@ _task_move_to_done() {
   local branch="${1:-}"
   foundry_set_state_status "$TASK_DIR" "completed" "" ""
   [[ -n "$branch" ]] && foundry_update_state_field "$TASK_DIR" "branch" "$branch"
-  pipeline_task_append_event "$TASK_DIR" "run_completed" "Foundry run completed" "summarizer"
+  pipeline_task_append_event "$TASK_DIR" "run_completed" "Foundry run completed" "u-summarizer"
   echo -e "${GREEN}Task state: in_progress → completed${NC}"
 }
 
 _task_move_to_failed() {
   [[ "$TASK_LIFECYCLE" != true ]] && return
   local branch="${1:-}"
-  foundry_set_state_status "$TASK_DIR" "failed" "${failed_agent:-unknown}" "${failed_agent:-coder}"
+  foundry_set_state_status "$TASK_DIR" "failed" "${failed_agent:-unknown}" "${failed_agent:-u-coder}"
   [[ -n "$branch" ]] && foundry_update_state_field "$TASK_DIR" "branch" "$branch"
   pipeline_task_append_event "$TASK_DIR" "run_failed" "Foundry run failed at ${failed_agent:-unknown}" "${failed_agent:-unknown}"
   echo -e "${RED}Task state: in_progress → failed${NC}"
@@ -559,13 +559,13 @@ get_agents_to_run() {
     local has_auditor=false
     local new_list=()
     for agent in "${agent_list[@]}"; do
-      [[ "$agent" == "auditor" ]] && has_auditor=true
+      [[ "$agent" == "u-auditor" ]] && has_auditor=true
     done
     if [[ "$has_auditor" != true ]]; then
       for agent in "${agent_list[@]}"; do
         new_list+=("$agent")
-        if [[ "$agent" == "coder" ]]; then
-          new_list+=("auditor")
+        if [[ "$agent" == "u-coder" ]]; then
+          new_list+=("u-auditor")
         fi
       done
       agent_list=("${new_list[@]}")
@@ -579,10 +579,10 @@ get_agents_to_run() {
 
   local has_summarizer=false
   for agent in "${agent_list[@]}"; do
-    [[ "$agent" == "summarizer" ]] && has_summarizer=true
+    [[ "$agent" == "u-summarizer" ]] && has_summarizer=true
   done
   if [[ "$has_summarizer" != true ]]; then
-    agent_list+=("summarizer")
+    agent_list+=("u-summarizer")
   fi
 
   local started=false
@@ -596,7 +596,7 @@ get_agents_to_run() {
       fi
     fi
 
-    if [[ "$SKIP_ARCHITECT" == true && "$agent" == "architect" ]]; then
+    if [[ "$SKIP_ARCHITECT" == true && "$agent" == "u-architect" ]]; then
       continue
     fi
 
@@ -619,7 +619,10 @@ setup_branch() {
 
 get_timeout() {
   local agent="$1"
-  local var_name="PIPELINE_TIMEOUT_$(echo "$agent" | tr '[:lower:]' '[:upper:]')"
+  # Strip u-/s- prefix for timeout var lookup (u-architect → ARCHITECT)
+  local base_name="${agent#u-}"
+  base_name="${base_name#s-}"
+  local var_name="PIPELINE_TIMEOUT_$(echo "$base_name" | tr '[:lower:]' '[:upper:]' | tr '-' '_')"
   echo "${!var_name:-1800}"
 }
 
@@ -817,7 +820,7 @@ save_agent_artifact() {
   fi
 
   # Copy agent-created files (e.g., openspec proposals for architect)
-  if [[ "$agent" == "architect" ]]; then
+  if [[ "$agent" == "u-architect" ]]; then
     # Copy any new openspec changes
     local changes_dir="$REPO_ROOT/openspec/changes"
     if [[ -d "$changes_dir" ]]; then
@@ -829,7 +832,7 @@ save_agent_artifact() {
         fi
       done
     fi
-  elif [[ "$agent" == "summarizer" && -f "$TASK_SUMMARY_FILE" ]]; then
+  elif [[ "$agent" == "u-summarizer" && -f "$TASK_SUMMARY_FILE" ]]; then
     cp "$TASK_SUMMARY_FILE" "$agent_dir/$(basename "$TASK_SUMMARY_FILE")" 2>/dev/null || true
   fi
 }
@@ -1328,7 +1331,7 @@ auto_inject_auditor() {
     # Check if auditor is already in the list
     local has_auditor=false
     for a in "${AGENTS[@]}"; do
-      [[ "$a" == "auditor" ]] && has_auditor=true
+      [[ "$a" == "u-auditor" ]] && has_auditor=true
     done
 
     if [[ "$has_auditor" == false ]]; then
@@ -1336,13 +1339,13 @@ auto_inject_auditor() {
       local new_agents=()
       for a in "${AGENTS[@]}"; do
         new_agents+=("$a")
-        if [[ "$a" == "coder" ]]; then
-          new_agents+=("auditor")
+        if [[ "$a" == "u-coder" ]]; then
+          new_agents+=("u-auditor")
         fi
       done
       AGENTS=("${new_agents[@]}")
       ENABLE_AUDIT=true
-      echo -e "${CYAN}🔍 Agent task detected — auditor auto-injected after coder${NC}"
+      echo -e "${CYAN}🔍 Agent task detected — u-auditor auto-injected after u-coder${NC}"
       echo -e "  ${BLUE}Agents: ${AGENTS[*]}${NC}"
     fi
   fi
@@ -1359,8 +1362,8 @@ monitor_agent_loop() {
   # stall tolerance — their log won't grow while the subprocess runs.
   local max_stalls=3
   case "$agent" in
-    coder|tester|e2e) max_stalls=8 ;;   # 8 min
-    validator)        max_stalls=5 ;;    # 5 min
+    u-coder|u-tester|e2e) max_stalls=8 ;;   # 8 min
+    u-validator)          max_stalls=5 ;;    # 5 min
   esac
   local prev_size=0
   local stall_count=0
@@ -1404,7 +1407,7 @@ monitor_agent_loop() {
 
     # Check 3: Iteration counting for validator/tester
     # Detects repeated make cycles (cs-fix/analyse/test) that aren't making progress
-    if [[ "$agent" == "validator" || "$agent" == "tester" ]]; then
+    if [[ "$agent" == "u-validator" || "$agent" == "u-tester" ]]; then
       local make_runs
       make_runs=$(grep -cE 'make (cs-fix|cs-check|analyse|test|knowledge-|hello-|news-)' "$log_file" 2>/dev/null || true)
       local max_iterations=8  # ~4 cycles of fix+check
@@ -1727,7 +1730,7 @@ build_prompt() {
   local agent="$1"
 
   case "$agent" in
-    planner)
+    u-planner)
       cat << PROMPT
 Task: ${TASK_MESSAGE}
 
@@ -1773,21 +1776,21 @@ Write ONLY a JSON file to \`pipeline-plan.json\` (in the repo root) with this ex
 **Fields**:
 - \`is_agent_task\`: set to \`true\` when the task creates, modifies, or significantly changes an agent (any app in \`apps/\` with \`-agent\` suffix, or agent configs in \`.opencode/agents/\`). When true, the pipeline auto-injects an auditor step after the coder to verify agent compliance.
 
-Agent options: planner, architect, coder, auditor, validator, tester, e2e, documenter, summarizer.
-For quick-fix: typically ["coder", "validator", "summarizer"].
-For standard: typically ["architect", "coder", "validator", "tester", "summarizer"].
-For complex: add "auditor" and increase timeouts.
-Note: documenter is NOT needed by default — coder handles docs via tasks.md "Documentation" section. Only add documenter if documentation is the primary task.
-Always keep "summarizer" as the final agent unless this is an explicit single-agent run.
+Agent options: u-planner, u-architect, u-coder, u-auditor, u-validator, u-tester, e2e, u-documenter, u-translater, u-summarizer.
+For quick-fix: typically ["u-coder", "u-validator", "u-summarizer"].
+For standard: typically ["u-architect", "u-coder", "u-validator", "u-tester", "u-summarizer"].
+For complex: add "u-auditor" and increase timeouts.
+Note: documenter is NOT needed by default — u-coder handles docs via tasks.md "Documentation" section. Only add documenter if documentation is the primary task.
+Always keep "u-summarizer" as the final agent unless this is an explicit single-agent run.
 
 **IMPORTANT**: If an existing OpenSpec proposal already has \`tasks.md\` — exclude \`architect\` from agents. The coder reads specs directly from \`openspec/changes/<id>/\`. If the task says "Implement openspec change ..." — the spec is ready, skip architect.
 
 Write the file and nothing else. Do not explain your reasoning outside the JSON.
 PROMPT
       ;;
-    architect)
+    u-architect)
       local architect_timeout
-      architect_timeout=$(get_timeout "architect")
+      architect_timeout=$(get_timeout "u-architect")
       local architect_timeout_min=$(( architect_timeout / 60 ))
 
       local scope_instruction=""
@@ -1845,7 +1848,7 @@ Update \`.opencode/pipeline/handoff.md\` with your section:
 - Key design decisions and risks
 PROMPT
       ;;
-    coder)
+    u-coder)
       cat << PROMPT
 Task: ${TASK_MESSAGE}
 
@@ -1884,7 +1887,7 @@ Update \`.opencode/pipeline/handoff.md\` — Coder section:
 - Note deviations from the spec (with reasoning)
 PROMPT
       ;;
-    validator)
+    u-validator)
       cat << PROMPT
 Read \`.opencode/pipeline/handoff.md\` for the task description and full pipeline context.
 
@@ -1913,7 +1916,7 @@ Update \`.opencode/pipeline/handoff.md\` — Validator section:
 - Files fixed (list)
 PROMPT
       ;;
-    tester)
+    u-tester)
       cat << PROMPT
 Read \`.opencode/pipeline/handoff.md\` for the task description and full pipeline context.
 
@@ -2012,7 +2015,7 @@ Update \`.opencode/pipeline/handoff.md\` — E2E section:
 - Fixes applied (if any)
 PROMPT
       ;;
-    documenter)
+    u-documenter)
       cat << PROMPT
 Read \`.opencode/pipeline/handoff.md\` for the task description and full pipeline context.
 
@@ -2044,7 +2047,7 @@ Update \`.opencode/pipeline/handoff.md\` — Documenter section:
 - Final status: PIPELINE COMPLETE
 PROMPT
       ;;
-    auditor)
+    u-auditor)
       local task_summary
       task_summary=$(echo "$TASK_MESSAGE" | head -1 | cut -c1-120)
       cat << PROMPT
@@ -2074,7 +2077,7 @@ Write audit report to \`.opencode/pipeline/reports/${TIMESTAMP}_audit.md\`
 Update \`.opencode/pipeline/handoff.md\` with audit summary and verdict (PASS/WARN/FAIL)
 PROMPT
       ;;
-    summarizer)
+    u-summarizer)
       cat << PROMPT
 Task: Create the final task summary for this pipeline run.
 
@@ -2303,7 +2306,7 @@ main() {
   if [[ "$RESUME_MODE" == true && -z "$FROM_AGENT" ]]; then
     local resume_from
     resume_from=$(get_resume_agent)
-    if [[ -n "$resume_from" && "$resume_from" != "architect" ]]; then
+    if [[ -n "$resume_from" && "$resume_from" != "u-architect" ]]; then
       FROM_AGENT="$resume_from"
       echo -e "${YELLOW}Auto-resuming from: ${FROM_AGENT}${NC}"
       echo -e "${DIM}Checkpoint:${NC}"
@@ -2318,18 +2321,18 @@ main() {
   elif [[ "$SKIP_PLANNER" != true && "$SKIP_ARCHITECT" != true && -z "$FROM_AGENT" && -z "$ONLY_AGENT" ]]; then
     echo -e "${CYAN}Running planner agent to analyze task complexity...${NC}"
     local planner_prompt
-    planner_prompt=$(build_prompt "planner")
+    planner_prompt=$(build_prompt "u-planner")
     local planner_start
     planner_start=$(date +%s)
-    if run_agent "planner" "$planner_prompt"; then
+    if run_agent "u-planner" "$planner_prompt"; then
       local planner_dur=$(( $(date +%s) - planner_start ))
       echo -e "${GREEN}✓ Planner completed in ${planner_dur}s${NC}"
       if apply_plan "$PLAN_FILE"; then
-        write_checkpoint "planner" "done" "$planner_dur" ""
+        write_checkpoint "u-planner" "done" "$planner_dur" ""
       fi
     else
       echo -e "${YELLOW}⚠ Planner failed, using standard pipeline${NC}"
-      write_checkpoint "planner" "failed" "$(( $(date +%s) - planner_start ))" ""
+      write_checkpoint "u-planner" "failed" "$(( $(date +%s) - planner_start ))" ""
     fi
     # Archive plan.json for this task, then clean up git
     if [[ -f "$PLAN_FILE" ]]; then
@@ -2410,7 +2413,7 @@ main() {
       fi
 
       # Stage gate: verify coder produced actual code changes
-      if [[ "$agent" == "coder" ]]; then
+      if [[ "$agent" == "u-coder" ]]; then
         if ! verify_coder_output; then
           local agent_dur_fail=$(( $(date +%s) - agent_start ))
           local agent_tokens
@@ -2463,31 +2466,31 @@ main() {
     fi
   done
 
-  if $failed && $should_run_summarizer && [[ "$failed_agent" != "summarizer" ]]; then
+  if $failed && $should_run_summarizer && [[ "$failed_agent" != "u-summarizer" ]]; then
     echo ""
-    echo -e "${YELLOW}Running summarizer after failure to capture partial task status...${NC}"
+    echo -e "${YELLOW}Running u-summarizer after failure to capture partial task status...${NC}"
 
     local summary_prompt
-    summary_prompt=$(build_prompt "summarizer")
+    summary_prompt=$(build_prompt "u-summarizer")
     local summary_start
     summary_start=$(date +%s)
-    local summary_log="$LOG_DIR/${TIMESTAMP}_summarizer.log"
+    local summary_log="$LOG_DIR/${TIMESTAMP}_u-summarizer.log"
 
-    if run_agent "summarizer" "$summary_prompt"; then
+    if run_agent "u-summarizer" "$summary_prompt"; then
       local summary_dur=$(( $(date +%s) - summary_start ))
-      commit_agent_work "summarizer" "$task_slug"
+      commit_agent_work "u-summarizer" "$task_slug"
       local summary_commit
       summary_commit=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo "")
       local summary_tokens
-      summary_tokens=$(get_agent_tokens "summarizer")
-      write_checkpoint "summarizer" "done" "$summary_dur" "$summary_commit" "$summary_tokens"
-      save_agent_artifact "summarizer" "$summary_log"
+      summary_tokens=$(get_agent_tokens "u-summarizer")
+      write_checkpoint "u-summarizer" "done" "$summary_dur" "$summary_commit" "$summary_tokens"
+      save_agent_artifact "u-summarizer" "$summary_log"
     else
       local summary_dur=$(( $(date +%s) - summary_start ))
       local summary_tokens
-      summary_tokens=$(get_agent_tokens "summarizer")
-      write_checkpoint "summarizer" "failed" "$summary_dur" "" "$summary_tokens"
-      save_agent_artifact "summarizer" "$summary_log"
+      summary_tokens=$(get_agent_tokens "u-summarizer")
+      write_checkpoint "u-summarizer" "failed" "$summary_dur" "" "$summary_tokens"
+      save_agent_artifact "u-summarizer" "$summary_log"
       echo -e "${YELLOW}⚠ Summarizer failed after pipeline failure; keeping original failure status${NC}"
     fi
   fi
@@ -2646,7 +2649,15 @@ PYEOF
     cp "$HANDOFF_FILE" "$LOG_DIR/${TIMESTAMP}_handoff.md" 2>/dev/null || true
   fi
 
+  # Task file lifecycle: finalize BEFORE push/PR so task never stays in_progress
+  if $failed; then
+    _task_move_to_failed "$branch" "$total_duration"
+  else
+    _task_move_to_done "$branch" "$total_duration"
+  fi
+
   # Create Pull Request (only on success and if we have a summary)
+  # This is best-effort — task is already marked completed/failed above
   if ! $failed && [[ -n "$branch" && "$branch" != "main" ]]; then
     echo -e "${BLUE}Creating Pull Request...${NC}"
     local pr_title pr_body pr_url
@@ -2658,9 +2669,9 @@ PYEOF
       pr_body="Pipeline completed for: ${TASK_MESSAGE}"
     fi
 
-    # Push branch to remote
-    if git -C "$REPO_ROOT" push -u origin "$branch" 2>/dev/null; then
-      pr_url=$(gh pr create \
+    # Push branch to remote (timeout prevents indefinite hangs)
+    if timeout 60 git -C "$REPO_ROOT" push -u origin "$branch" 2>/dev/null; then
+      pr_url=$(timeout 30 gh pr create \
         --base main \
         --head "$branch" \
         --title "[pipeline] ${pr_title}" \
@@ -2675,13 +2686,6 @@ PYEOF
     else
       echo -e "${YELLOW}⚠ Git push failed — PR not created${NC}"
     fi
-  fi
-
-  # Task file lifecycle: move to done or failed
-  if $failed; then
-    _task_move_to_failed "$branch" "$total_duration"
-  else
-    _task_move_to_done "$branch" "$total_duration"
   fi
 
   # Final status
