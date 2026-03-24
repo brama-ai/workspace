@@ -147,7 +147,7 @@ cmd_clone() {
     else
         warn "No compose.fragment.yaml found in $checkout"
         warn "Create docker/compose.fragments/$name.yaml manually."
-        warn "See compose.fragments/example-agent.yaml.template for reference."
+        warn "See templates/agent/compose.fragment.yaml for reference."
     fi
 
     echo ""

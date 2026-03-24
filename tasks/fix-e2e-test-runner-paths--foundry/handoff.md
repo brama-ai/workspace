@@ -84,3 +84,4 @@ After the Docker Compose agent paths are fixed (see task: fix-docker-compose-age
 - **Commit (validator)**: 36c3c30
 
 - **Final recommendation**: повторно прогнати `make e2e-smoke` після останньої правки `Makefile`, потім виконати `make e2e` і зафіксувати фінальний тестовий verdict у handoff
+- **Commit (summarizer)**: 8110219

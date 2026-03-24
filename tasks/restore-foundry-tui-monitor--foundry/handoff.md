@@ -199,9 +199,11 @@ monitor)
 
 ## Summarizer
 
-- **Status**: pending
-- **Summary file**: —
-- **Next task recommendation**: —
+- **Status**: done
+- **Summary file**: `/workspaces/brama/tasks/restore-foundry-tui-monitor--foundry/summary.md`
+- **Next task recommendation**: `Додати інтерактивний smoke/E2E тест для Foundry TUI monitor`
+
+**PIPELINE COMPLETE**
 
 ---
 
