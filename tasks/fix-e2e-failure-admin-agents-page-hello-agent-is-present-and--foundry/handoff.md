@@ -139,12 +139,14 @@ Error: Element "//div[contains(@class,"agent-tab-pane") and contains(@class,"act
 
 ## Summarizer
 
-- **Status**: pending
-- **Summary file**: —
-- **Next task recommendation**: —
+- **Status**: done
+- **Summary file**: `/workspaces/brama/tasks/fix-e2e-failure-admin-agents-page-hello-agent-is-present-and--foundry/summary.md`
+- **Next task recommendation**: Стабілізувати E2E discovery flow на сторінці `/admin/agents`
+- **Pipeline marker**: **PIPELINE COMPLETE**
 
 ---
 
 - **Commit (investigator)**: bbfc263
 - **Commit (coder)**: 10ebefd
 - **Commit (validator)**: 56f947c
+- **Commit (tester)**: 2390b14

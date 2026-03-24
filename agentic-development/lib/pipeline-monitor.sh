@@ -950,20 +950,17 @@ render_bottom_menu_buf() {
   [[ $ALL_TASKS_COUNT -gt 0 && $SELECTED_IDX -lt $ALL_TASKS_COUNT ]] && state="${ALL_TASKS_STATES[$SELECTED_IDX]%%:*}"
   local batch_running=false; foundry_is_batch_running && batch_running=true
 
-  local keys="  ${DIM}←/→ tabs  ↑/↓ select  Enter detail"
+  local keys="  ${DIM}↑/↓ select  Enter detail  ${WHITE}[a]${DIM} agents  ${WHITE}[l]${DIM} logs"
   case "$state" in
-    in_progress) keys="$keys  ${WHITE}[l]${DIM} view task" ;;
-    failed)      keys="$keys  ${WHITE}[f]${DIM} retry  ${WHITE}[d]${DIM} delete  ${WHITE}[l]${DIM} view task" ;;
+    in_progress) ;;
+    failed)      keys="$keys  ${WHITE}[f]${DIM} retry  ${WHITE}[d]${DIM} delete" ;;
     suspended)   keys="$keys  ${WHITE}[u]${DIM} resume  ${WHITE}[U]${DIM} resume all  ${WHITE}[d]${DIM} delete" ;;
-    pending)
-      keys="$keys  ${WHITE}[+]${DIM} prio+  ${WHITE}[-]${DIM} prio-  ${WHITE}[d]${DIM} delete"
-      ;;
-    completed)   keys="$keys  ${WHITE}[l]${DIM} view task" ;;
+    pending)     keys="$keys  ${WHITE}[+]${DIM} prio+  ${WHITE}[-]${DIM} prio-  ${WHITE}[d]${DIM} delete" ;;
+    completed)   ;;
   esac
-  keys="$keys  ${WHITE}[[]${DIM} worker-  ${WHITE}[]]${DIM} worker+"
   ! $batch_running && keys="$keys  ${WHITE}[s]${DIM} start"
   $batch_running && keys="$keys  ${WHITE}[k]${DIM} stop"
-  keys="$keys  ${WHITE}[q]${DIM} quit${RESET}"
+  keys="$keys  ${WHITE}[t]${DIM} autotest  ${WHITE}[q]${DIM} quit${RESET}"
   buf_line "$keys"
 }
 
@@ -985,20 +982,307 @@ render_task_detail_buf() {
   buf_line "  ${DIM}Esc back  [q] quit${RESET}"
 }
 
-# ── Task log view (shows task.md) ────────────────────────────────────
-render_task_log_view_buf() {
-  if [[ -z "$LOG_VIEW_FILE" || ! -f "$LOG_VIEW_FILE" ]]; then
-    buf_line "  ${DIM}No file found for this task${RESET}"
+# ── Task stdout log view (shows live agent stdout) ──────────────────
+render_task_stdout_view_buf() {
+  local task_dir=""
+  [[ $ALL_TASKS_COUNT -gt 0 && $SELECTED_IDX -lt $ALL_TASKS_COUNT ]] && task_dir="${ALL_TASKS_DIRS[$SELECTED_IDX]}"
+
+  if [[ -z "$task_dir" || ! -d "$task_dir" ]]; then
+    buf_line "  ${DIM}No task selected${RESET}"
     buf_line "  ${DIM}q/Esc back${RESET}"
-  else
-    local log_name="${LOG_VIEW_FILE##*/}"
-    local log_size
-    log_size=$(wc -c < "$LOG_VIEW_FILE" | tr -d ' ')
-    buf_line "  ${BOLD}Task File${RESET}  ${DIM}${log_name}  $(( log_size / 1024 ))KB  (q/Esc back)${RESET}"
-    local available_lines=$((TERM_ROWS - 7))
-    [[ $available_lines -lt 5 ]] && available_lines=5
-    render_log_lines "$LOG_VIEW_FILE" "$available_lines"
+    return
   fi
+
+  local title
+  title=$(_extract_title "$task_dir")
+  local live_info live_agent="" live_log=""
+  live_info=$(find_live_agent_info "$task_dir")
+  if [[ -n "$live_info" ]]; then
+    IFS=$'\t' read -r live_agent live_log <<< "$live_info"
+  fi
+
+  local log_file="$live_log"
+  local source_label="live"
+  if [[ -z "$log_file" || ! -f "$log_file" ]]; then
+    log_file=$(find_recent_artifact_log "$task_dir")
+    source_label="artifact"
+  fi
+
+  buf_line "  ${BOLD}${WHITE}${title}${RESET}"
+  if [[ -n "$live_agent" ]]; then
+    buf_line "  ${YELLOW}${BOLD}${live_agent}${RESET} ${DIM}stdout (${source_label})${RESET}"
+  else
+    buf_line "  ${DIM}Agent stdout (${source_label})${RESET}"
+  fi
+  buf_line ""
+
+  if [[ -z "$log_file" || ! -f "$log_file" ]]; then
+    buf_line "  ${DIM}No log file available yet for this task.${RESET}"
+  else
+    local available_lines=$((TERM_ROWS - 10))
+    [[ $available_lines -lt 5 ]] && available_lines=5
+    render_log_lines "$log_file" "$available_lines"
+  fi
+  buf_line ""
+  buf_line "  ${DIM}q/Esc back  (auto-refresh ${REFRESH_INTERVAL}s)${RESET}"
+}
+
+# ── Agents table view (shows per-agent telemetry) ───────────────────
+render_agents_view_buf() {
+  local task_dir=""
+  [[ $ALL_TASKS_COUNT -gt 0 && $SELECTED_IDX -lt $ALL_TASKS_COUNT ]] && task_dir="${ALL_TASKS_DIRS[$SELECTED_IDX]}"
+
+  if [[ -z "$task_dir" || ! -d "$task_dir" ]]; then
+    buf_line "  ${DIM}No task selected${RESET}"
+    buf_line "  ${DIM}q/Esc back${RESET}"
+    return
+  fi
+
+  local title
+  title=$(_extract_title "$task_dir")
+  local workflow
+  workflow=$(foundry_state_field "$task_dir" workflow 2>/dev/null || echo "foundry")
+
+  buf_line "  ${BOLD}${WHITE}Agents: ${title}${RESET}"
+  buf_line "  ${DIM}Workflow: ${workflow}${RESET}"
+  buf_line ""
+
+  # Table header
+  local hdr
+  hdr=$(printf "  ${BOLD}%-14s %-12s %8s %8s %8s %8s %6s${RESET}" "Agent" "Status" "Duration" "Input" "Output" "Cost" "Calls")
+  buf_line "$hdr"
+  buf_line "  ${DIM}$(printf '%*s' $((TERM_COLS - 4)) '' | tr ' ' '─')${RESET}"
+
+  local live_info live_agent=""
+  live_info=$(find_live_agent_info "$task_dir")
+  [[ -n "$live_info" ]] && IFS=$'\t' read -r live_agent _ <<< "$live_info"
+
+  local shown=0
+  local available_lines=$((TERM_ROWS - 12))
+  [[ $available_lines -lt 5 ]] && available_lines=5
+
+  # Read agents data from state.json "agents" array, fallback to build_focus_agent_rows
+  local agents_json=""
+  agents_json=$(python3 - "$task_dir" "$live_agent" <<'PYEOF' 2>/dev/null
+import json
+import re
+import sys
+from pathlib import Path
+
+task_dir = Path(sys.argv[1])
+live_agent = sys.argv[2].strip()
+state_path = task_dir / "state.json"
+handoff = task_dir / "handoff.md"
+telemetry_dir = task_dir / "artifacts" / "telemetry"
+
+order = [
+    "planner", "investigator", "architect", "coder", "reviewer",
+    "auditor", "security-review", "validator", "tester", "e2e",
+    "documenter", "translater", "summarizer",
+]
+known_agents = set(order)
+rows = {}
+
+# Try state.json agents array first
+if state_path.exists():
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        for ag in state.get("agents", []):
+            name = ag.get("agent", ag.get("name", ""))
+            if not name:
+                continue
+            rows[name] = {
+                "agent": name,
+                "status": ag.get("status", "done"),
+                "duration": str(ag.get("duration_seconds", "")),
+                "input_tokens": str(ag.get("input_tokens", "")),
+                "output_tokens": str(ag.get("output_tokens", "")),
+                "cost": str(ag.get("cost", "")),
+                "calls": str(ag.get("call_count", "1")),
+                "model": ag.get("model", ""),
+            }
+    except Exception:
+        pass
+
+def normalize_status(raw):
+    raw = (raw or "").strip().lower()
+    mapping = {
+        "done": "done", "completed": "done", "pass": "done", "success": "done",
+        "failed": "failed", "fail": "failed", "error": "failed", "timeout": "failed",
+        "pending": "pending", "in_progress": "in_progress", "in progress": "in_progress",
+        "running": "in_progress", "rework_requested": "rework",
+    }
+    return mapping.get(raw, raw.replace(" ", "_") or "pending")
+
+# Enrich from handoff
+if handoff.exists():
+    current = None
+    for raw_line in handoff.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^##\s+(.+)$", raw_line)
+        if m:
+            heading = m.group(1).strip().lower()
+            current = heading if heading in known_agents else None
+            if current and current not in rows:
+                rows[current] = {"agent": current, "status": "pending", "duration": "",
+                                 "input_tokens": "", "output_tokens": "", "cost": "", "calls": "1", "model": ""}
+            continue
+        if current:
+            m = re.search(r"\*\*Status\*\*:\s*(.+)", raw_line)
+            if m:
+                rows.setdefault(current, {"agent": current, "status": "pending", "duration": "",
+                                          "input_tokens": "", "output_tokens": "", "cost": "", "calls": "1", "model": ""})
+                rows[current]["status"] = normalize_status(m.group(1))
+
+# Enrich from telemetry dir
+if telemetry_dir.exists():
+    for file in sorted(telemetry_dir.glob("*.json")):
+        try:
+            data = json.loads(file.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        agent = data.get("agent") or file.stem
+        exit_code = str(data.get("exit_code", ""))
+        status = "done" if exit_code == "0" else "failed"
+        if agent not in rows:
+            rows[agent] = {"agent": agent, "status": status, "duration": "",
+                           "input_tokens": "", "output_tokens": "", "cost": "", "calls": "1", "model": ""}
+        rows[agent]["status"] = status
+        rows[agent]["model"] = data.get("model", "") or rows[agent]["model"]
+        dur = data.get("duration_seconds")
+        if dur not in (None, ""):
+            rows[agent]["duration"] = str(dur)
+        inp = data.get("input_tokens")
+        if inp not in (None, "", 0):
+            rows[agent]["input_tokens"] = str(inp)
+        out = data.get("output_tokens")
+        if out not in (None, "", 0):
+            rows[agent]["output_tokens"] = str(out)
+        cost = data.get("cost")
+        if cost not in (None, "", 0):
+            rows[agent]["cost"] = str(cost)
+
+# Enrich from events.jsonl for timing
+events_path = task_dir / "events.jsonl"
+if events_path.exists():
+    try:
+        for raw_line in events_path.read_text(encoding="utf-8").splitlines():
+            if not raw_line.strip():
+                continue
+            ev = json.loads(raw_line)
+            step = ev.get("step", "")
+            etype = ev.get("type", "")
+            ts = ev.get("timestamp", "")
+            if step and step in rows:
+                if etype in ("agent_start", "step_start") and ts:
+                    rows[step].setdefault("started_at", ts)
+    except Exception:
+        pass
+
+if live_agent:
+    rows.setdefault(live_agent, {"agent": live_agent, "status": "in_progress", "duration": "",
+                                 "input_tokens": "", "output_tokens": "", "cost": "", "calls": "1", "model": ""})
+    rows[live_agent]["status"] = "in_progress"
+
+# Output in order
+ordered = []
+for agent in order:
+    if agent in rows:
+        ordered.append(rows.pop(agent))
+for agent in sorted(rows):
+    ordered.append(rows[agent])
+
+for row in ordered:
+    print("\t".join([
+        row["agent"],
+        row["status"],
+        row.get("duration", ""),
+        row.get("input_tokens", ""),
+        row.get("output_tokens", ""),
+        row.get("cost", ""),
+        row.get("calls", "1"),
+        row.get("model", ""),
+    ]))
+PYEOF
+) || true
+
+  local agent status duration input_tokens output_tokens cost calls model
+  while IFS=$'\t' read -r agent status duration input_tokens output_tokens cost calls model; do
+    [[ -n "$agent" ]] || continue
+    [[ $shown -ge $available_lines ]] && break
+
+    local status_icon status_color
+    case "$status" in
+      in_progress) status_icon="▸"; status_color="$YELLOW" ;;
+      done)        status_icon="✓"; status_color="$GREEN" ;;
+      failed)      status_icon="✗"; status_color="$RED" ;;
+      rework)      status_icon="↺"; status_color="$MAGENTA" ;;
+      *)           status_icon="○"; status_color="$DIM" ;;
+    esac
+
+    local dur_str="-"
+    [[ -n "$duration" ]] && dur_str=$(format_duration "$duration")
+
+    local in_str="-" out_str="-" cost_str="-" calls_str="${calls:-1}"
+    [[ -n "$input_tokens" ]] && in_str=$(format_tokens "$input_tokens")
+    [[ -n "$output_tokens" ]] && out_str=$(format_tokens "$output_tokens")
+    [[ -n "$cost" && "$cost" != "0" ]] && cost_str="\$${cost}"
+
+    local live_label=""
+    [[ "$agent" == "$live_agent" ]] && live_label=" ${YELLOW}LIVE${RESET}"
+
+    buf_line "$(printf "  ${status_color}${status_icon}${RESET} %-13s ${status_color}%-11s${RESET} %8s %8s %8s %8s %6s${live_label}" "$agent" "$status" "$dur_str" "$in_str" "$out_str" "$cost_str" "$calls_str")"
+    shown=$((shown + 1))
+  done <<< "$agents_json"
+
+  if [[ $shown -eq 0 ]]; then
+    buf_line "  ${DIM}No agent data yet. Waiting for pipeline to start...${RESET}"
+  fi
+
+  buf_line ""
+  buf_line "  ${DIM}q/Esc back  (auto-refresh ${REFRESH_INTERVAL}s)${RESET}"
+}
+
+# ── Tab: Commands ─────────────────────────────────────────────────────
+render_commands_tab() {
+  get_terminal_size
+  buf_reset
+  buf_line "${CYAN}${BOLD}  Foundry Monitor${RESET} ${DIM}v${MONITOR_VERSION}${RESET}  $(date '+%H:%M:%S')"
+  buf_line "${DIM}$(hline)${RESET}"
+  buf_line "$(render_tabs_str)"
+  buf_line ""
+
+  buf_line "  ${BOLD}${CYAN}System Commands${RESET}"
+  buf_line "  ${DIM}$(printf '%*s' $((TERM_COLS - 4)) '' | tr ' ' '─')${RESET}"
+  buf_line "  ${WHITE}s${RESET}       ${DIM}Start headless workers${RESET}"
+  buf_line "  ${WHITE}k${RESET}       ${DIM}Kill / stop workers${RESET}"
+  buf_line "  ${WHITE}f${RESET}       ${DIM}Retry all failed tasks${RESET}"
+  buf_line "  ${WHITE}r${RESET}       ${DIM}Force refresh${RESET}"
+  buf_line "  ${WHITE}]${RESET} / ${WHITE}[${RESET}   ${DIM}Increase / decrease desired workers${RESET}"
+  buf_line "  ${WHITE}u${RESET}       ${DIM}Resume selected suspended task${RESET}"
+  buf_line "  ${WHITE}U${RESET}       ${DIM}Resume ALL suspended tasks${RESET}"
+  buf_line "  ${WHITE}d${RESET}       ${DIM}Delete selected pending/failed/suspended task${RESET}"
+  buf_line "  ${WHITE}+${RESET} / ${WHITE}-${RESET}   ${DIM}Raise / lower priority of pending task${RESET}"
+  buf_line "  ${WHITE}q${RESET}       ${DIM}Quit monitor${RESET}"
+  buf_line ""
+
+  buf_line "  ${BOLD}${YELLOW}Flow Shortcuts${RESET}"
+  buf_line "  ${DIM}$(printf '%*s' $((TERM_COLS - 4)) '' | tr ' ' '─')${RESET}"
+  buf_line "  ${WHITE}t${RESET}       ${DIM}Launch autotest (creates fix tasks from E2E failures)${RESET}"
+  buf_line "  ${WHITE}T${RESET}       ${DIM}Launch autotest --smoke (smoke tests only)${RESET}"
+  buf_line ""
+
+  buf_line "  ${BOLD}${GREEN}Task Navigation${RESET}"
+  buf_line "  ${DIM}$(printf '%*s' $((TERM_COLS - 4)) '' | tr ' ' '─')${RESET}"
+  buf_line "  ${WHITE}↑${RESET} / ${WHITE}↓${RESET}   ${DIM}Select task${RESET}"
+  buf_line "  ${WHITE}Enter${RESET}   ${DIM}View task detail (task.md)${RESET}"
+  buf_line "  ${WHITE}a${RESET}       ${DIM}View agents table for selected task${RESET}"
+  buf_line "  ${WHITE}l${RESET}       ${DIM}View agent stdout logs for selected task${RESET}"
+  buf_line "  ${WHITE}Esc${RESET}     ${DIM}Back to task list from any sub-view${RESET}"
+  buf_line ""
+
+  [[ -n "$ACTION_MSG" ]] && { buf_line "  $ACTION_MSG"; ACTION_MSG=""; }
+  buf_line "  ${DIM}←/→ tabs  [q] quit${RESET}"
+  buf_flush
 }
 
 # ── Tab: Activity (events.jsonl-based) ────────────────────────────────
@@ -1414,6 +1698,25 @@ action_workers_decrease() {
   ACTION_MSG="${CYAN}Desired workers → ${next}${RESET}"
 }
 
+action_autotest() {
+  local smoke="${1:-false}"
+  local args=("autotest" "5")
+  [[ "$smoke" == true ]] && args+=("--smoke")
+  args+=("--start")
+  local output="" exit_code=0
+  output=$("$REPO_ROOT/agentic-development/foundry.sh" "${args[@]}" 2>&1) || exit_code=$?
+  if [[ $exit_code -eq 0 ]]; then
+    local label="autotest"
+    [[ "$smoke" == true ]] && label="autotest --smoke"
+    ACTION_MSG="${GREEN}Launched ${label}${RESET}"
+  else
+    local brief="${output##*$'\n'}"
+    [[ -z "$brief" ]] && brief="autotest failed"
+    ACTION_MSG="${RED}${brief}${RESET}"
+  fi
+  invalidate_cache
+}
+
 # ── Auto-start logic ─────────────────────────────────────────────────
 autostart_check() {
   [[ "$AUTOSTART" != "true" ]] && return
@@ -1440,12 +1743,8 @@ autostart_check() {
 render() {
   if [[ $CURRENT_TAB -eq 1 ]]; then
     render_overview
-  elif [[ $CURRENT_TAB -eq 2 ]]; then
-    render_logs_tab
-  elif [[ $CURRENT_TAB -eq 3 ]]; then
-    render_agents_tab
   else
-    render_stdout_tab
+    render_commands_tab
   fi
 }
 
@@ -1507,6 +1806,8 @@ main() {
       q|Q)
         if [[ "$LOG_VIEW_MODE" == true ]]; then
           LOG_VIEW_MODE=false; LOG_VIEW_FILE=""
+        elif [[ "$AGENTS_VIEW_MODE" == true ]]; then
+          AGENTS_VIEW_MODE=false
         elif [[ "$DETAIL_MODE" == true ]]; then
           DETAIL_MODE=false; DETAIL_FILE=""
         else
@@ -1525,30 +1826,37 @@ main() {
       U)          action_resume_all_suspended; invalidate_cache ;;
       l|L)
         if [[ $CURRENT_TAB -eq 1 && $ALL_TASKS_COUNT -gt 0 && $SELECTED_IDX -lt $ALL_TASKS_COUNT ]]; then
-          action_view_task
+          LOG_VIEW_MODE=true
         fi ;;
+      a)
+        if [[ $CURRENT_TAB -eq 1 && $ALL_TASKS_COUNT -gt 0 && $SELECTED_IDX -lt $ALL_TASKS_COUNT ]]; then
+          AGENTS_VIEW_MODE=true
+        fi ;;
+      t)  action_autotest false ;;
+      T)  action_autotest true ;;
       UP)
         [[ $SELECTED_IDX -gt 0 ]] && SELECTED_IDX=$((SELECTED_IDX - 1))
-        DETAIL_MODE=false; LOG_VIEW_MODE=false ;;
+        DETAIL_MODE=false; LOG_VIEW_MODE=false; AGENTS_VIEW_MODE=false ;;
       DOWN)
         [[ $SELECTED_IDX -lt $((ALL_TASKS_COUNT - 1)) ]] && SELECTED_IDX=$((SELECTED_IDX + 1))
-        DETAIL_MODE=false; LOG_VIEW_MODE=false ;;
+        DETAIL_MODE=false; LOG_VIEW_MODE=false; AGENTS_VIEW_MODE=false ;;
       LEFT)
         CURRENT_TAB=$(( CURRENT_TAB > 1 ? CURRENT_TAB - 1 : MAX_TABS ))
-        DETAIL_MODE=false; LOG_VIEW_MODE=false ;;
+        DETAIL_MODE=false; LOG_VIEW_MODE=false; AGENTS_VIEW_MODE=false ;;
       RIGHT)
         CURRENT_TAB=$(( CURRENT_TAB < MAX_TABS ? CURRENT_TAB + 1 : 1 ))
-        DETAIL_MODE=false; LOG_VIEW_MODE=false ;;
+        DETAIL_MODE=false; LOG_VIEW_MODE=false; AGENTS_VIEW_MODE=false ;;
       ESC|$'\x7f')
         DETAIL_MODE=false; DETAIL_FILE=""
-        LOG_VIEW_MODE=false; LOG_VIEW_FILE="" ;;
+        LOG_VIEW_MODE=false; LOG_VIEW_FILE=""
+        AGENTS_VIEW_MODE=false ;;
       ENTER)
         if [[ $CURRENT_TAB -eq 1 && $ALL_TASKS_COUNT -gt 0 && $SELECTED_IDX -lt $ALL_TASKS_COUNT ]]; then
           DETAIL_MODE=true
           DETAIL_FILE="${ALL_TASKS_DIRS[$SELECTED_IDX]}/task.md"
         fi ;;
-      [1-4])
-        CURRENT_TAB=$LAST_KEY; DETAIL_MODE=false ;;
+      [1-2])
+        CURRENT_TAB=$LAST_KEY; DETAIL_MODE=false; LOG_VIEW_MODE=false; AGENTS_VIEW_MODE=false ;;
     esac
   done
 }
