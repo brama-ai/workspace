@@ -155,10 +155,12 @@ monitor)
 
 ## Validator
 
-- **Status**: pending
-- **PHPStan**: —
-- **CS-check**: —
-- **Files fixed**: —
+- **Status**: done
+- **PHPStan**:
+  - No changed validator-target apps in scope (`agentic-development/` changed only) — not run
+- **CS-check**:
+  - No changed validator-target apps in scope (`agentic-development/` changed only) — not run
+- **Files fixed**: none
 
 ## Tester
 
@@ -185,3 +187,4 @@ monitor)
 
 ---
 
+- **Commit (coder)**: 3811a72
