@@ -4,9 +4,9 @@
   "started_at": "2026-03-24T17:38:10.937788Z",
   "attempt": 1,
   "status": "in_progress",
-  "current_step": "coder",
-  "resume_from": "coder",
-  "updated_at": "2026-03-24T19:07:38.067100Z",
+  "current_step": "validator",
+  "resume_from": "validator",
+  "updated_at": "2026-03-24T19:08:38.263563Z",
   "task_file": "/workspaces/brama/tasks/fix-e2e-failure-admin-agents-page-openclaw-sync-badge-is-vis--foundry/task.md",
   "branch": "pipeline/fix-e2e-failure-admin-agents-page-openclaw-sync-badge-is-vis",
   "agents": [
@@ -25,12 +25,23 @@
       "agent": "coder",
       "status": "done",
       "model": "anthropic/claude-sonnet-4-6",
-      "duration_seconds": 282,
+      "duration_seconds": 285,
       "input_tokens": 56,
       "output_tokens": 10624,
       "cost": 0.9173,
       "call_count": 1,
-      "updated_at": "2026-03-24T19:07:38.067079Z"
+      "updated_at": "2026-03-24T19:07:38.308015Z"
+    },
+    {
+      "agent": "validator",
+      "status": "done",
+      "model": "openai/gpt-5.4",
+      "duration_seconds": 57,
+      "input_tokens": 19168,
+      "output_tokens": 1085,
+      "cost": 0.0672,
+      "call_count": 1,
+      "updated_at": "2026-03-24T19:08:38.263553Z"
     }
   ]
 }

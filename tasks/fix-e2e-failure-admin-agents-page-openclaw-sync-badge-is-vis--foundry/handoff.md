@@ -64,10 +64,12 @@ Auto-generated Foundry bugfix task from E2E failure analysis.
 
 ## Validator
 
-- **Status**: pending
-- **PHPStan**: —
-- **CS-check**: —
-- **Files fixed**: —
+- **Status**: done
+- **PHPStan**:
+  - `brama-core`: pass (`make analyse`)
+- **CS-check**:
+  - `brama-core`: pass (`make cs-check` after `make cs-fix`)
+- **Files fixed**: none
 
 ## Tester
 
@@ -94,3 +96,4 @@ Auto-generated Foundry bugfix task from E2E failure analysis.
 
 ---
 
+- **Commit (coder)**: 24591e0
