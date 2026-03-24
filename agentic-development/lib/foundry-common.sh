@@ -68,6 +68,33 @@ runtime_log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$log_file"
 }
 
+foundry_worker_config_file() {
+  echo "${REPO_ROOT}/.opencode/pipeline/monitor-workers"
+}
+
+foundry_get_desired_workers() {
+  local config_file
+  config_file=$(foundry_worker_config_file)
+  if [[ -f "$config_file" ]]; then
+    local value
+    value=$(tr -cd '0-9\n' < "$config_file" | head -n 1)
+    if [[ -n "$value" && "$value" -ge 1 ]] 2>/dev/null; then
+      echo "$value"
+      return 0
+    fi
+  fi
+  echo "${FOUNDRY_WORKERS:-${MONITOR_WORKERS:-1}}"
+}
+
+foundry_set_desired_workers() {
+  local value="${1:-1}"
+  if [[ -z "$value" || "$value" -lt 1 ]] 2>/dev/null; then
+    value=1
+  fi
+  mkdir -p "$(dirname "$(foundry_worker_config_file)")"
+  printf '%s\n' "$value" > "$(foundry_worker_config_file)"
+}
+
 pipeline_task_dir_path() {
   local slug="$1"
   local workflow="$2"

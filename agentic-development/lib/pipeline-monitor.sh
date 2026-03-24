@@ -29,6 +29,7 @@ MONITOR_VERSION="1.1.0"
 #   d           Delete selected pending/failed/suspended task
 #   +           Raise priority of selected pending task
 #   -           Lower priority of selected pending task
+#   ]/[         Increase/decrease desired worker count
 #   l           View task.md for selected task
 #   r           Refresh
 #   q/Ctrl-C    Quit (or back from log/detail view)
@@ -787,6 +788,11 @@ render_overview() {
   buf_line "$counter_line"
   buf_line ""
 
+  local desired_workers
+  desired_workers=$(foundry_get_desired_workers)
+  buf_line "  ${BOLD}Workers:${RESET} desired ${CYAN}${desired_workers}${RESET} ${DIM}(runtime currently processes serially)${RESET}"
+  buf_line ""
+
   # Status line
   if foundry_is_batch_running; then
     buf_line "  ${BOLD}Status:${RESET} ${GREEN}Running${RESET}"
@@ -917,6 +923,7 @@ render_bottom_menu_buf() {
       ;;
     completed)   keys="$keys  ${WHITE}[l]${DIM} view task" ;;
   esac
+  keys="$keys  ${WHITE}[[]${DIM} worker-  ${WHITE}[]]${DIM} worker+"
   ! $batch_running && keys="$keys  ${WHITE}[s]${DIM} start"
   $batch_running && keys="$keys  ${WHITE}[k]${DIM} stop"
   keys="$keys  ${WHITE}[q]${DIM} quit${RESET}"
@@ -1354,6 +1361,22 @@ action_view_task() {
   fi
 }
 
+action_workers_increase() {
+  local current
+  current=$(foundry_get_desired_workers)
+  local next=$((current + 1))
+  foundry_set_desired_workers "$next"
+  ACTION_MSG="${CYAN}Desired workers → ${next}${RESET}"
+}
+
+action_workers_decrease() {
+  local current
+  current=$(foundry_get_desired_workers)
+  local next=$(( current > 1 ? current - 1 : 1 ))
+  foundry_set_desired_workers "$next"
+  ACTION_MSG="${CYAN}Desired workers → ${next}${RESET}"
+}
+
 # ── Auto-start logic ─────────────────────────────────────────────────
 autostart_check() {
   [[ "$AUTOSTART" != "true" ]] && return
@@ -1458,6 +1481,8 @@ main() {
       k|K)        action_kill; invalidate_cache ;;
       +)          action_promote; invalidate_cache ;;
       -)          action_demote; invalidate_cache ;;
+      ']')        action_workers_increase; invalidate_cache ;;
+      '[')        action_workers_decrease; invalidate_cache ;;
       d|D)        action_delete; invalidate_cache ;;
       u)          action_resume_task; invalidate_cache ;;
       U)          action_resume_all_suspended; invalidate_cache ;;

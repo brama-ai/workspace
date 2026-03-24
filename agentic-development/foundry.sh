@@ -12,7 +12,6 @@ ensure_runtime_root
 auto_cleanup
 
 LOG_FILE="$(runtime_log_file foundry-headless)"
-DEFAULT_WORKERS="${FOUNDRY_WORKERS:-${MONITOR_WORKERS:-1}}"
 
 show_help() {
   cat <<EOF
@@ -114,6 +113,9 @@ foundry_preflight_check() {
 }
 
 foundry_start_headless() {
+  local desired_workers
+  desired_workers=$(foundry_get_desired_workers)
+
   if foundry_is_batch_running; then
     runtime_log foundry "headless already running"
     echo "Foundry headless is already running."
@@ -128,13 +130,13 @@ foundry_start_headless() {
   local _caff=""
   command -v caffeinate &>/dev/null && _caff="caffeinate -s"
   $_caff nohup "$REPO_ROOT/agentic-development/lib/foundry-batch.sh" \
-    --workers "$DEFAULT_WORKERS" \
+    --workers "$desired_workers" \
     --no-stop-on-failure \
     --watch \
     > "$LOG_FILE" 2>&1 &
 
-  runtime_log foundry "headless started pid=$! workers=${DEFAULT_WORKERS} log=${LOG_FILE}"
-  echo "Foundry headless started (PID $!, workers=${DEFAULT_WORKERS})."
+  runtime_log foundry "headless started pid=$! workers=${desired_workers} log=${LOG_FILE}"
+  echo "Foundry headless started (PID $!, workers=${desired_workers})."
   echo "Monitor: ./agentic-development/foundry.sh"
 }
 
@@ -175,6 +177,7 @@ foundry_status() {
   echo "Failed: ${failed}"
   echo "Suspended: ${suspended}"
   echo "Cancelled: ${cancelled}"
+  echo "Desired workers: $(foundry_get_desired_workers)"
   echo "Log: ${LOG_FILE}"
   runtime_log foundry "status pending=${pending} in_progress=${in_progress} completed=${completed} failed=${failed}"
 }

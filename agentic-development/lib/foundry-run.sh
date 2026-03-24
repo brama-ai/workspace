@@ -364,6 +364,11 @@ _task_move_to_failed() {
 
 _detect_task_lifecycle
 
+TASK_SLUG=""
+if [[ -n "$TASK_DIR" ]]; then
+  TASK_SLUG=$(foundry_task_slug_from_dir "$TASK_DIR")
+fi
+
 _is_autotest_task() {
   [[ "$TASK_MESSAGE" == *"<!-- source: autotest -->"* || "$TASK_MESSAGE" == *$'\n# Admin created task '* || "$TASK_MESSAGE" == "# Admin created task "* ]]
 }
@@ -605,8 +610,7 @@ setup_branch() {
   if [[ -n "$BRANCH_NAME" ]]; then
     echo "$BRANCH_NAME"
   else
-    local slug
-    slug=$(_task_slug "$TASK_MESSAGE")
+    local slug="${TASK_SLUG:-$(_task_slug "$TASK_MESSAGE")}"
     echo "pipeline/${slug}"
   fi
 }
@@ -1145,7 +1149,7 @@ write_agent_meta() {
   local duration=$(( finished_epoch - started_epoch ))
 
   # Task and worker context for Activity Log
-  local task_slug; task_slug=$(_task_slug "$TASK_MESSAGE" 2>/dev/null || echo "")
+  local task_slug="${TASK_SLUG:-}"
   local worker_id; worker_id=$(_detect_worker_id)
 
   cat > "$meta_file" << META_EOF
@@ -2072,7 +2076,7 @@ Task: Create the final task summary for this pipeline run.
 
 1. Read \`.opencode/pipeline/handoff.md\` for cross-agent context.
 2. Read \`${CHECKPOINT_FILE}\` to see which agents actually ran, their statuses, durations, and commits.
-3. Generate the telemetry markdown block via: \`agentic-development/lib/cost-tracker.sh summary-block --workflow builder --task-slug "$(_task_slug "$TASK_MESSAGE")"\`
+3. Generate the telemetry markdown block via: \`agentic-development/lib/cost-tracker.sh summary-block --workflow builder --task-slug "${TASK_SLUG:-task}"\`
 4. Read the available logs in \`.opencode/pipeline/logs/${TIMESTAMP}_*.log\`.
 5. Read \`.opencode/pipeline/reports/${TIMESTAMP}.md\` if it already exists.
 6. Write the final markdown summary to \`${TASK_SUMMARY_FILE}\`.
@@ -2141,11 +2145,10 @@ PROMPT
 init_handoff() {
   mkdir -p "$PIPELINE_DIR"
 
-  local slug
-  slug=$(_task_slug "$TASK_MESSAGE" 2>/dev/null || echo "task")
   if [[ -n "$TASK_DIR" ]]; then
     HANDOFF_FILE="$(foundry_handoff_file "$TASK_DIR")"
   else
+    local slug="${TASK_SLUG:-$(_task_slug "$TASK_MESSAGE" 2>/dev/null || echo "task")}"
     HANDOFF_FILE="$PIPELINE_DIR/handoff-${TIMESTAMP}-${slug}.md"
   fi
 
@@ -2287,8 +2290,7 @@ main() {
   emit_event "TASK_START" "task=${task_title}"
 
   # Initialize artifacts & checkpoint
-  local slug
-  slug=$(_task_slug "$TASK_MESSAGE")
+  local slug="${TASK_SLUG:-$(_task_slug "$TASK_MESSAGE")}"
   init_artifacts "$slug" "$branch"
 
   # Auto-resume: if --resume and checkpoint exists, determine FROM_AGENT
