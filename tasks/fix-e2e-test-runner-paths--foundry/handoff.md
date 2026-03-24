@@ -73,11 +73,14 @@ After the Docker Compose agent paths are fixed (see task: fix-docker-compose-age
 
 ## Summarizer
 
-- **Status**: pending
-- **Summary file**: —
-- **Next task recommendation**: —
+- **Status**: done
+- **Summary file**: `/workspaces/brama/tasks/fix-e2e-test-runner-paths--foundry/summary.md`
+- **Next task recommendation**: `Довести E2E smoke/full suite до зеленого після Makefile path/env fix`
+- **Pipeline mark**: **PIPELINE INCOMPLETE**
 
 ---
 
 - **Commit (coder)**: d3ce2fd
 - **Commit (validator)**: 36c3c30
+
+- **Final recommendation**: повторно прогнати `make e2e-smoke` після останньої правки `Makefile`, потім виконати `make e2e` і зафіксувати фінальний тестовий verdict у handoff
