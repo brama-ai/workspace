@@ -52,10 +52,27 @@ Error: Text "Виявлено:" was not found on page after 10 sec.
 
 ## Coder
 
-- **Status**: pending
-- **Files modified**: —
-- **Migrations created**: —
-- **Deviations**: —
+- **Status**: done
+- **Files modified**:
+  - `brama-core/tests/e2e/tests/admin/agents_test.js` — increased `waitForText('Виявлено:', 10)` → `waitForText('Виявлено:', 30)` with explanatory comment
+  - `brama-core/tests/e2e/support/pages/AgentsPage.js` — increased `waitForText('Виявлено:', 10)` → `waitForText('Виявлено:', 30)` in `runDiscovery()` helper with explanatory comment
+- **Migrations created**: none
+- **Deviations**: none
+
+### Root cause analysis
+
+The test `'running discovery populates the registry'` waited 10 seconds for the text `'Виявлено:'` to appear after clicking the discover button. The discovery endpoint (`POST /admin/agents/discover`) calls:
+1. Traefik API (5 s timeout) to list agent services
+2. `AgentCardFetcher.fetch()` for each discovered agent (5 s timeout per agent)
+
+With 4 E2E agents (hello, knowledge, news-maker, dev-reporter), worst-case total time is ~25 s. The 10-second `waitForText` timeout was insufficient for a full discovery run in CI, causing intermittent failures.
+
+**Fix**: Increased `waitForText` timeout from 10 s to 30 s in both the test scenario and the `AgentsPage.runDiscovery()` helper. Added comments explaining the reasoning.
+
+### Verification
+
+- Ran `npx codeceptjs run --steps --grep "running discovery populates the registry"` → ✔ PASSED (806 ms)
+- Ran full `tests/admin/agents_test.js` suite → ✔ 9/9 PASSED (19 s)
 
 ## Validator
 
@@ -89,3 +106,4 @@ Error: Text "Виявлено:" was not found on page after 10 sec.
 
 ---
 
+- **Commit (investigator)**: 0ef9907
