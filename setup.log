@@ -45,7 +45,121 @@ curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 |
 #           mention it needs to be installed on the server for remote K3s.
 
 ## Step 3: Build images for linux/amd64
-# devcontainer runs on arm64 (macOS host), need cross-platform build
-# Docker Desktop supports --platform via QEMU emulation
-# IN PROGRESS...
+# devcontainer runs on arm64 (macOS host), need cross-platform build.
+# PROBLEM: docker buildx fails with "changes out of order" due to macOS
+#          case-insensitive filesystem creating duplicate entries for
+#          brama-core/src/src/CoderAgent/PipelineRunnerInterface.php
+# SOLUTION: Build directly on the server (native amd64, case-sensitive FS)
+
+# 3a. Install nerdctl + buildkit on server (no Docker needed)
+NERDCTL_VERSION=$(curl -fsSL https://api.github.com/repos/containerd/nerdctl/releases/latest | grep tag_name | cut -d'"' -f4 | tr -d v)
+curl -fsSL https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/nerdctl-${NERDCTL_VERSION}-linux-amd64.tar.gz | tar -xz -C /usr/local/bin nerdctl
+# -> nerdctl v2.2.1
+
+BUILDKIT_VERSION=$(curl -fsSL https://api.github.com/repos/moby/buildkit/releases/latest | grep tag_name | cut -d'"' -f4 | tr -d v)
+curl -fsSL https://github.com/moby/buildkit/releases/download/v${BUILDKIT_VERSION}/buildkit-v${BUILDKIT_VERSION}.linux-amd64.tar.gz | tar -xz -C /usr/local
+systemctl enable --now buildkit
+# -> buildkitd v0.28.0
+
+# Configure nerdctl to use K3s containerd socket:
+mkdir -p /run/containerd
+ln -sf /run/k3s/containerd/containerd.sock /run/containerd/containerd.sock
+# DOC NOTE: K3s containerd socket is at /run/k3s/containerd/containerd.sock, not default /run/containerd/
+
+# 3b. Copy source files to server
+rsync -az --delete -e "ssh -F ~/.ssh-generated/config" brama-core/src/ remote:/opt/brama-build/brama-core/src/
+rsync -az -e "ssh -F ~/.ssh-generated/config" docker/brama-core/Dockerfile remote:/opt/brama-build/Dockerfile
+rsync -az --delete -e "ssh -F ~/.ssh-generated/config" brama-agents/hello-agent/ remote:/opt/brama-build/hello-agent/
+
+# 3c. Build core image on server
+cd /opt/brama-build
+nerdctl --address /run/k3s/containerd/containerd.sock -n k8s.io build -t brama/brama-core:dev -f Dockerfile .
+# -> Loaded image: docker.io/brama/brama-core:dev (amd64, ~718 MiB)
+
+# 3d. Build hello-agent on server
+# FIX APPLIED: Dockerfile had `composer install --no-interaction` which failed because
+#              symfony-cmd (from auto-scripts) was not available. Added --no-scripts.
+# FIX APPLIED: Added `mkdir -p var/cache var/log && chmod -R 777 var/` to fix
+#              "Unable to write in the cache directory" error at runtime.
+cd /opt/brama-build/hello-agent
+nerdctl --address /run/k3s/containerd/containerd.sock -n k8s.io build -t brama/hello-agent:dev .
+# -> Loaded image: docker.io/brama/hello-agent:dev (amd64, ~670 MiB)
+
+## Step 4: Copy Helm chart to server
+rsync -az --delete -e "ssh -F ~/.ssh-generated/config" brama-core/deploy/charts/brama/ remote:/opt/brama-build/charts/brama/
+
+## Step 5: Create namespace and secrets
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+kubectl create namespace brama
+kubectl create secret generic brama-core-secrets -n brama \
+  --from-literal=APP_SECRET=$(openssl rand -hex 16) \
+  --from-literal=EDGE_AUTH_JWT_SECRET=$(openssl rand -hex 32) \
+  --from-literal=DATABASE_URL='postgresql://app:app@brama-postgresql:5432/ai_community_platform?serverVersion=16&charset=utf8' \
+  --from-literal=REDIS_URL='redis://brama-redis-master:6379' \
+  --from-literal=RABBITMQ_URL='amqp://app:app@brama-rabbitmq:5672' \
+  --from-literal=POSTGRES_PROVISIONER_URL='postgresql://app:app@brama-postgresql:5432/ai_community_platform?serverVersion=16&charset=utf8'
+# DOC NOTE: kubernetes-install.md doesn't mention KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+#           is required when running helm/kubectl directly on a K3s server.
+
+## Step 6: Helm install
+cd /opt/brama-build/charts/brama
+helm dependency update .
+helm upgrade --install brama . \
+  --namespace brama \
+  -f values-k3s-dev.yaml \
+  --set ingress.hosts.core=46.62.135.86.nip.io \
+  --wait --timeout 5m
+# -> First attempt: timeout (hello-agent crashloop, migrations not run)
+# -> Fixed: ran migrations manually, rebuilt hello-agent with cache dir fix
+# -> Second attempt (helm upgrade): SUCCESS
+
+## Step 7: Run database migrations
+# Migrations were NOT run automatically (migration job did not execute on first install).
+# DOC NOTE: The migration Helm hook (post-install) may not run if the release times out.
+kubectl exec -n brama deploy/brama-core -- php bin/console doctrine:migrations:migrate --no-interaction
+# -> 19 migrations executed, 86 SQL queries
+
+## Step 8: Final helm upgrade (to mark release as deployed)
+helm upgrade brama . \
+  --namespace brama \
+  -f values-k3s-dev.yaml \
+  --set ingress.hosts.core=46.62.135.86.nip.io \
+  --wait --timeout 5m
+# -> Release "brama" has been upgraded. STATUS: deployed. REVISION: 2
+
+## Step 9: Verification
+# All pods Running (6/6):
+#   brama-core               1/1 Running
+#   brama-core-scheduler     1/1 Running
+#   brama-agent-hello        1/1 Running
+#   brama-postgresql-0       1/1 Running
+#   brama-redis-master-0     1/1 Running
+#   brama-rabbitmq-0         1/1 Running
+#
+# Health check:
+#   curl -sf http://46.62.135.86.nip.io/health
+#   -> {"status":"ok","service":"core-platform","version":"0.1.0","timestamp":"2026-03-24T12:55:19+00:00"}
+
+# =============================================================================
+# FILES MODIFIED DURING DEPLOYMENT
+# =============================================================================
+# brama-agents/hello-agent/Dockerfile
+#   - Added --no-scripts to composer install (fix symfony-cmd not found)
+#   - Added mkdir var/cache var/log && chmod 777 var/ (fix cache write permission)
+#
+# .dockerignore (created)
+#   - Added to limit build context for Docker builds
+
+# =============================================================================
+# DOCUMENTATION GAPS FOUND
+# =============================================================================
+# 1. kubernetes-install.md: No mention of installing Helm CLI on remote K3s server
+# 2. kubernetes-install.md: No mention of KUBECONFIG=/etc/rancher/k3s/k3s.yaml for K3s
+# 3. kubernetes-install.md: make k8s-load uses rdctl (Rancher Desktop only), no guidance
+#    for remote K3s (nerdctl build or docker save | ssh | k3s ctr import)
+# 4. kubernetes-install.md: No mention of cross-arch build issues (arm64 Mac -> amd64 server)
+# 5. kubernetes-install.md: Migration hook may not run if first install times out
+# 6. hello-agent/Dockerfile: Missing --no-scripts, missing var/ directory creation
+# 7. No .dockerignore in workspace root — causes buildx failures on macOS
+# 8. values-k3s-dev.yaml: Comments say "local Rancher K3S" but no remote K3s values file exists
 

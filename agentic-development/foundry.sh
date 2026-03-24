@@ -130,7 +130,7 @@ run_command() {
   case "$cmd" in
     monitor)
       runtime_log foundry "command=monitor"
-      exec "$REPO_ROOT/agentic-development/lib/foundry-monitor.sh" "$FOUNDRY_TASK_ROOT"
+      exec "$REPO_ROOT/agentic-development/lib/pipeline-monitor.sh" "$FOUNDRY_TASK_ROOT"
       ;;
     headless|start)
       foundry_start_headless "$@"

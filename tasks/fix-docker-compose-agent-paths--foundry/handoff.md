@@ -98,3 +98,4 @@ All `context:` and volume mount paths in these Docker Compose files:
 - **Summary file path**: `/workspaces/brama/tasks/fix-docker-compose-agent-paths--foundry/summary.md`
 - **Final recommendation**: Виправити залишкові `../agents/` посилання в шаблонних compose-конфігах
 - **PIPELINE COMPLETE**
+- **Commit (summarizer)**: 623fe42
