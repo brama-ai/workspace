@@ -1,36 +1,32 @@
 # Pipeline Handoff
 
-## Architect
+## Coder
 
-### Change ID
-`fix-e2e-agent-health-badge`
+**Change:** `async-scheduler-dispatch`
+**Task:** 7.4 — Run E2E `@scheduler` tests
 
-### Apps Affected
-- **core** — `AgentRegistrationController`, `AgentHealthPollerCommand`, new `AgentHealthChecker` service, `AgentRegistryRepository`
-- **hello-agent** — no code changes; E2E registration payload updated to include `health_url`
-- **knowledge-agent** — no code changes; E2E registration payload updated to include `health_url`
-- **news-maker-agent** — no code changes; E2E registration payload updated to include `health_url`
-- **dev-reporter-agent** — no code changes; E2E registration payload updated to include `health_url`
+### Files Modified
 
-### Migrations Needed
-No. The `health_status` column already exists (migration `Version20260304000002`). The fix only changes when and how the column value is set.
+- `core/tests/e2e/tests/admin/scheduler_logs_test.js`
+  - Fixed XPath selector in "job logs page shows pagination for many entries" scenario
+  - Changed `//span[contains(text(), "записів") or contains(text(), "entries")]` → `//span[contains(., "записів") or contains(., "entries")]`
+  - Root cause: `contains(text(), ...)` in XPath only checks the first text node of an element; the span has mixed content (text + `<code>` elements), so the "Всього записів: N" text is in the last text node, not the first. Using `contains(., ...)` checks the full string value of the element.
 
-### API Surface Changes
-- **Modified:** `POST /api/v1/internal/agents/register` — response now includes `health_status` field when manifest contains `health_url`. No breaking changes; the field is additive.
-- No new endpoints.
+- `core/openspec/changes/async-scheduler-dispatch/tasks.md`
+  - Marked task 7.4 as `[x]` — all tasks now complete
 
-### Key Design Decisions
-1. **Extract `AgentHealthChecker` service** from `AgentHealthPollerCommand` to enable reuse in registration flow. Pure structural refactor, no logic change.
-2. **Inline health probe on registration** — when manifest includes `health_url`, the registration controller performs a synchronous HTTP GET to the health endpoint (2s timeout) and updates `health_status` before returning. This ensures immediate health resolution for both E2E and production self-registration.
-3. **Add `health_url` to all E2E registration payloads** — Makefile `e2e-register-agents` and in-test Before hooks (news_maker_admin_test.js, knowledge_admin_test.js) updated to include Docker-internal health URLs.
-4. **Run health poll in `e2e-prepare`** — belt-and-suspenders: `app:agent-health-poll` runs after registration to catch any agents discovered via Traefik that may not have been registered via the internal API.
+### Test Results
 
-### Root Cause Summary
-Agents registered via `/api/v1/internal/agents/register` get `health_status = 'unknown'` (DB default). The health poller skips agents without `health_url` in their manifest. E2E registration payloads omitted `health_url`. Result: agents permanently stuck at `badge-unknown`, E2E tests expecting `badge-healthy` fail.
+E2E `@scheduler` tests: **17 passed, 1 skipped** (intentional `xScenario` for future delivery channel feature)
 
-### Risks
-- Inline health probe adds ~2s latency to registration when agent is unreachable (timeout). Acceptable for E2E; production agents should be available at registration time.
-- No risk of regression: if `health_url` is absent, behavior is unchanged (status remains `unknown`).
+Tests run:
+- `scheduler_test.js` — 11 scenarios (scheduler page, jobs, toggle, run now, create job, visual cron builder)
+- `scheduler_logs_test.js` — 6 scenarios (logs page navigation, table headers, pagination)
 
-### Related Proposals
-- `fix-remaining-e2e-failures` — Category 1 (Agent Health Badges) overlaps with this proposal. This proposal is a focused extraction of that category with proper spec deltas and design. The broader proposal can mark Category 1 as resolved once this change is implemented.
+### Deviations from Spec
+
+None. The fix was a pre-existing XPath bug in the test file (not a code issue). The scheduler implementation was already complete; only the E2E test selector needed correction.
+
+### Recommended Follow-up Tasks
+
+None identified within scope.
