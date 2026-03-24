@@ -157,9 +157,15 @@ monitor)
 
 - **Status**: done
 - **PHPStan**:
-  - No changed validator-target apps in scope (`agentic-development/` changed only) — not run
+  - `apps/brama-core/`: not run (unchanged)
+  - `apps/knowledge-agent/`: not run (unchanged)
+  - `apps/hello-agent/`: not run (unchanged)
+  - `apps/news-maker-agent/`: not run (unchanged)
 - **CS-check**:
-  - No changed validator-target apps in scope (`agentic-development/` changed only) — not run
+  - `apps/brama-core/`: not run (unchanged)
+  - `apps/knowledge-agent/`: not run (unchanged)
+  - `apps/hello-agent/`: not run (unchanged)
+  - `apps/news-maker-agent/`: not run (unchanged)
 - **Files fixed**: none
 
 ## Tester
