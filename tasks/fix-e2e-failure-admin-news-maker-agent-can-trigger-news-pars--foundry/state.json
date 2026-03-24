@@ -1,36 +1,25 @@
 {
   "task_id": "fix-e2e-failure-admin-news-maker-agent-can-trigger-news-pars--foundry",
   "workflow": "foundry",
-  "started_at": "2026-03-24T21:36:53.597650Z",
+  "started_at": "2026-03-24T23:17:00.659813Z",
   "attempt": 1,
-  "status": "in_progress",
-  "current_step": "u-investigator",
-  "resume_from": "u-investigator",
-  "updated_at": "2026-03-24T23:02:23.940849Z",
+  "status": "pending",
+  "current_step": null,
+  "resume_from": null,
+  "updated_at": "2026-03-24T23:17:00.687578Z",
   "task_file": "/workspaces/brama/tasks/fix-e2e-failure-admin-news-maker-agent-can-trigger-news-pars--foundry/task.md",
-  "branch": "pipeline/fix-e2e-failure-admin-news-maker-agent-can-trigger-news-pars",
+  "branch": null,
   "agents": [
     {
-      "agent": "u-planner",
+      "agent": "u-coder",
       "status": "done",
       "model": "anthropic/claude-sonnet-4-6",
-      "duration_seconds": 90,
-      "input_tokens": 11,
-      "output_tokens": 1702,
-      "cost": 0.123,
+      "duration_seconds": 926,
+      "input_tokens": 77,
+      "output_tokens": 17274,
+      "cost": 1.802,
       "call_count": 1,
-      "updated_at": "2026-03-24T23:02:18.442719Z"
-    },
-    {
-      "agent": "u-investigator",
-      "status": "done",
-      "model": "anthropic/claude-sonnet-4-6",
-      "duration_seconds": 1,
-      "input_tokens": 11,
-      "output_tokens": 1702,
-      "cost": 0.123,
-      "call_count": 1,
-      "updated_at": "2026-03-24T23:02:23.940835Z"
+      "updated_at": "2026-03-24T23:17:00.687562Z"
     }
   ]
 }

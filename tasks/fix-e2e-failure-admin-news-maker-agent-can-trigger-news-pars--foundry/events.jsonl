@@ -1,7 +1,0 @@
-{"timestamp": "2026-03-24T22:38:48.758155Z", "type": "stopped", "message": "Pipeline stopped by user"}
-{"timestamp": "2026-03-24T22:42:40.954584Z", "type": "stopped", "message": "Pipeline stopped by user"}
-{"timestamp": "2026-03-24T22:44:02.059742Z", "type": "stopped", "message": "Pipeline stopped by user"}
-{"timestamp": "2026-03-24T23:00:02.731287Z", "type": "run_started", "message": "Foundry run started", "step": "u-planner"}
-{"timestamp": "2026-03-24T23:00:05.151254Z", "type": "stopped", "message": "Pipeline stopped by user"}
-{"timestamp": "2026-03-24T23:00:42.500335Z", "type": "run_started", "message": "Foundry run started", "step": "u-planner"}
-{"timestamp": "2026-03-24T23:02:14.389413Z", "type": "stopped", "message": "Pipeline stopped by user"}
