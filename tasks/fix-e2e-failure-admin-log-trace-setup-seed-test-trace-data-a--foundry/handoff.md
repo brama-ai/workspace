@@ -78,10 +78,12 @@ trace: -c: line 1: unexpected EOF while looking for matching `''
 
 ## Validator
 
-- **Status**: pending
-- **PHPStan**: —
-- **CS-check**: —
-- **Files fixed**: —
+- **Status**: done
+- **PHPStan**:
+  - `brama-core` — pass
+- **CS-check**:
+  - `brama-core` — pass
+- **Files fixed**: none
 
 ## Tester
 
@@ -108,3 +110,4 @@ trace: -c: line 1: unexpected EOF while looking for matching `''
 
 ---
 
+- **Commit (u-coder)**: 8d78084
