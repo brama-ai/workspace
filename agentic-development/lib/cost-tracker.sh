@@ -331,6 +331,33 @@ for model, item in sorted(model_totals.items()):
     print(f"| {model} | {', '.join(item['agents'])} | {item['input']} | {item['output']} | {money(item['price'])} |")
 
 print("")
+print("## Context Modifiers By Agent")
+print("")
+print("_Skills, MCP tools, and commands that influenced LLM behavior._")
+print("")
+has_context = False
+for row in rows:
+    ctx = row.get("context", {})
+    skills = ctx.get("skills", [])
+    mcp = ctx.get("mcp_tools", [])
+    cmds = ctx.get("claude_commands", [])
+    if skills or mcp or cmds:
+        has_context = True
+        print(f"### {row.get('agent','unknown')}")
+        if skills:
+            for s in skills:
+                print(f"- **Skill:** `{s.get('name', '?')}`")
+        if mcp:
+            for m in mcp:
+                print(f"- **MCP:** `{m.get('name', '?')}` x{m.get('count', 0)}")
+        if cmds:
+            for c in cmds:
+                print(f"- **Command:** `/{c}`")
+        print("")
+if not has_context:
+    print("_No context modifiers detected (no skills, MCP tools, or commands used)._")
+    print("")
+
 print("## Tools By Agent")
 print("")
 for row in rows:

@@ -184,15 +184,76 @@ foundry_task_exists() {
   [[ -d "$1" && -f "$1/task.md" ]]
 }
 
+foundry_repair_state_file() {
+  local task_dir="$1"
+  local task_file="${2:-$task_dir/task.md}"
+  python3 - "$task_dir" "$task_file" <<'PYEOF'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+task_dir = Path(sys.argv[1])
+task_file = Path(sys.argv[2])
+state_path = task_dir / "state.json"
+meta_path = task_dir / "meta.json"
+now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+existing = {}
+if state_path.exists():
+    try:
+        loaded = json.loads(state_path.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            existing = loaded
+    except (json.JSONDecodeError, OSError, TypeError, ValueError):
+        existing = {}
+
+def normalize_str(value):
+    return value if isinstance(value, str) and value.strip() else None
+
+def normalize_attempt(value):
+    try:
+        num = int(value)
+    except (TypeError, ValueError):
+        return 1
+    return num if num >= 1 else 1
+
+payload = {
+    "task_id": normalize_str(existing.get("task_id")) or task_dir.name,
+    "workflow": "foundry",
+    "started_at": normalize_str(existing.get("started_at")) or now,
+    "attempt": normalize_attempt(existing.get("attempt")),
+    "status": normalize_str(existing.get("status")) or "pending",
+    "current_step": normalize_str(existing.get("current_step")),
+    "resume_from": normalize_str(existing.get("resume_from")),
+    "updated_at": now,
+    "task_file": normalize_str(existing.get("task_file")) or str(task_file),
+    "branch": normalize_str(existing.get("branch")),
+}
+
+if meta_path.exists():
+    try:
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        if isinstance(meta, dict) and normalize_str(meta.get("branch_name")):
+            payload["branch"] = normalize_str(meta.get("branch_name"))
+    except (json.JSONDecodeError, OSError, TypeError, ValueError):
+        pass
+
+with open(state_path, "w", encoding="utf-8") as fh:
+    json.dump(payload, fh, ensure_ascii=True, indent=2)
+    fh.write("\n")
+PYEOF
+}
+
 foundry_write_state() {
   local task_dir="$1"
   local status="$2"
   local current_step="${3:-}"
   local resume_from="${4:-}"
   local task_file="${5:-$task_dir/task.md}"
+  foundry_repair_state_file "$task_dir" "$task_file"
   python3 - "$task_dir" "$status" "$current_step" "$resume_from" "$task_file" <<'PYEOF'
 import json
-import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -204,8 +265,6 @@ resume_from = sys.argv[4] or None
 task_file = Path(sys.argv[5])
 state_path = task_dir / "state.json"
 meta_path = task_dir / "meta.json"
-
-slug = re.sub(r"--foundry.*$", "", task_dir.name)
 payload = {
     "task_id": task_dir.name,
     "workflow": "foundry",
@@ -219,10 +278,15 @@ payload = {
 if state_path.exists():
     try:
         existing = json.loads(state_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+        if not isinstance(existing, dict):
+            existing = {}
+    except (json.JSONDecodeError, OSError, TypeError, ValueError):
         existing = {}
     payload["started_at"] = existing.get("started_at") or payload["updated_at"]
-    payload["attempt"] = int(existing.get("attempt", 1))
+    try:
+        payload["attempt"] = max(int(existing.get("attempt", 1)), 1)
+    except (TypeError, ValueError):
+        payload["attempt"] = 1
     if existing.get("branch"):
         payload["branch"] = existing["branch"]
 else:
@@ -232,9 +296,9 @@ else:
 if meta_path.exists():
     try:
       meta = json.loads(meta_path.read_text(encoding="utf-8"))
-      if meta.get("branch_name"):
+      if isinstance(meta, dict) and meta.get("branch_name"):
           payload["branch"] = meta["branch_name"]
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, OSError, TypeError, ValueError):
       pass
 
 with open(state_path, "w", encoding="utf-8") as fh:
@@ -247,6 +311,7 @@ foundry_update_state_field() {
   local task_dir="$1"
   local key="$2"
   local value="$3"
+  foundry_repair_state_file "$task_dir"
   python3 - "$task_dir" "$key" "$value" <<'PYEOF'
 import json
 import sys
@@ -261,7 +326,9 @@ data = {}
 if state_path.exists():
     try:
         data = json.loads(state_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+        if not isinstance(data, dict):
+            data = {}
+    except (json.JSONDecodeError, OSError, TypeError, ValueError):
         data = {}
 if value == "__NULL__":
     data[key] = None
@@ -279,6 +346,7 @@ foundry_set_state_status() {
   local status="$2"
   local current_step="${3:-}"
   local resume_from="${4:-}"
+  foundry_repair_state_file "$task_dir"
   python3 - "$task_dir" "$status" "$current_step" "$resume_from" <<'PYEOF'
 import json
 import sys
@@ -293,7 +361,9 @@ state_path = task_dir / "state.json"
 if state_path.exists():
     try:
         data = json.loads(state_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+        if not isinstance(data, dict):
+            data = {}
+    except (json.JSONDecodeError, OSError, TypeError, ValueError):
         data = {}
 else:
     data = {
@@ -314,6 +384,7 @@ PYEOF
 
 foundry_increment_attempt() {
   local task_dir="$1"
+  foundry_repair_state_file "$task_dir"
   python3 - "$task_dir" <<'PYEOF'
 import json
 import sys
@@ -326,7 +397,9 @@ data = {}
 if state_path.exists():
     try:
         data = json.loads(state_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+        if not isinstance(data, dict):
+            data = {}
+    except (json.JSONDecodeError, OSError, TypeError, ValueError):
         data = {}
 data["attempt"] = int(data.get("attempt", 1)) + 1
 data["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")

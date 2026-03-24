@@ -541,7 +541,7 @@ k8s-deps:
 
 k8s-build:
 	@echo "Building core..."
-	docker build -t $(K8S_CORE_IMAGE) -f docker/brama-core/Dockerfile .
+	docker build -t $(K8S_CORE_IMAGE) -f brama-core/Dockerfile brama-core
 	@echo "Building hello-agent..."
 	docker build -t $(K8S_HELLO_IMAGE) brama-agents/hello-agent/
 

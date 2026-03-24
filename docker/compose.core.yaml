@@ -1,8 +1,8 @@
 services:
   core:
     build:
-      context: ..
-      dockerfile: docker/brama-core/Dockerfile
+      context: ../brama-core
+      dockerfile: Dockerfile
     env_file:
       - ./openclaw/.env
       - path: ../.env.deployment
@@ -52,8 +52,8 @@ services:
 
   core-scheduler:
     build:
-      context: ..
-      dockerfile: docker/brama-core/Dockerfile
+      context: ../brama-core
+      dockerfile: Dockerfile
     env_file:
       - ./openclaw/.env
       - path: ../.env.deployment
@@ -90,8 +90,8 @@ services:
   core-e2e:
     profiles: [e2e]
     build:
-      context: ..
-      dockerfile: docker/brama-core/Dockerfile
+      context: ../brama-core
+      dockerfile: Dockerfile
     env_file:
       - ./openclaw/.env
       - path: ../.env.deployment

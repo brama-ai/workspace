@@ -312,12 +312,63 @@ check_php_extensions() {
   done
 }
 
+resolve_app_dir() {
+  local app="$1"
+  local deps_cmd="${2:-}"
+  local candidates=()
+  local manifest=""
+
+  case "$deps_cmd" in
+    composer*) manifest="composer.json" ;;
+    npm*)      manifest="package.json" ;;
+    pip*)      manifest="requirements.txt" ;;
+  esac
+
+  case "$app" in
+    core)
+      candidates+=(
+        "$REPO_ROOT/brama-core"
+        "$REPO_ROOT/brama-core/src"
+        "$REPO_ROOT/brama-core/apps/core"
+        "$REPO_ROOT/apps/core"
+        "$REPO_ROOT/core"
+      )
+      ;;
+    *)
+      candidates+=(
+        "$REPO_ROOT/brama-core/apps/$app"
+        "$REPO_ROOT/brama-agents/$app"
+        "$REPO_ROOT/agents/$app"
+        "$REPO_ROOT/apps/$app"
+      )
+      ;;
+  esac
+
+  local candidate
+  for candidate in "${candidates[@]}"; do
+    [[ -d "$candidate" ]] || continue
+    if [[ -n "$manifest" && -f "$candidate/$manifest" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  for candidate in "${candidates[@]}"; do
+    [[ -d "$candidate" ]] && { printf '%s\n' "$candidate"; return 0; }
+  done
+  return 1
+}
+
 check_deps() {
   local app="$1" deps_cmd="$2"
   [[ -z "$deps_cmd" ]] && return 0
-  local run_dir="$REPO_ROOT/apps/${app}"
+  local run_dir=""
+  run_dir=$(resolve_app_dir "$app" "$deps_cmd" 2>/dev/null || true)
   if [[ ! -d "$run_dir" ]]; then
-    record_check "deps_${app}" "deps" "warn" "App directory not found: ${run_dir}" "$app"
+    local expected_hint
+    expected_hint="$REPO_ROOT/brama-core/apps/${app}"
+    [[ "$app" == "core" ]] && expected_hint="$REPO_ROOT/brama-core/apps/core"
+    record_check "deps_${app}" "deps" "warn" "App directory not found (tried workspace layouts, e.g. ${expected_hint})" "$app"
     pcheck "warn" "deps_${app}" "app dir not found"
     return 0
   fi

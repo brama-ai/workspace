@@ -2,9 +2,9 @@
 # shellcheck disable=SC2034
 #
 # Interactive Foundry pipeline monitor with tab-based TUI.
-# Version: 1.0.0
+# Version: 1.1.0
 #
-MONITOR_VERSION="1.0.0"
+MONITOR_VERSION="1.1.0"
 # Usage:
 #   ./agentic-development/foundry.sh              # launch via foundry.sh (recommended)
 #   ./agentic-development/lib/pipeline-monitor.sh # direct launch
@@ -13,9 +13,11 @@ MONITOR_VERSION="1.0.0"
 # Tabs:
 #   [1] Overview   — task statuses, progress bar, timing
 #   [2] Activity   — timeline of task & agent events (from events.jsonl)
+#   [3] Agents     — agent statuses for the focused task
+#   [4] Stdout     — live tail of the active agent log
 #
 # Keys:
-#   ←/→ or 1-2  Switch tabs
+#   ←/→ or 1-4  Switch tabs
 #   ↑/↓         Select task (Overview tab)
 #   Enter       View selected task detail
 #   Esc/Bksp    Back to task list
@@ -74,7 +76,7 @@ fi
 
 # ── State ─────────────────────────────────────────────────────────────
 CURRENT_TAB=1
-MAX_TABS=2
+MAX_TABS=4
 SELECTED_IDX=0
 DETAIL_MODE=false
 DETAIL_FILE=""
@@ -161,28 +163,117 @@ get_env_status_line() {
   [[ -f "$report_file" ]] || return 0
 
   if ! command -v jq &>/dev/null; then
-    printf '%s' "${DIM}Env: report available (jq required to display)${RESET}"
+    printf '%s' "${DIM}Env: jq required${RESET}"
     return 0
   fi
 
-  local exit_code summary
+  local exit_code
   exit_code=$(jq -r '.exit_code // -1' "$report_file" 2>/dev/null)
-  summary=$(jq -r '.summary // ""' "$report_file" 2>/dev/null)
 
-  if [[ "$exit_code" == "2" ]]; then
-    local fatal_names
-    fatal_names=$(jq -r '[.checks[] | select(.status == "fail") | .name] | join(", ")' "$report_file" 2>/dev/null)
-    printf '%s' "${RED}Env: FAILED — ${fatal_names}${RESET}"
-  elif [[ "$exit_code" == "1" ]]; then
-    local versions
-    versions=$(jq -r '.environment | to_entries | map(select(.value != "")) | map("\(.key) \(.value)") | join(" | ")' "$report_file" 2>/dev/null)
-    printf '%s' "${YELLOW}Env: WARN — ${versions}${RESET}"
-  elif [[ "$exit_code" == "0" ]]; then
-    local versions check_count
-    versions=$(jq -r '.environment | to_entries | map(select(.value != "")) | map("\(.key) \(.value)") | join(" | ")' "$report_file" 2>/dev/null)
+  if [[ "$exit_code" == "0" ]]; then
+    # All OK — just a green checkmark, no noise
+    local check_count
     check_count=$(jq -r '.checks | length' "$report_file" 2>/dev/null)
-    printf '%s' "${GREEN}Env: ${versions} | ${check_count} checks ✓${RESET}"
+    printf '%s' "${GREEN}Env ✓${RESET} ${DIM}${check_count} checks${RESET}"
   fi
+  # WARN and FAIL are rendered as multi-line table by render_env_issues
+}
+
+# Render env issues as a compact table (only for WARN/FAIL).
+# Called separately from the single-line status.
+render_env_issues() {
+  local report_file="$REPO_ROOT/.opencode/pipeline/env-report.json"
+  [[ -f "$report_file" ]] || return 0
+  command -v jq &>/dev/null || return 0
+
+  local exit_code
+  exit_code=$(jq -r '.exit_code // -1' "$report_file" 2>/dev/null)
+  [[ "$exit_code" == "1" || "$exit_code" == "2" ]] || return 0
+
+  local issues
+  issues=$(jq -r '
+    .checks[]
+    | select(.status == "warn" or .status == "fail")
+    | "\(.status)\t\(.name)\t\(.message // .value // "—")"
+  ' "$report_file" 2>/dev/null)
+
+  [[ -z "$issues" ]] && return 0
+
+  buf_line ""
+  if [[ "$exit_code" == "2" ]]; then
+    buf_line "  ${RED}${BOLD}Env issues (blocking):${RESET}"
+  else
+    buf_line "  ${YELLOW}${BOLD}Env issues:${RESET}"
+  fi
+  while IFS=$'\t' read -r severity check_name message; do
+    local icon="${YELLOW}⚠${RESET}"
+    [[ "$severity" == "fail" ]] && icon="${RED}✗${RESET}"
+    buf_line "  ${icon} ${WHITE}${check_name}${RESET}  ${DIM}${message}${RESET}"
+  done <<< "$issues"
+}
+
+strip_ansi() {
+  sed -E $'s/\x1B\\[[0-9;]*[A-Za-z]//g'
+}
+
+collect_runtime_issue_lines() {
+  local focus_task="${1:-}"
+  local live_log="${2:-}"
+  local tmp_file
+  tmp_file=$(mktemp)
+
+  {
+    if [[ -n "$live_log" && -f "$live_log" ]]; then
+      tail -n 120 "$live_log" 2>/dev/null
+    fi
+    if [[ -n "$focus_task" && -d "$focus_task/artifacts" ]]; then
+      find "$focus_task/artifacts" -type f -name '*.log' -print 2>/dev/null | sort | tail -n 2 | while IFS= read -r f; do
+        [[ -f "$f" ]] && tail -n 80 "$f" 2>/dev/null
+      done
+    fi
+    [[ -f "$LOG_DIR/foundry-headless.log" ]] && tail -n 120 "$LOG_DIR/foundry-headless.log" 2>/dev/null
+    [[ -f "$(runtime_log_file foundry)" ]] && tail -n 80 "$(runtime_log_file foundry)" 2>/dev/null
+  } | strip_ansi > "$tmp_file"
+
+  python3 - "$tmp_file" <<'PYEOF' 2>/dev/null
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+if not path.exists():
+    raise SystemExit(0)
+
+patterns = [
+    r"syntax error",
+    r"ProviderModelNotFoundError",
+    r"Model not found",
+    r"LOOP_DETECTED",
+    r"timed out",
+    r"no code changes",
+    r"failed",
+    r"unauthorized",
+    r"invalid.*api.?key",
+    r"environment check failed",
+    r"preflight failed",
+]
+regex = re.compile("|".join(f"(?:{p})" for p in patterns), re.IGNORECASE)
+lines = []
+seen = set()
+for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+    line = raw.strip()
+    if not line or not regex.search(line):
+        continue
+    if line in seen:
+        continue
+    seen.add(line)
+    lines.append(line)
+
+for line in lines[-4:]:
+    print(line[:220])
+PYEOF
+
+  rm -f "$tmp_file"
 }
 
 get_terminal_size() {
@@ -376,6 +467,16 @@ render_tabs_str() {
   else
     out+="${DIM} 2:Activity ${RESET}"
   fi
+  if [[ $CURRENT_TAB -eq 3 ]]; then
+    out+="${REV}${BOLD} 3:Agents ${RESET}"
+  else
+    out+="${DIM} 3:Agents ${RESET}"
+  fi
+  if [[ $CURRENT_TAB -eq 4 ]]; then
+    out+="${REV}${BOLD} 4:Stdout ${RESET}"
+  else
+    out+="${DIM} 4:Stdout ${RESET}"
+  fi
   printf '%s' "$out"
 }
 
@@ -393,6 +494,257 @@ render_log_lines() {
       buf_line "  $line"
     fi
   done < <(tail -n "$lines" "$log_file" 2>/dev/null)
+}
+
+# ── Focus task / live agent helpers ──────────────────────────────────
+find_focus_task_dir() {
+  local task_dir=""
+  task_dir=$(python3 - "$PIPELINE_TASKS_ROOT" <<'PYEOF' 2>/dev/null
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1]).resolve()
+
+try:
+    ps_lines = subprocess.check_output(["ps", "-eo", "args="], text=True, stderr=subprocess.DEVNULL).splitlines()
+except Exception:
+    ps_lines = []
+
+for line in ps_lines:
+    marker = "foundry-run.sh --task-file "
+    if marker not in line:
+        continue
+    task_file = line.split(marker, 1)[1].split()[0]
+    path = Path(task_file)
+    if path.name == "task.md":
+        task_dir = path.parent.resolve()
+        if task_dir.is_dir() and root in task_dir.parents:
+            print(task_dir)
+            raise SystemExit(0)
+
+in_progress = []
+recent = []
+for candidate in sorted(root.glob("*--foundry*")):
+    if not candidate.is_dir():
+        continue
+    state_path = candidate / "state.json"
+    events_path = candidate / "events.jsonl"
+    status = "pending"
+    updated = 0
+    if state_path.exists():
+        try:
+            data = json.loads(state_path.read_text(encoding="utf-8"))
+            status = data.get("status", "pending")
+            updated = int(state_path.stat().st_mtime)
+        except Exception:
+            pass
+    if events_path.exists():
+        updated = max(updated, int(events_path.stat().st_mtime))
+    if status == "in_progress":
+        in_progress.append((updated, candidate))
+    recent.append((updated, candidate))
+
+if in_progress:
+    in_progress.sort(key=lambda item: item[0], reverse=True)
+    print(in_progress[0][1])
+elif recent:
+    recent.sort(key=lambda item: item[0], reverse=True)
+    print(recent[0][1])
+PYEOF
+)
+  [[ -n "$task_dir" && -d "$task_dir" ]] && printf '%s\n' "$task_dir"
+}
+
+find_live_agent_info() {
+  local task_dir="$1"
+  [[ -n "$task_dir" && -d "$task_dir" ]] || return 0
+  python3 - "$task_dir/task.md" <<'PYEOF' 2>/dev/null
+import re
+import subprocess
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+task_file = str(Path(sys.argv[1]).resolve())
+rows = []
+try:
+    output = subprocess.check_output(["ps", "-eo", "pid=,ppid=,args="], text=True, stderr=subprocess.DEVNULL)
+except Exception:
+    output = ""
+
+for raw in output.splitlines():
+    raw = raw.strip()
+    if not raw:
+        continue
+    parts = raw.split(None, 2)
+    if len(parts) < 3:
+        continue
+    try:
+        pid = int(parts[0])
+        ppid = int(parts[1])
+    except ValueError:
+        continue
+    rows.append((pid, ppid, parts[2]))
+
+root_pid = None
+for pid, ppid, args in rows:
+    if "foundry-run.sh --task-file " in args and task_file in args:
+        root_pid = pid
+        break
+
+if root_pid is None:
+    raise SystemExit(0)
+
+children = defaultdict(list)
+for pid, ppid, args in rows:
+    children[ppid].append(pid)
+
+desc = set()
+stack = [root_pid]
+while stack:
+    current = stack.pop()
+    if current in desc:
+        continue
+    desc.add(current)
+    stack.extend(children.get(current, []))
+
+agent = ""
+log_file = ""
+for pid, ppid, args in rows:
+    if pid not in desc:
+        continue
+    m = re.search(r'opencode run --agent ([A-Za-z0-9._-]+)', args)
+    if m and not agent:
+        agent = m.group(1)
+    m = re.search(r'tee ([^ ]+_[A-Za-z0-9._-]+\.log)', args)
+    if m and not log_file:
+        log_file = m.group(1)
+
+if agent or log_file:
+    print(f"{agent}\t{log_file}")
+PYEOF
+}
+
+find_recent_artifact_log() {
+  local task_dir="$1"
+  [[ -n "$task_dir" && -d "$task_dir/artifacts" ]] || return 0
+  find "$task_dir/artifacts" -type f -name '*.log' -print 2>/dev/null | sort | tail -n 1
+}
+
+build_focus_agent_rows() {
+  local task_dir="$1"
+  local live_agent="${2:-}"
+  [[ -n "$task_dir" && -d "$task_dir" ]] || return 0
+  python3 - "$task_dir" "$live_agent" <<'PYEOF' 2>/dev/null
+import json
+import re
+import sys
+from pathlib import Path
+
+task_dir = Path(sys.argv[1])
+live_agent = sys.argv[2].strip()
+handoff = task_dir / "handoff.md"
+telemetry_dir = task_dir / "artifacts" / "telemetry"
+state_path = task_dir / "state.json"
+
+order = [
+    "planner", "investigator", "architect", "coder", "reviewer",
+    "auditor", "security-review", "validator", "tester", "e2e",
+    "documenter", "translater", "summarizer",
+]
+known_agents = set(order)
+rows = {}
+
+def normalize_status(raw: str) -> str:
+    raw = (raw or "").strip().lower()
+    mapping = {
+        "done": "done",
+        "completed": "done",
+        "pass": "done",
+        "success": "done",
+        "failed": "failed",
+        "fail": "failed",
+        "error": "failed",
+        "timeout": "failed",
+        "pending": "pending",
+        "in_progress": "in_progress",
+        "in progress": "in_progress",
+        "running": "in_progress",
+        "rework_requested": "rework_requested",
+    }
+    return mapping.get(raw, raw.replace(" ", "_") or "pending")
+
+if handoff.exists():
+    current = None
+    for raw in handoff.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^##\s+(.+)$", raw)
+        if m:
+          heading = m.group(1).strip().lower()
+          current = heading if heading in known_agents else None
+          if current:
+              rows.setdefault(current, {"agent": current, "status": "pending", "model": "", "duration": "", "session_id": ""})
+          continue
+        if current:
+            m = re.search(r"\*\*Status\*\*:\s*(.+)", raw)
+            if not m:
+                m = re.search(r"- \*\*Status\*\*:\s*(.+)", raw)
+            if m:
+                rows.setdefault(current, {"agent": current, "status": "pending", "model": "", "duration": "", "session_id": ""})
+                rows[current]["status"] = normalize_status(m.group(1))
+
+if telemetry_dir.exists():
+    for file in sorted(telemetry_dir.glob("*.json")):
+        try:
+            data = json.loads(file.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        agent = data.get("agent") or file.stem
+        exit_code = str(data.get("exit_code", ""))
+        status = "done" if exit_code == "0" else "failed"
+        rows.setdefault(agent, {"agent": agent, "status": "pending", "model": "", "duration": "", "session_id": ""})
+        rows[agent]["status"] = status
+        rows[agent]["model"] = data.get("model", "") or rows[agent]["model"]
+        duration = data.get("duration_seconds")
+        rows[agent]["duration"] = str(duration) if duration not in (None, "") else rows[agent]["duration"]
+        rows[agent]["session_id"] = data.get("session_id", "") or rows[agent]["session_id"]
+
+current_step = ""
+if state_path.exists():
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        current_step = (state.get("current_step") or "").strip().lower()
+    except Exception:
+        pass
+
+if current_step:
+    rows.setdefault(current_step, {"agent": current_step, "status": "pending", "model": "", "duration": "", "session_id": ""})
+    if rows[current_step]["status"] == "pending":
+        rows[current_step]["status"] = "in_progress"
+
+if live_agent:
+    rows.setdefault(live_agent, {"agent": live_agent, "status": "pending", "model": "", "duration": "", "session_id": ""})
+    rows[live_agent]["status"] = "in_progress"
+
+ordered = []
+for agent in order:
+    if agent in rows:
+        ordered.append(rows.pop(agent))
+for agent in sorted(rows):
+    ordered.append(rows[agent])
+
+for row in ordered:
+    print(
+        "\t".join([
+            row["agent"],
+            row["status"],
+            row["model"],
+            row["duration"],
+            row["session_id"],
+        ])
+    )
+PYEOF
 }
 
 # ── Tab: Overview ─────────────────────────────────────────────────────
@@ -450,10 +802,29 @@ render_overview() {
     fi
   fi
 
-  # Environment status line
+  # Environment status line (compact if OK, table if issues)
   local env_line
   env_line=$(get_env_status_line)
   [[ -n "$env_line" ]] && buf_line "  ${env_line}"
+  render_env_issues
+  local focus_task_dir="" focus_live_info="" focus_live_agent="" focus_live_log=""
+  focus_task_dir=$(find_focus_task_dir)
+  if [[ -n "$focus_task_dir" ]]; then
+    focus_live_info=$(find_live_agent_info "$focus_task_dir")
+    if [[ -n "$focus_live_info" ]]; then
+      IFS=$'\t' read -r focus_live_agent focus_live_log <<< "$focus_live_info"
+    fi
+    local runtime_issues=""
+    runtime_issues=$(collect_runtime_issue_lines "$focus_task_dir" "$focus_live_log")
+    if [[ -n "$runtime_issues" ]]; then
+      buf_line ""
+      buf_line "  ${RED}${BOLD}Runtime issues:${RESET}"
+      while IFS= read -r issue_line; do
+        [[ -n "$issue_line" ]] || continue
+        buf_line "  ${RED}✗${RESET} ${DIM}${issue_line}${RESET}"
+      done <<< "$runtime_issues"
+    fi
+  fi
   buf_line ""
   buf_line "${DIM}$(hline)${RESET}"
 
@@ -596,35 +967,8 @@ build_activity_data() {
   ACTIVITY_TASK_TITLE=""
   ACTIVITY_TASK_STARTED=0
 
-  # Find the most recently active task (in_progress first, then most recently updated)
   local active_task_dir=""
-  local task_dir status
-
-  # First try in_progress
-  while IFS= read -r task_dir; do
-    [[ -d "$task_dir" ]] || continue
-    status=$(foundry_state_field "$task_dir" status 2>/dev/null || echo "pending")
-    if [[ "$status" == "in_progress" ]]; then
-      active_task_dir="$task_dir"
-      break
-    fi
-  done < <(foundry_list_task_dirs)
-
-  # If no in_progress, find most recently updated
-  if [[ -z "$active_task_dir" ]]; then
-    local newest_mtime=0
-    while IFS= read -r task_dir; do
-      [[ -d "$task_dir" ]] || continue
-      local events_file="$task_dir/events.jsonl"
-      [[ -f "$events_file" ]] || continue
-      local mtime
-      mtime=$(stat -c %Y "$events_file" 2>/dev/null || echo "0")
-      if [[ "$mtime" -gt "$newest_mtime" ]]; then
-        newest_mtime="$mtime"
-        active_task_dir="$task_dir"
-      fi
-    done < <(foundry_list_task_dirs)
-  fi
+  active_task_dir=$(find_focus_task_dir)
 
   [[ -z "$active_task_dir" ]] && return
 
@@ -770,6 +1114,132 @@ PYEOF
   buf_flush
 }
 
+render_agents_tab() {
+  get_terminal_size
+  buf_reset
+  buf_line "$(render_tabs_str)  ${DIM}v${MONITOR_VERSION}  $(date '+%H:%M:%S')${RESET}"
+  buf_line ""
+
+  local task_dir
+  task_dir=$(find_focus_task_dir)
+  if [[ -z "$task_dir" || ! -d "$task_dir" ]]; then
+    buf_line "  ${DIM}No active or recent Foundry task found.${RESET}"
+    buf_line "  ${DIM}Start a task to populate agent status.${RESET}"
+    buf_line ""
+    buf_line "  ${DIM}←/→ tabs  [s] start  [k] stop  [q] quit${RESET}"
+    buf_flush
+    return
+  fi
+
+  local title
+  title=$(_extract_title "$task_dir")
+  buf_line "  ${BOLD}${WHITE}${title}${RESET}"
+  buf_line "  ${DIM}${task_dir#"$REPO_ROOT"/}${RESET}"
+  buf_line ""
+
+  local live_info live_agent="" live_log=""
+  live_info=$(find_live_agent_info "$task_dir")
+  if [[ -n "$live_info" ]]; then
+    IFS=$'\t' read -r live_agent live_log <<< "$live_info"
+  fi
+
+  local available_lines=$((TERM_ROWS - 8))
+  [[ $available_lines -lt 5 ]] && available_lines=5
+  local shown=0
+  local row agent status model duration session_id status_icon status_color meta
+
+  while IFS=$'\t' read -r agent status model duration session_id; do
+    [[ -n "$agent" ]] || continue
+    case "$status" in
+      in_progress) status_icon="▸"; status_color="$YELLOW" ;;
+      done)        status_icon="✓"; status_color="$GREEN" ;;
+      failed)      status_icon="✗"; status_color="$RED" ;;
+      rework_requested) status_icon="↺"; status_color="$MAGENTA" ;;
+      *)           status_icon="○"; status_color="$DIM" ;;
+    esac
+    meta=""
+    [[ -n "$model" ]] && meta="${DIM}${model}${RESET}"
+    if [[ -n "$duration" ]]; then
+      [[ -n "$meta" ]] && meta+="  "
+      meta+="${DIM}$(format_duration "$duration")${RESET}"
+    fi
+    if [[ -n "$session_id" ]]; then
+      [[ -n "$meta" ]] && meta+="  "
+      meta+="${DIM}${session_id:0:12}${RESET}"
+    fi
+    if [[ "$agent" == "$live_agent" ]]; then
+      [[ -n "$meta" ]] && meta+="  "
+      meta+="${YELLOW}${BOLD}LIVE${RESET}"
+    fi
+    buf_line "  ${status_color}${status_icon}${RESET} ${WHITE}${agent}${RESET}${meta:+  ${meta}}"
+    shown=$((shown + 1))
+    [[ $shown -ge $available_lines ]] && break
+  done < <(build_focus_agent_rows "$task_dir" "$live_agent")
+
+  if [[ $shown -eq 0 ]]; then
+    buf_line "  ${DIM}No agent metadata yet. Waiting for planner/coder logs...${RESET}"
+  fi
+
+  while [[ $shown -lt $((available_lines - 1)) ]]; do
+    buf_line ""
+    shown=$((shown + 1))
+  done
+
+  buf_line "  ${DIM}←/→ tabs  [s] start  [k] stop  [q] quit  (focus task: latest active)${RESET}"
+  buf_flush
+}
+
+render_stdout_tab() {
+  get_terminal_size
+  buf_reset
+  buf_line "$(render_tabs_str)  ${DIM}v${MONITOR_VERSION}  $(date '+%H:%M:%S')${RESET}"
+  buf_line ""
+
+  local task_dir
+  task_dir=$(find_focus_task_dir)
+  if [[ -z "$task_dir" || ! -d "$task_dir" ]]; then
+    buf_line "  ${DIM}No active or recent Foundry task found.${RESET}"
+    buf_line ""
+    buf_line "  ${DIM}←/→ tabs  [s] start  [k] stop  [q] quit${RESET}"
+    buf_flush
+    return
+  fi
+
+  local title
+  title=$(_extract_title "$task_dir")
+  local live_info live_agent="" live_log=""
+  live_info=$(find_live_agent_info "$task_dir")
+  if [[ -n "$live_info" ]]; then
+    IFS=$'\t' read -r live_agent live_log <<< "$live_info"
+  fi
+
+  local log_file="$live_log"
+  local source_label="live"
+  if [[ -z "$log_file" || ! -f "$log_file" ]]; then
+    log_file=$(find_recent_artifact_log "$task_dir")
+    source_label="artifact"
+  fi
+
+  buf_line "  ${BOLD}${WHITE}${title}${RESET}"
+  if [[ -n "$live_agent" ]]; then
+    buf_line "  ${YELLOW}${BOLD}${live_agent}${RESET} ${DIM}stdout (${source_label})${RESET}"
+  else
+    buf_line "  ${DIM}Latest available agent stdout (${source_label})${RESET}"
+  fi
+  buf_line ""
+
+  if [[ -z "$log_file" || ! -f "$log_file" ]]; then
+    buf_line "  ${DIM}No log file available yet for this task.${RESET}"
+  else
+    local available_lines=$((TERM_ROWS - 7))
+    [[ $available_lines -lt 5 ]] && available_lines=5
+    render_log_lines "$log_file" "$available_lines"
+  fi
+
+  buf_line "  ${DIM}←/→ tabs  [s] start  [k] stop  [q] quit  (auto-refresh ${REFRESH_INTERVAL}s)${RESET}"
+  buf_flush
+}
+
 # ── Actions ───────────────────────────────────────────────────────────
 action_start() {
   if foundry_is_batch_running; then
@@ -779,9 +1249,15 @@ action_start() {
   if [[ $pending_count -eq 0 ]]; then
     ACTION_MSG="${YELLOW}No pending tasks${RESET}"; return
   fi
-  nohup "$REPO_ROOT/agentic-development/foundry.sh" headless \
-    > /dev/null 2>&1 &
-  ACTION_MSG="${GREEN}Started headless workers ($pending_count pending tasks, PID $!)${RESET}"
+  local output="" exit_code=0
+  output=$("$REPO_ROOT/agentic-development/foundry.sh" headless 2>&1) || exit_code=$?
+  if [[ $exit_code -eq 0 ]]; then
+    ACTION_MSG="${GREEN}Started headless workers ($pending_count pending tasks)${RESET}"
+  else
+    local brief="${output##*$'\n'}"
+    [[ -z "$brief" ]] && brief="headless start failed"
+    ACTION_MSG="${RED}${brief}${RESET}"
+  fi
   invalidate_cache
 }
 
@@ -888,9 +1364,15 @@ autostart_check() {
   foundry_is_batch_running && return
 
   AUTOSTART_LAST=$now
-  nohup "$REPO_ROOT/agentic-development/foundry.sh" headless \
-    > /dev/null 2>&1 &
-  ACTION_MSG="${GREEN}Auto-started workers ($CACHED_PENDING_COUNT pending tasks, PID $!)${RESET}"
+  local output="" exit_code=0
+  output=$("$REPO_ROOT/agentic-development/foundry.sh" headless 2>&1) || exit_code=$?
+  if [[ $exit_code -eq 0 ]]; then
+    ACTION_MSG="${GREEN}Auto-started workers ($CACHED_PENDING_COUNT pending tasks)${RESET}"
+  else
+    local brief="${output##*$'\n'}"
+    [[ -z "$brief" ]] && brief="auto-start failed"
+    ACTION_MSG="${RED}${brief}${RESET}"
+  fi
   invalidate_cache
 }
 
@@ -898,8 +1380,12 @@ autostart_check() {
 render() {
   if [[ $CURRENT_TAB -eq 1 ]]; then
     render_overview
-  else
+  elif [[ $CURRENT_TAB -eq 2 ]]; then
     render_logs_tab
+  elif [[ $CURRENT_TAB -eq 3 ]]; then
+    render_agents_tab
+  else
+    render_stdout_tab
   fi
 }
 
@@ -999,7 +1485,7 @@ main() {
           DETAIL_MODE=true
           DETAIL_FILE="${ALL_TASKS_DIRS[$SELECTED_IDX]}/task.md"
         fi ;;
-      [1-2])
+      [1-4])
         CURRENT_TAB=$LAST_KEY; DETAIL_MODE=false ;;
     esac
   done

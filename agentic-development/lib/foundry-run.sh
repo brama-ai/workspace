@@ -971,18 +971,34 @@ get_fallback_chain() {
   local agent="$1"
   local var_name="FALLBACK_$(echo "$agent" | tr '[:lower:]' '[:upper:]')"
   local chain="${!var_name:-}"
+  [[ -n "$chain" ]] || return 0
 
-  # Expand "cheap" placeholder into cheap models chain
-  if [[ -n "$chain" && "$chain" == *"cheap"* ]]; then
-    chain=$(echo "$chain" | sed "s|cheap|${CHEAP_MODELS}|g")
-  fi
+  local expanded=()
+  local token=""
+  local free_tokens=()
+  local cheap_tokens=()
+  IFS=',' read -r -a raw_tokens <<< "$chain"
+  for token in "${raw_tokens[@]}"; do
+    token="${token#"${token%%[![:space:]]*}"}"
+    token="${token%"${token##*[![:space:]]}"}"
+    case "$token" in
+      free)
+        IFS=',' read -r -a free_tokens <<< "$FREE_MODELS"
+        expanded+=("${free_tokens[@]}")
+        ;;
+      cheap)
+        IFS=',' read -r -a cheap_tokens <<< "$CHEAP_MODELS"
+        expanded+=("${cheap_tokens[@]}")
+        ;;
+      "")
+        ;;
+      *)
+        expanded+=("$token")
+        ;;
+    esac
+  done
 
-  # Expand "free" placeholder into the actual free models chain
-  if [[ -n "$chain" && "$chain" == *"free"* ]]; then
-    chain=$(echo "$chain" | sed "s|free|${FREE_MODELS}|g")
-  fi
-
-  echo "$chain"
+  (IFS=','; echo "${expanded[*]}")
 }
 
 is_rate_limit_error() {
@@ -1220,7 +1236,7 @@ apply_profile() {
 
 PLAN_FILE="$REPO_ROOT/pipeline-plan.json"
 PIPELINE_TIMEOUT_PLANNER="${PIPELINE_TIMEOUT_PLANNER:-300}"  # 5 min
-FALLBACK_PLANNER="${PIPELINE_FALLBACK_PLANNER:-openrouter/google/gemini-2.0-flash-exp,free,cheap}"
+FALLBACK_PLANNER="${PIPELINE_FALLBACK_PLANNER:-google/gemini-2.5-flash,free,cheap}"
 
 apply_plan() {
   local plan_file="$1"
@@ -1370,7 +1386,7 @@ monitor_agent_loop() {
     # Check 2: Repeated error patterns in recent output
     if [[ "$cur_size" -gt 1000 ]]; then
       local recent_errors
-      recent_errors=$(tail -100 "$log_file" 2>/dev/null | grep -ciE 'error|failed|exception' 2>/dev/null || echo 0)
+      recent_errors=$(tail -100 "$log_file" 2>/dev/null | grep -iE 'error|failed|exception' 2>/dev/null | wc -l | tr -d ' ')
       if [[ "$recent_errors" -gt 30 ]]; then
         local unique_errors
         unique_errors=$(tail -100 "$log_file" 2>/dev/null | grep -iE 'error|failed|exception' | sort -u | wc -l | tr -d ' ')
@@ -1391,8 +1407,8 @@ monitor_agent_loop() {
       if [[ "$make_runs" -gt "$max_iterations" ]]; then
         # Check if errors are decreasing — if not, it's a loop
         local recent_errors prev_errors
-        recent_errors=$(tail -50 "$log_file" 2>/dev/null | grep -ciE 'error|ERROR' 2>/dev/null || true)
-        prev_errors=$(sed -n '1,50p' "$log_file" 2>/dev/null | grep -ciE 'error|ERROR' 2>/dev/null || true)
+        recent_errors=$(tail -50 "$log_file" 2>/dev/null | grep -iE 'error|ERROR' 2>/dev/null | wc -l | tr -d ' ')
+        prev_errors=$(sed -n '1,50p' "$log_file" 2>/dev/null | grep -iE 'error|ERROR' 2>/dev/null | wc -l | tr -d ' ')
         if [[ "$recent_errors" -ge "$prev_errors" && "$recent_errors" -gt 0 ]]; then
           echo "LOOP_DETECTED:iteration_limit:${make_runs} make runs, errors not decreasing (${prev_errors}->${recent_errors})" > "${log_file}.loop"
           kill "$agent_pid" 2>/dev/null
@@ -2346,6 +2362,10 @@ main() {
     should_run_summarizer=true
   fi
   for agent in $agents_to_run; do
+    if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
+      foundry_set_state_status "$TASK_DIR" "in_progress" "$agent" "$agent"
+    fi
+
     local prompt
     prompt=$(build_prompt "$agent")
 

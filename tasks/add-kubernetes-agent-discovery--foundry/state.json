@@ -1,0 +1,11 @@
+{
+  "task_id": "add-kubernetes-agent-discovery--foundry",
+  "workflow": "foundry",
+  "started_at": null,
+  "attempt": 0,
+  "status": "pending",
+  "current_step": null,
+  "resume_from": null,
+  "updated_at": null,
+  "branch": null
+}

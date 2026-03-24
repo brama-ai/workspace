@@ -49,6 +49,20 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local desc="$1" needle="$2" haystack="$3"
+  TOTAL=$((TOTAL + 1))
+  if echo "$haystack" | grep -q "$needle"; then
+    echo -e "  ${RED}✗${NC} $desc"
+    echo -e "    expected not to contain: ${needle}"
+    echo -e "    actual output: ${haystack:0:200}"
+    FAIL=$((FAIL + 1))
+  else
+    echo -e "  ${GREEN}✓${NC} $desc"
+    PASS=$((PASS + 1))
+  fi
+}
+
 assert_exit_code() {
   local desc="$1" expected="$2" actual="$3"
   TOTAL=$((TOTAL + 1))
@@ -163,6 +177,7 @@ app_output=$("$ENV_CHECK" --app core --report-file "$tmp_report3" 2>&1 || true)
 
 assert_contains "--app core checks php_version" "php_version\|php" "$app_output"
 assert_contains "--app core checks composer" "composer" "$app_output"
+assert_not_contains "--app core resolves workspace path" "deps_core.*app dir not found" "$app_output"
 
 if command -v jq &>/dev/null && [[ -f "$tmp_report3" ]]; then
   # Verify report contains php-related checks
@@ -186,6 +201,9 @@ if command -v jq &>/dev/null && [[ -f "$tmp_report3" ]]; then
     echo -e "  ${RED}✗${NC} No checks have required_by=core"
     FAIL=$((FAIL + 1))
   fi
+
+  deps_core_detail=$(jq -r '.checks[] | select(.name == "deps_core") | .detail // empty' "$tmp_report3" 2>/dev/null || echo "")
+  assert_not_contains "deps_core report no longer uses missing legacy path" "App directory not found" "$deps_core_detail"
 fi
 
 rm -f "$tmp_report3"

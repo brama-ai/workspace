@@ -62,11 +62,67 @@ Examples:
 EOF
 }
 
+foundry_preflight_check() {
+  local failures=()
+  local warnings=()
+  local script
+  local scripts=(
+    "$REPO_ROOT/agentic-development/foundry.sh"
+    "$REPO_ROOT/agentic-development/lib/foundry-batch.sh"
+    "$REPO_ROOT/agentic-development/lib/foundry-run.sh"
+    "$REPO_ROOT/agentic-development/lib/pipeline-monitor.sh"
+  )
+
+  for script in "${scripts[@]}"; do
+    if ! bash -n "$script" 2>/dev/null; then
+      failures+=("shell syntax check failed: ${script#"$REPO_ROOT"/}")
+    fi
+  done
+
+  if [[ -x "$REPO_ROOT/agentic-development/lib/env-check.sh" ]]; then
+    local env_output="" env_exit=0
+    env_output=$("$REPO_ROOT/agentic-development/lib/env-check.sh" --quiet --report-file "$REPO_ROOT/.opencode/pipeline/env-report.json" 2>&1) || env_exit=$?
+    case "$env_exit" in
+      0) ;;
+      1) warnings+=("environment has warnings") ;;
+      *) failures+=("environment check failed") ;;
+    esac
+    [[ -n "$env_output" ]] && runtime_log foundry "preflight env-check output: $env_output"
+  fi
+
+  local pending_count=0
+  while IFS='=' read -r key value; do
+    [[ "$key" == "pending" ]] && pending_count="$value"
+  done < <(foundry_task_counts)
+  [[ "$pending_count" -eq 0 ]] && warnings+=("no pending tasks")
+
+  local message=""
+  if [[ ${#failures[@]} -gt 0 ]]; then
+    message="Preflight failed: ${failures[*]}"
+    runtime_log foundry "$message"
+    printf '%s\n' "$message" >&2
+    return 1
+  fi
+
+  if [[ ${#warnings[@]} -gt 0 ]]; then
+    message="Preflight warnings: ${warnings[*]}"
+    runtime_log foundry "$message"
+  else
+    runtime_log foundry "preflight ok"
+  fi
+  return 0
+}
+
 foundry_start_headless() {
   if foundry_is_batch_running; then
     runtime_log foundry "headless already running"
     echo "Foundry headless is already running."
     return 0
+  fi
+
+  if ! foundry_preflight_check; then
+    echo "Foundry headless start blocked by preflight checks."
+    return 1
   fi
 
   local _caff=""
