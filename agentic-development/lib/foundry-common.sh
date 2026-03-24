@@ -266,6 +266,11 @@ if meta_path.exists():
     except (json.JSONDecodeError, OSError, TypeError, ValueError):
         pass
 
+# Preserve agents array if present
+agents = existing.get("agents")
+if isinstance(agents, list) and agents:
+    payload["agents"] = agents
+
 with open(state_path, "w", encoding="utf-8") as fh:
     json.dump(payload, fh, ensure_ascii=True, indent=2)
     fh.write("\n")
@@ -458,6 +463,244 @@ if value is None:
     raise SystemExit(0)
 print(value)
 PYEOF
+}
+
+# ── Atomic task claiming for parallel workers ───────────────────────
+# Returns 0 if task was claimed, 1 if already taken.
+# Uses fcntl file locking via Python for atomicity.
+foundry_claim_task() {
+  local task_dir="$1"
+  local worker_id="${2:-main}"
+  python3 - "$task_dir" "$worker_id" <<'PYEOF'
+import fcntl
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+task_dir = Path(sys.argv[1])
+worker_id = sys.argv[2]
+state_path = task_dir / "state.json"
+lock_path = task_dir / ".claim.lock"
+
+# Create lock file
+lock_path.touch(exist_ok=True)
+lock_fd = open(lock_path, "r+")
+
+try:
+    fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+except (OSError, IOError):
+    # Another process holds the lock
+    lock_fd.close()
+    raise SystemExit(1)
+
+try:
+    data = {}
+    if state_path.exists():
+        try:
+            data = json.loads(state_path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                data = {}
+        except (json.JSONDecodeError, OSError):
+            data = {}
+
+    status = data.get("status", "pending")
+    if status != "pending":
+        # Already claimed or not available
+        raise SystemExit(1)
+
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    data["status"] = "in_progress"
+    data["worker_id"] = worker_id
+    data["claimed_at"] = now
+    data["updated_at"] = now
+
+    with open(state_path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=True, indent=2)
+        fh.write("\n")
+
+    # Success
+    raise SystemExit(0)
+finally:
+    fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
+    lock_fd.close()
+PYEOF
+}
+
+# Release a claimed task back to pending (e.g. worker crashed before starting)
+foundry_release_task() {
+  local task_dir="$1"
+  local current_status
+  current_status=$(foundry_state_field "$task_dir" status 2>/dev/null || echo "")
+  if [[ "$current_status" == "in_progress" ]]; then
+    foundry_set_state_status "$task_dir" "pending" "" ""
+  fi
+}
+
+# Find and claim the next pending task (priority-sorted). Prints task_dir on success.
+foundry_claim_next_task() {
+  local worker_id="${1:-main}"
+  python3 - "$PIPELINE_TASKS_ROOT" "$worker_id" <<'PYEOF'
+import fcntl
+import json
+import re
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+root = Path(sys.argv[1])
+worker_id = sys.argv[2]
+
+# Collect pending tasks with priority
+candidates = []
+for task_dir in sorted(root.glob("*--foundry*")):
+    if not task_dir.is_dir():
+        continue
+    state_path = task_dir / "state.json"
+    status = "pending"
+    if state_path.exists():
+        try:
+            status = json.loads(state_path.read_text(encoding="utf-8")).get("status", "pending")
+        except (json.JSONDecodeError, OSError):
+            status = "pending"
+    if status != "pending":
+        continue
+
+    # Read priority from task.md
+    priority = 1
+    task_md = task_dir / "task.md"
+    if task_md.exists():
+        try:
+            first_line = task_md.read_text(encoding="utf-8").split("\n", 1)[0]
+            m = re.search(r"<!--\s*priority:\s*(\d+)\s*-->", first_line)
+            if m:
+                priority = int(m.group(1))
+        except (OSError, ValueError):
+            pass
+
+    candidates.append((priority, task_dir))
+
+# Sort by priority descending
+candidates.sort(key=lambda x: x[0], reverse=True)
+
+# Try to claim each one atomically
+now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+for _, task_dir in candidates:
+    state_path = task_dir / "state.json"
+    lock_path = task_dir / ".claim.lock"
+    lock_path.touch(exist_ok=True)
+
+    try:
+        lock_fd = open(lock_path, "r+")
+        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, IOError):
+        continue  # Another worker is claiming this one
+
+    try:
+        data = {}
+        if state_path.exists():
+            try:
+                data = json.loads(state_path.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    data = {}
+            except (json.JSONDecodeError, OSError):
+                data = {}
+
+        if data.get("status", "pending") != "pending":
+            continue  # Already claimed between check and lock
+
+        data["status"] = "in_progress"
+        data["worker_id"] = worker_id
+        data["claimed_at"] = now
+        data["updated_at"] = now
+
+        with open(state_path, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=True, indent=2)
+            fh.write("\n")
+
+        print(task_dir)
+        raise SystemExit(0)
+    finally:
+        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
+        lock_fd.close()
+
+# No task available
+raise SystemExit(1)
+PYEOF
+}
+
+# ── Git worktree management for parallel workers ────────────────────
+WORKTREE_BASE="${REPO_ROOT}/.pipeline-worktrees"
+
+foundry_worktree_path() {
+  local worker_id="$1"
+  echo "${WORKTREE_BASE}/${worker_id}"
+}
+
+foundry_create_worktree() {
+  local worker_id="$1"
+  local wt_path
+  wt_path=$(foundry_worktree_path "$worker_id")
+
+  if [[ -d "$wt_path" ]]; then
+    # Worktree exists — verify it's valid, reuse it
+    if git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null | grep -qF "$wt_path"; then
+      # Pull latest from main branch
+      local main_branch
+      main_branch=$(git -C "$REPO_ROOT" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@refs/remotes/origin/@@' || echo "main")
+      git -C "$wt_path" checkout "$main_branch" 2>/dev/null || true
+      git -C "$wt_path" reset --hard "origin/$main_branch" 2>/dev/null || true
+      echo "$wt_path"
+      return 0
+    fi
+    # Stale directory — remove and recreate
+    rm -rf "$wt_path"
+    git -C "$REPO_ROOT" worktree prune 2>/dev/null || true
+  fi
+
+  mkdir -p "$WORKTREE_BASE"
+
+  # Create worktree from HEAD with detached HEAD (no branch conflicts between workers)
+  local wt_branch="pipeline-worker-${worker_id}"
+  git -C "$REPO_ROOT" branch -D "$wt_branch" 2>/dev/null || true
+  git -C "$REPO_ROOT" worktree add -b "$wt_branch" "$wt_path" HEAD 2>/dev/null || {
+    # Fallback: detached HEAD
+    git -C "$REPO_ROOT" worktree add --detach "$wt_path" HEAD 2>/dev/null || return 1
+  }
+
+  echo "$wt_path"
+}
+
+foundry_cleanup_worktree() {
+  local worker_id="$1"
+  local wt_path
+  wt_path=$(foundry_worktree_path "$worker_id")
+  [[ -d "$wt_path" ]] || return 0
+  git -C "$REPO_ROOT" worktree remove --force "$wt_path" 2>/dev/null || rm -rf "$wt_path"
+  git -C "$REPO_ROOT" worktree prune 2>/dev/null || true
+}
+
+foundry_list_active_workers() {
+  # List worker IDs that are currently running (have live foundry-run.sh processes)
+  local pids
+  pids=$(pgrep -f 'foundry-run\.sh' 2>/dev/null || true)
+  [[ -z "$pids" ]] && return 0
+  ps -o args= -p $pids 2>/dev/null | while IFS= read -r args; do
+    if [[ "$args" =~ \.pipeline-worktrees/(worker-[0-9]+) ]]; then
+      echo "${BASH_REMATCH[1]}"
+    elif [[ "$args" =~ PIPELINE_WORKER_ID=([^ ]+) ]]; then
+      echo "${BASH_REMATCH[1]}"
+    fi
+  done | sort -u
+}
+
+foundry_count_active_workers() {
+  local count=0
+  while IFS= read -r _; do
+    count=$((count + 1))
+  done < <(foundry_list_active_workers)
+  echo "$count"
 }
 
 foundry_state_upsert_agent() {

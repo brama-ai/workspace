@@ -102,7 +102,15 @@ CACHED_SUSPENDED_COUNT=0
 CACHED_CANCELLED_COUNT=0
 
 cache_expired() { [[ "$FORCE_REBUILD" == true ]] || (( RENDER_CYCLE % CACHE_TTL == 0 )); }
-invalidate_cache() { FORCE_REBUILD=true; }
+invalidate_cache() { FORCE_REBUILD=true; BATCH_CYCLE=-1; CACHED_LIVE_AGENT=""; CACHED_LIVE_LOG=""; CACHED_RUNTIME_ISSUES=""; CACHED_ACTIVE_WORKERS=""; }
+
+# ── Cached expensive operation results ──────────────────────────────
+CACHED_LIVE_AGENT=""
+CACHED_LIVE_LOG=""
+CACHED_RUNTIME_ISSUES=""
+CACHED_ACTIVE_WORKERS=""
+CACHED_LIVE_CYCLE=-1
+CACHED_WORKERS_CYCLE=-1
 
 # Task list arrays (populated by build_task_list)
 ALL_TASKS_DIRS=()
@@ -367,27 +375,6 @@ format_tokens() {
   fi
 }
 
-# ── Task counts (Foundry state.json-based) ────────────────────────────
-count_all_task_dirs() {
-  cache_expired || return 0
-  CACHED_PENDING_COUNT=0
-  CACHED_INPROG_COUNT=0
-  CACHED_COMPLETED_COUNT=0
-  CACHED_FAILED_COUNT=0
-  CACHED_SUSPENDED_COUNT=0
-  CACHED_CANCELLED_COUNT=0
-  while IFS='=' read -r key value; do
-    case "$key" in
-      pending)    CACHED_PENDING_COUNT="$value" ;;
-      in_progress) CACHED_INPROG_COUNT="$value" ;;
-      completed)  CACHED_COMPLETED_COUNT="$value" ;;
-      failed)     CACHED_FAILED_COUNT="$value" ;;
-      suspended)  CACHED_SUSPENDED_COUNT="$value" ;;
-      cancelled)  CACHED_CANCELLED_COUNT="$value" ;;
-    esac
-  done < <(foundry_task_counts)
-}
-
 # ── Priority helpers ──────────────────────────────────────────────────
 get_priority() {
   local task_file="$1/task.md"
@@ -412,83 +399,190 @@ set_priority() {
   fi
 }
 
-# ── Extract title from task.md ────────────────────────────────────────
-_extract_title() {
-  local task_dir="$1"
-  local task_file="$task_dir/task.md"
-  local line=""
-  while IFS= read -r line; do
-    if [[ "$line" == "# "* ]]; then
-      printf '%s' "${line#\# }"
-      return
-    fi
-  done < "$task_file" 2>/dev/null
-  basename "$task_dir" | sed 's/--foundry.*//'
+# ── Batch task reader (ONE Python call replaces N individual ones) ────
+# Reads all task dirs, their state.json fields, titles, priorities in a
+# single Python invocation. Outputs TSV lines:
+#   dir\tstatus\ttitle\tpriority\tcurrent_step\tworker_id\tstarted_at\tupdated_at
+# Also outputs counts as COUNTS:pending=N,in_progress=N,...
+# Also outputs focus task as FOCUS:dir
+BATCH_DATA=""
+BATCH_CYCLE=-1
+
+batch_read_all_tasks() {
+  # Only re-read when cache is stale
+  if [[ "$BATCH_CYCLE" -eq "$RENDER_CYCLE" && "$FORCE_REBUILD" != true ]]; then
+    return
+  fi
+  BATCH_CYCLE=$RENDER_CYCLE
+
+  BATCH_DATA=$(python3 - "$PIPELINE_TASKS_ROOT" <<'PYEOF' 2>/dev/null
+
+import json
+import os
+import re
+import subprocess
+import sys
+from collections import Counter
+from pathlib import Path
+
+root = Path(sys.argv[1])
+counts = Counter()
+tasks = []
+
+for task_dir in sorted(root.glob("*--foundry*")):
+    if not task_dir.is_dir():
+        continue
+    state_path = task_dir / "state.json"
+    task_md = task_dir / "task.md"
+
+    status = "pending"
+    current_step = ""
+    worker_id = ""
+    started_at = ""
+    updated_at = ""
+
+    if state_path.exists():
+        try:
+            data = json.loads(state_path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                status = data.get("status", "pending")
+                current_step = data.get("current_step") or ""
+                worker_id = data.get("worker_id") or ""
+                started_at = data.get("started_at") or ""
+                updated_at = data.get("updated_at") or ""
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    counts[status] += 1
+    if status == "cancelled":
+        continue
+
+    # Read title from task.md
+    title = task_dir.name.replace("--foundry", "")
+    if task_md.exists():
+        try:
+            for line in task_md.read_text(encoding="utf-8").splitlines():
+                if line.startswith("# "):
+                    title = line[2:].strip()
+                    break
+        except OSError:
+            pass
+
+    # Read priority from task.md first line
+    priority = 1
+    if task_md.exists():
+        try:
+            first_line = task_md.read_text(encoding="utf-8").split("\n", 1)[0]
+            m = re.search(r"<!--\s*priority:\s*(\d+)\s*-->", first_line)
+            if m:
+                priority = int(m.group(1))
+        except (OSError, ValueError):
+            pass
+
+    tasks.append({
+        "dir": str(task_dir),
+        "status": status,
+        "title": title,
+        "priority": priority,
+        "current_step": current_step,
+        "worker_id": worker_id,
+        "started_at": started_at,
+        "updated_at": updated_at,
+    })
+
+# Sort: in_progress first, then completed, failed, suspended, pending (by priority desc)
+order = {"in_progress": 0, "completed": 1, "failed": 2, "suspended": 3}
+tasks.sort(key=lambda t: (order.get(t["status"], 4), -t["priority"], t["dir"]))
+
+# Output counts
+parts = []
+for k in ["pending", "in_progress", "completed", "failed", "suspended", "cancelled"]:
+    parts.append(f"{k}={counts[k]}")
+print("COUNTS:" + ",".join(parts))
+
+# Find focus task (most recently updated in_progress, or most recent overall)
+in_progress = [t for t in tasks if t["status"] == "in_progress"]
+if in_progress:
+    focus = max(in_progress, key=lambda t: t["updated_at"] or "")
+    print(f"FOCUS:{focus['dir']}")
+elif tasks:
+    recent = max(tasks, key=lambda t: t["updated_at"] or "")
+    print(f"FOCUS:{recent['dir']}")
+
+# Output task rows as TSV
+for t in tasks:
+    prio_suffix = ""
+    if t["status"] == "pending":
+        prio_suffix = f":{t['priority']}"
+    print("\t".join([
+        t["dir"],
+        t["status"] + prio_suffix,
+        t["title"],
+        t["current_step"],
+        t["worker_id"],
+        t["started_at"],
+        t["updated_at"],
+    ]))
+PYEOF
+) || BATCH_DATA=""
 }
 
-# ── Task list builder (Foundry state.json-based) ──────────────────────
-build_task_list() {
-  if ! cache_expired; then return; fi
-  ALL_TASKS_DIRS=(); ALL_TASKS_TITLES=(); ALL_TASKS_STATES=()
+# ── Parse batch data into arrays ──────────────────────────────────────
+CACHED_FOCUS_DIR=""
 
-  # Collect all task dirs with their status
-  local task_dir status title prio
-  local pending_dirs=() inprog_dirs=() completed_dirs=() failed_dirs=() suspended_dirs=()
+count_all_task_dirs() {
+  CACHED_PENDING_COUNT=0
+  CACHED_INPROG_COUNT=0
+  CACHED_COMPLETED_COUNT=0
+  CACHED_FAILED_COUNT=0
+  CACHED_SUSPENDED_COUNT=0
+  CACHED_CANCELLED_COUNT=0
 
-  while IFS= read -r task_dir; do
-    [[ -d "$task_dir" ]] || continue
-    status=$(foundry_state_field "$task_dir" status 2>/dev/null || echo "pending")
-    case "$status" in
-      in_progress) inprog_dirs+=("$task_dir") ;;
-      completed)   completed_dirs+=("$task_dir") ;;
-      failed)      failed_dirs+=("$task_dir") ;;
-      suspended)   suspended_dirs+=("$task_dir") ;;
-      cancelled)   ;; # skip cancelled from list
-      *)           pending_dirs+=("$task_dir") ;;
+  local counts_line
+  counts_line=$(printf '%s\n' "$BATCH_DATA" | head -1)
+  [[ "$counts_line" == COUNTS:* ]] || return 0
+  counts_line="${counts_line#COUNTS:}"
+  IFS=',' read -ra parts <<< "$counts_line"
+  for part in "${parts[@]}"; do
+    IFS='=' read -r key value <<< "$part"
+    case "$key" in
+      pending)     CACHED_PENDING_COUNT="$value" ;;
+      in_progress) CACHED_INPROG_COUNT="$value" ;;
+      completed)   CACHED_COMPLETED_COUNT="$value" ;;
+      failed)      CACHED_FAILED_COUNT="$value" ;;
+      suspended)   CACHED_SUSPENDED_COUNT="$value" ;;
+      cancelled)   CACHED_CANCELLED_COUNT="$value" ;;
     esac
-  done < <(foundry_list_task_dirs)
+  done
+}
 
-  # Add in order: in_progress, completed, failed, suspended, pending (sorted by priority)
-  local d
-  for d in "${inprog_dirs[@]+"${inprog_dirs[@]}"}"; do
-    title=$(_extract_title "$d")
-    ALL_TASKS_DIRS+=("$d")
-    ALL_TASKS_TITLES+=("$title")
-    ALL_TASKS_STATES+=("in_progress")
-  done
-  for d in "${completed_dirs[@]+"${completed_dirs[@]}"}"; do
-    title=$(_extract_title "$d")
-    ALL_TASKS_DIRS+=("$d")
-    ALL_TASKS_TITLES+=("$title")
-    ALL_TASKS_STATES+=("completed")
-  done
-  for d in "${failed_dirs[@]+"${failed_dirs[@]}"}"; do
-    title=$(_extract_title "$d")
-    ALL_TASKS_DIRS+=("$d")
-    ALL_TASKS_TITLES+=("$title")
-    ALL_TASKS_STATES+=("failed")
-  done
-  for d in "${suspended_dirs[@]+"${suspended_dirs[@]}"}"; do
-    title=$(_extract_title "$d")
-    ALL_TASKS_DIRS+=("$d")
-    ALL_TASKS_TITLES+=("$title")
-    ALL_TASKS_STATES+=("suspended")
-  done
+build_task_list() {
+  ALL_TASKS_DIRS=(); ALL_TASKS_TITLES=(); ALL_TASKS_STATES=()
+  ALL_TASKS_STEPS=(); ALL_TASKS_WORKERS=()
+  ALL_TASKS_STARTED=(); ALL_TASKS_UPDATED=()
+  CACHED_FOCUS_DIR=""
 
-  # Sort pending by priority (descending)
-  if [[ ${#pending_dirs[@]} -gt 0 ]]; then
-    local entries=()
-    for d in "${pending_dirs[@]}"; do
-      prio=$(get_priority "$d")
-      entries+=("$(printf '%03d|%s' "$prio" "$d")")
-    done
-    while IFS='|' read -r p dir; do
-      title=$(_extract_title "$dir")
-      ALL_TASKS_DIRS+=("$dir")
-      ALL_TASKS_TITLES+=("$title")
-      ALL_TASKS_STATES+=("pending:${p#0*}")
-    done < <(printf '%s\n' "${entries[@]}" | sort -t'|' -k1 -rn)
-  fi
+  local line
+  while IFS= read -r line; do
+    if [[ "$line" == FOCUS:* ]]; then
+      CACHED_FOCUS_DIR="${line#FOCUS:}"
+      continue
+    fi
+    [[ "$line" == COUNTS:* ]] && continue
+    [[ -z "$line" ]] && continue
+
+    local dir status title step wid started updated
+    IFS=$'\t' read -r dir status title step wid started updated <<< "$line"
+    [[ -n "$dir" ]] || continue
+
+    ALL_TASKS_DIRS+=("$dir")
+    ALL_TASKS_STATES+=("$status")
+    ALL_TASKS_TITLES+=("$title")
+    ALL_TASKS_STEPS+=("$step")
+    ALL_TASKS_WORKERS+=("$wid")
+    ALL_TASKS_STARTED+=("$started")
+    ALL_TASKS_UPDATED+=("$updated")
+  done <<< "$BATCH_DATA"
 
   ALL_TASKS_COUNT=${#ALL_TASKS_DIRS[@]}
   if [[ $SELECTED_IDX -ge $ALL_TASKS_COUNT ]]; then
@@ -783,6 +877,7 @@ PYEOF
 render_overview() {
   get_terminal_size
   buf_reset
+  batch_read_all_tasks
   count_all_task_dirs
   build_task_list
 
@@ -825,9 +920,15 @@ render_overview() {
   buf_line "$counter_line"
   buf_line ""
 
-  local desired_workers
+  local desired_workers active_workers
   desired_workers=$(foundry_get_desired_workers)
-  buf_line "  ${BOLD}Workers:${RESET} desired ${CYAN}${desired_workers}${RESET} ${DIM}(runtime currently processes serially)${RESET}"
+  # Cache active worker count (pgrep + ps is expensive) — refresh every 2 cycles
+  if [[ "$FORCE_REBUILD" == true ]] || (( (RENDER_CYCLE - CACHED_WORKERS_CYCLE) >= CACHE_TTL )); then
+    CACHED_WORKERS_CYCLE=$RENDER_CYCLE
+    CACHED_ACTIVE_WORKERS=$(foundry_count_active_workers 2>/dev/null || echo "0")
+  fi
+  active_workers="$CACHED_ACTIVE_WORKERS"
+  buf_line "  ${BOLD}Workers:${RESET} ${GREEN}${active_workers}${RESET}/${CYAN}${desired_workers}${RESET} active/desired  ${DIM}[]/[] to adjust${RESET}"
   buf_line ""
 
   # Status line
@@ -850,15 +951,24 @@ render_overview() {
   env_line=$(get_env_status_line)
   [[ -n "$env_line" ]] && buf_line "  ${env_line}"
   render_env_issues
-  local focus_task_dir="" focus_live_info="" focus_live_agent="" focus_live_log=""
-  focus_task_dir=$(find_focus_task_dir)
+  local focus_task_dir="" focus_live_agent="" focus_live_log=""
+  focus_task_dir="$CACHED_FOCUS_DIR"
   if [[ -n "$focus_task_dir" ]]; then
-    focus_live_info=$(find_live_agent_info "$focus_task_dir")
-    if [[ -n "$focus_live_info" ]]; then
-      IFS=$'\t' read -r focus_live_agent focus_live_log <<< "$focus_live_info"
+    # Cache live agent info (expensive: spawns Python + ps) — refresh every 2 cycles
+    if [[ "$FORCE_REBUILD" == true ]] || (( (RENDER_CYCLE - CACHED_LIVE_CYCLE) >= CACHE_TTL )); then
+      CACHED_LIVE_CYCLE=$RENDER_CYCLE
+      local _live_info
+      _live_info=$(find_live_agent_info "$focus_task_dir") || true
+      if [[ -n "$_live_info" ]]; then
+        IFS=$'\t' read -r CACHED_LIVE_AGENT CACHED_LIVE_LOG <<< "$_live_info"
+      else
+        CACHED_LIVE_AGENT=""; CACHED_LIVE_LOG=""
+      fi
+      CACHED_RUNTIME_ISSUES=$(collect_runtime_issue_lines "$focus_task_dir" "$CACHED_LIVE_LOG") || true
     fi
-    local runtime_issues=""
-    runtime_issues=$(collect_runtime_issue_lines "$focus_task_dir" "$focus_live_log")
+    focus_live_agent="$CACHED_LIVE_AGENT"
+    focus_live_log="$CACHED_LIVE_LOG"
+    local runtime_issues="$CACHED_RUNTIME_ISSUES"
     if [[ -n "$runtime_issues" ]]; then
       buf_line ""
       buf_line "  ${RED}${BOLD}Runtime issues:${RESET}"
@@ -901,20 +1011,21 @@ render_overview() {
     [[ $i -eq $SELECTED_IDX ]] && cursor="${CYAN}▶${RESET} "
     case "$state_base" in
       in_progress)
-        local current_step
-        current_step=$(foundry_state_field "$task_dir" current_step 2>/dev/null || echo "")
-        local step_label=""
-        [[ -n "$current_step" ]] && step_label=" ${DIM}[${current_step}]${RESET}"
-        buf_line "  ${cursor}  ${YELLOW}▸${RESET} $title${step_label}"
+        local step_label="" worker_label=""
+        local cached_step="${ALL_TASKS_STEPS[$i]:-}"
+        [[ -n "$cached_step" ]] && step_label=" ${DIM}[${cached_step}]${RESET}"
+        local cached_wid="${ALL_TASKS_WORKERS[$i]:-}"
+        [[ -n "$cached_wid" ]] && worker_label=" ${MAGENTA}${cached_wid}${RESET}"
+        buf_line "  ${cursor}  ${YELLOW}▸${RESET} $title${step_label}${worker_label}"
         ;;
       completed)
-        local started_at updated_at duration_str=""
-        started_at=$(foundry_state_field "$task_dir" started_at 2>/dev/null || echo "")
-        updated_at=$(foundry_state_field "$task_dir" updated_at 2>/dev/null || echo "")
-        if [[ -n "$started_at" && -n "$updated_at" ]]; then
+        local duration_str=""
+        local cached_started="${ALL_TASKS_STARTED[$i]:-}"
+        local cached_updated="${ALL_TASKS_UPDATED[$i]:-}"
+        if [[ -n "$cached_started" && -n "$cached_updated" ]]; then
           local s_epoch u_epoch
-          s_epoch=$(date -d "$started_at" +%s 2>/dev/null || echo "0")
-          u_epoch=$(date -d "$updated_at" +%s 2>/dev/null || echo "0")
+          s_epoch=$(date -d "$cached_started" +%s 2>/dev/null || echo "0")
+          u_epoch=$(date -d "$cached_updated" +%s 2>/dev/null || echo "0")
           if [[ "$s_epoch" -gt 0 && "$u_epoch" -gt 0 ]]; then
             local dur=$(( u_epoch - s_epoch ))
             [[ $dur -gt 0 ]] && duration_str=" ${DIM}($(format_duration "$dur"))${RESET}"
@@ -1760,7 +1871,7 @@ read_key() {
 
   if [[ "$key" == $'\x1b' ]]; then
     local seq=""
-    seq=$(dd bs=2 count=1 2>/dev/null < /dev/stdin) || true
+    IFS= read -rsn2 -t 0.05 seq 2>/dev/null || true
     case "$seq" in
       "[A") LAST_KEY="UP" ;;
       "[B") LAST_KEY="DOWN" ;;
@@ -1797,10 +1908,14 @@ main() {
 
   while true; do
     render
-    autostart_check
-    RENDER_CYCLE=$((RENDER_CYCLE + 1))
+    # Only run autostart and bump cycle on timeout (not on every keypress)
     FORCE_REBUILD=false
     read_key
+
+    if [[ "$LAST_KEY" == "_timeout_" ]]; then
+      autostart_check
+      RENDER_CYCLE=$((RENDER_CYCLE + 1))
+    fi
 
     case "$LAST_KEY" in
       q|Q)

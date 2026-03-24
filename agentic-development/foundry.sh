@@ -51,15 +51,17 @@ Background mode:
     $(runtime_log_file foundry)
 
 Concurrency:
-  The current runtime accepts worker counts for compatibility, but still processes serially.
-  In one checkout, treat Foundry as a single queue consumer with one active task at a time.
+  Workers run in parallel using git worktrees (.pipeline-worktrees/worker-N).
+  Each worker atomically claims a pending task, runs it in an isolated worktree,
+  and returns results to the shared task directory.
+  Adjust worker count: monitor []/[] keys, or FOUNDRY_WORKERS env var.
 
 Examples:
-  ./agentic-development/foundry.sh
-  ./agentic-development/foundry.sh status
-  ./agentic-development/foundry.sh run --task-file /absolute/path/to/task.md
-  ./agentic-development/foundry.sh batch --watch
-  FOUNDRY_WORKERS=2 ./agentic-development/foundry.sh headless
+  ./agentic-development/foundry.sh                              # open TUI monitor
+  ./agentic-development/foundry.sh status                       # show task counts
+  ./agentic-development/foundry.sh run --task-file task.md      # run single task
+  ./agentic-development/foundry.sh batch --watch --workers 3    # 3 parallel workers
+  FOUNDRY_WORKERS=2 ./agentic-development/foundry.sh headless   # headless mode
 EOF
 }
 

@@ -52,10 +52,19 @@ Error: Element "//div[contains(@class,"agent-tab-pane") and contains(@class,"act
 
 ## Coder
 
-- **Status**: pending
-- **Files modified**: —
-- **Migrations created**: —
-- **Deviations**: —
+- **Status**: done
+- **Files modified**:
+  - `brama-core/src/src/Command/AgentHealthPollerCommand.php` — added `elseif ('unknown' === $currentStatus)` branch to update health_status from 'unknown' to 'healthy' when agent responds healthy
+- **Migrations created**: none
+- **Root cause**: `AgentHealthPollerCommand` only updated health_status from `'unavailable'` → `'healthy'` on recovery, but never from `'unknown'` → `'healthy'`. When agents are first registered and the inline health check fails (e.g., agent not ready within 2-second timeout), health_status stays `'unknown'`. The health poll command then does nothing for healthy agents with `'unknown'` status. The E2E test `seeAgentHealthyLike` looks for `badge-healthy` or `badge-degraded` but finds `badge-unknown` instead, causing the test to fail.
+- **Verification**:
+  - Set all agents to `health_status = 'unknown'` in brama_test DB
+  - Ran `php bin/console app:agent-health-poll` — output: `[knowledge-agent] unknown → healthy` (and same for all agents)
+  - Re-ran E2E test `knowledge-agent is present and healthy after discovery` — PASSES
+  - PHPStan: 0 errors
+  - CS-check: 0 violations
+  - Unit/functional tests: 404 tests, 2 pre-existing failures (unrelated to this change)
+- **Deviations**: none — fix is minimal and targeted
 
 ## Validator
 
@@ -89,3 +98,4 @@ Error: Element "//div[contains(@class,"agent-tab-pane") and contains(@class,"act
 
 ---
 
+- **Commit (investigator)**: a78336a
