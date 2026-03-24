@@ -4,9 +4,9 @@
   "started_at": "2026-03-24T17:38:10.851619Z",
   "attempt": 1,
   "status": "in_progress",
-  "current_step": "investigator",
-  "resume_from": "investigator",
-  "updated_at": "2026-03-24T17:40:34.757542Z",
+  "current_step": "coder",
+  "resume_from": "coder",
+  "updated_at": "2026-03-24T17:40:38.528287Z",
   "task_file": "/workspaces/brama/tasks/fix-e2e-failure-admin-agents-page-hello-agent-is-present-and--foundry/task.md",
   "branch": "pipeline/fix-e2e-failure-admin-agents-page-hello-agent-is-present-and"
 }

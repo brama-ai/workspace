@@ -29,10 +29,12 @@ show_help() {
 Usage:
   ./agentic-development/foundry.sh e2e-autofix [--smoke] [--limit N] [--start]
   ./agentic-development/foundry.sh e2e-autofix --from-report path/to/report.json [--limit N] [--start]
+  ./agentic-development/foundry.sh autotest [N] [--smoke] [--start]
 
 Options:
   --smoke              Run only @smoke E2E tests
   --limit N            Maximum fix tasks to create (default: 5)
+  -n N                 Short alias for --limit
   --start              Start Foundry headless after creating tasks
   --from-report PATH   Parse an existing Codecept JSON report instead of running E2E
   -h, --help           Show this help
@@ -42,11 +44,19 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --smoke) SMOKE_MODE=true; shift ;;
-    --limit) LIMIT="$2"; shift 2 ;;
+    --limit|-n) LIMIT="$2"; shift 2 ;;
     --start) AUTO_START=true; shift ;;
     --from-report) FROM_REPORT="$2"; shift 2 ;;
     -h|--help) show_help; exit 0 ;;
-    *) echo "Unknown option: $1" >&2; show_help >&2; exit 1 ;;
+    ''|*[!0-9]*)
+      echo "Unknown option: $1" >&2
+      show_help >&2
+      exit 1
+      ;;
+    *)
+      LIMIT="$1"
+      shift
+      ;;
   esac
 done
 

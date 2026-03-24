@@ -74,10 +74,22 @@ Error: Element "//div[contains(@class,"agent-tab-pane") and contains(@class,"act
 
 ## Coder
 
-- **Status**: pending
-- **Files modified**: —
-- **Migrations created**: —
-- **Deviations**: —
+- **Status**: done
+- **Files modified**:
+  - `Makefile` — added `health_url` to all 4 agent registration payloads in `e2e-register-agents` target; added `app:agent-health-poll` step to `e2e-prepare` target
+  - `brama-core/openspec/changes/fix-e2e-agent-health-badge/tasks.md` — marked tasks 3.7, 4.2, 5.1, 5.2, 7.4 as `[x]`
+- **Migrations created**: none
+- **Root cause confirmed**: Agents registered via internal API had `health_status = 'unknown'` because `health_url` was missing from E2E registration payloads. The `AgentRegistrationController` inline health probe (already implemented in previous pipeline run) correctly sets `health_status = 'healthy'` when `health_url` is provided.
+- **Verification**:
+  - `make e2e-register-agents` — all 4 agents register with `health_status: healthy`
+  - DB confirms: `hello-agent`, `knowledge-agent`, `news-maker-agent`, `dev-reporter-agent` all `healthy`
+  - `agents_test.js` health badge tests: ✔ knowledge-agent, ✔ news-maker-agent, ✔ hello-agent
+  - `hello_agent_test.js` health test: ✔ passes
+- **Pre-existing failures (not in scope)**:
+  - "running discovery populates the registry" — Traefik discovery not returning "Виявлено:" text (pre-existing, was failing before this fix)
+  - "OpenClaw sync badge" / "manual OpenClaw sync" — OpenClaw not running in E2E env (tagged `@optional`, pre-existing)
+  - `news_maker_admin_test.js` "news-maker-agent is present and healthy" — calls `runDiscovery()` which fails due to Traefik issue (pre-existing)
+- **Deviations**: none — implementation exactly matches spec
 
 ## Validator
 
@@ -111,3 +123,4 @@ Error: Element "//div[contains(@class,"agent-tab-pane") and contains(@class,"act
 
 ---
 
+- **Commit (investigator)**: bbfc263

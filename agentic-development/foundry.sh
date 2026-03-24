@@ -27,6 +27,7 @@ Commands:
   monitor              Open the interactive Foundry monitor (default)
   headless             Start background queue processing for ${FOUNDRY_TASK_ROOT_REL}
   e2e-autofix [args]   Run E2E tests, create Foundry fix tasks for failures
+  autotest [args]      Alias for e2e-autofix, optimized for daily E2E -> task flow
   run [runtime args]   Run a single sequential Foundry task
   batch [args]         Consume pending Foundry task directories from ${FOUNDRY_TASK_ROOT_REL}
   retry [args]         Retry failed Foundry tasks
@@ -229,8 +230,8 @@ run_command() {
       runtime_log foundry "command=setup"
       exec "$REPO_ROOT/agentic-development/lib/foundry-setup.sh" "$@"
       ;;
-    e2e-autofix)
-      runtime_log foundry "command=e2e-autofix args=$*"
+    e2e-autofix|autotest)
+      runtime_log foundry "command=$cmd args=$*"
       exec "$REPO_ROOT/agentic-development/lib/foundry-e2e.sh" "$@"
       ;;
     list)
