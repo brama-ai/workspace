@@ -68,10 +68,12 @@ Error: Element "//div[contains(@class,"agent-tab-pane") and contains(@class,"act
 
 ## Validator
 
-- **Status**: pending
-- **PHPStan**: —
-- **CS-check**: —
-- **Files fixed**: —
+- **Status**: done
+- **PHPStan**:
+  - `brama-core`: pass
+- **CS-check**:
+  - `brama-core`: pass
+- **Files fixed**: none
 
 ## Tester
 
@@ -99,3 +101,4 @@ Error: Element "//div[contains(@class,"agent-tab-pane") and contains(@class,"act
 ---
 
 - **Commit (investigator)**: a78336a
+- **Commit (coder)**: bc4b9c0
