@@ -85,9 +85,22 @@ With 4 E2E agents (hello, knowledge, news-maker, dev-reporter), worst-case total
 
 ## Tester
 
-- **Status**: pending
-- **Test results**: —
-- **New tests written**: —
+- **Status**: done
+- **Test results**:
+  - **E2E tests (agents_test.js)**: 8 passed, 1 failed (optional test for unimplemented feature)
+    - ✔ `running discovery populates the registry @admin` — PASSED (fixed timeout working)
+    - ✔ All 8 core agents tests PASSED
+    - ✗ `manual OpenClaw sync button triggers status update @admin @optional` — FAILED (feature not implemented, marked optional)
+  - **Unit/Functional tests (brama-core)**: 411 passed, 1 error, 1 failure (pre-existing, unrelated to this change)
+    - Pre-existing failures in `AgentHealthPollerCommandCest` and `AgentRegistryApiCest` (unrelated to E2E timeout fix)
+- **New tests written**: None (this was a test fix, not new feature)
+- **Tests updated**:
+  - `brama-core/tests/e2e/tests/admin/agents_test.js` — timeout 10s → 30s (verified working)
+  - `brama-core/tests/e2e/support/pages/AgentsPage.js` — timeout 10s → 30s (verified working)
+- **E2E coverage**: N/A — no UI changes, only test stability fix
+- **Recommended follow-up tasks**:
+  - Fix pre-existing unit test failure: `AgentRegistryApiCest:Enable disable agent requires authentication`
+  - Fix pre-existing unit test error: `AgentHealthPollerCommandCest:healthPollerCommandCleansUpStaleMarketplaceAgents`
 
 ## Auditor
 
@@ -110,3 +123,4 @@ With 4 E2E agents (hello, knowledge, news-maker, dev-reporter), worst-case total
 
 - **Commit (investigator)**: 0ef9907
 - **Commit (coder)**: 29486ed
+- **Commit (validator)**: 3ad8690
