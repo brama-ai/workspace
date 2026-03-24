@@ -5,6 +5,9 @@
 - Гілка: `pipeline/create-deployer-agent-proposal-for-pipeline-deploy`
 - Pipeline ID: `20260324_145955`
 - Workflow: `foundry`
+- Початок: `2026-03-24 14:59:59 UTC`
+- Завершено: `2026-03-24 15:21:08 UTC`
+- Вартість: `$3.843`
 
 ## Telemetry
 | Agent | Model | Input | Output | Price | Time |
@@ -219,3 +222,18 @@ _No context modifiers detected (no skills, MCP tools, or commands used)._
 - Назва задачі: Завершити Foundry orchestration для no-op стадій `tester` і `documenter`
 - Чому її варто створити зараз: саме ця прогалина залишила pipeline в статусі INCOMPLETE, хоча основний deliverable уже готовий і перевірений.
 - Очікуваний результат: orchestrator автоматично запускає або коректно позначає `tester`/`documenter` як `skipped`/`N/A`, після чого handoff і state переходять у фінальний complete-статус без ручного втручання.
+
+---
+
+## Вартість пайплайну
+
+| Агент | Тривалість | Input | Output | Cache Read | Cache Write | ≈ Вартість |
+|-------|-----------|-------|--------|------------|-------------|-----------|
+| architect | 3m 21s | 21 | 8077 | 782369 | 53204 | $0.555 |
+| coder | 9m 15s | 69 | 26455 | 4553894 | 101965 | $2.146 |
+| auditor | 2m 55s | 20 | 7897 | 1026515 | 80160 | $0.727 |
+| validator | 49s | 19345 | 912 | 102016 | 0 | $0.102 |
+| summarizer | 3m 2s | 36149 | 6663 | 347904 | 0 | $0.313 |
+| **Всього** | **19m** | **55604** | **50004** | **6812698** | **235329** | **$3.843** |
+
+_Вартість розрахована приблизно за тарифами Claude Sonnet ($3/$15 per 1M in/out, $0.30/$3.75 cache r/w)._

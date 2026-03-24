@@ -174,3 +174,4 @@ Document what the deployer needs:
 - **Commit (coder)**: 41a1ffc
 - **Commit (auditor)**: 7cc82a2
 - **Commit (validator)**: 7a2cdce
+- **Commit (summarizer)**: 1e04f49
