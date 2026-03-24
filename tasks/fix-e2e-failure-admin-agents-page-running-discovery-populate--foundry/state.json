@@ -4,9 +4,9 @@
   "started_at": "2026-03-24T17:38:10.578352Z",
   "attempt": 1,
   "status": "in_progress",
-  "current_step": "coder",
-  "resume_from": "coder",
-  "updated_at": "2026-03-24T19:21:44.462468Z",
+  "current_step": "validator",
+  "resume_from": "validator",
+  "updated_at": "2026-03-24T19:22:30.358010Z",
   "task_file": "/workspaces/brama/tasks/fix-e2e-failure-admin-agents-page-running-discovery-populate--foundry/task.md",
   "branch": "pipeline/fix-e2e-failure-admin-agents-page-running-discovery-populate",
   "agents": [
@@ -36,12 +36,23 @@
       "agent": "coder",
       "status": "done",
       "model": "anthropic/claude-sonnet-4-6",
-      "duration_seconds": 551,
+      "duration_seconds": 554,
       "input_tokens": 108,
       "output_tokens": 21217,
       "cost": 2.5565,
       "call_count": 1,
-      "updated_at": "2026-03-24T19:21:44.462460Z"
+      "updated_at": "2026-03-24T19:21:44.653148Z"
+    },
+    {
+      "agent": "validator",
+      "status": "done",
+      "model": "openai/gpt-5.4",
+      "duration_seconds": 43,
+      "input_tokens": 19380,
+      "output_tokens": 1094,
+      "cost": 0.0739,
+      "call_count": 1,
+      "updated_at": "2026-03-24T19:22:30.358003Z"
     }
   ]
 }

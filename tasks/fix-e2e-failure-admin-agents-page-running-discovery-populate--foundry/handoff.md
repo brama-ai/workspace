@@ -76,10 +76,12 @@ With 4 E2E agents (hello, knowledge, news-maker, dev-reporter), worst-case total
 
 ## Validator
 
-- **Status**: pending
-- **PHPStan**: —
-- **CS-check**: —
-- **Files fixed**: —
+- **Status**: done
+- **PHPStan**:
+  - `brama-core` — pass
+- **CS-check**:
+  - `brama-core` — pass
+- **Files fixed**: none
 
 ## Tester
 
@@ -107,3 +109,4 @@ With 4 E2E agents (hello, knowledge, news-maker, dev-reporter), worst-case total
 ---
 
 - **Commit (investigator)**: 0ef9907
+- **Commit (coder)**: 29486ed
