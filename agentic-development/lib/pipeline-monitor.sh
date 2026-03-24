@@ -2,24 +2,23 @@
 # shellcheck disable=SC2034
 #
 # Interactive Foundry pipeline monitor with tab-based TUI.
-# Version: 1.1.0
+# Version: 1.2.0
 #
-MONITOR_VERSION="1.1.0"
+MONITOR_VERSION="1.2.0"
 # Usage:
 #   ./agentic-development/foundry.sh              # launch via foundry.sh (recommended)
 #   ./agentic-development/lib/pipeline-monitor.sh # direct launch
 #   ./agentic-development/lib/pipeline-monitor.sh /path/to/tasks/root
 #
 # Tabs:
-#   [1] Overview   — task statuses, progress bar, timing
-#   [2] Activity   — timeline of task & agent events (from events.jsonl)
-#   [3] Agents     — agent statuses for the focused task
-#   [4] Stdout     — live tail of the active agent log
+#   [1] Tasks      — task statuses, progress bar, timing
+#   [2] Commands   — system & flow shortcuts reference
 #
-# Keys:
-#   ←/→ or 1-4  Switch tabs
-#   ↑/↓         Select task (Overview tab)
+# Keys (Tasks tab):
+#   ↑/↓         Select task
 #   Enter       View selected task detail
+#   l           View agent stdout logs for selected task (q/Esc back)
+#   a           View agents table for selected task (q/Esc back)
 #   Esc/Bksp    Back to task list
 #   s           Start headless workers
 #   k           Kill running workers
@@ -30,7 +29,8 @@ MONITOR_VERSION="1.1.0"
 #   +           Raise priority of selected pending task
 #   -           Lower priority of selected pending task
 #   ]/[         Increase/decrease desired worker count
-#   l           View task.md for selected task
+#   t           Launch autotest
+#   T           Launch autotest --smoke
 #   r           Refresh
 #   q/Ctrl-C    Quit (or back from log/detail view)
 #
@@ -77,12 +77,13 @@ fi
 
 # ── State ─────────────────────────────────────────────────────────────
 CURRENT_TAB=1
-MAX_TABS=4
+MAX_TABS=2
 SELECTED_IDX=0
 DETAIL_MODE=false
 DETAIL_FILE=""
 LOG_VIEW_MODE=false
 LOG_VIEW_FILE=""
+AGENTS_VIEW_MODE=false
 ACTION_MSG=""
 REFRESH_INTERVAL=3
 AUTOSTART="${MONITOR_AUTOSTART:-true}"
@@ -499,24 +500,14 @@ build_task_list() {
 render_tabs_str() {
   local out="  "
   if [[ $CURRENT_TAB -eq 1 ]]; then
-    out+="${REV}${BOLD} 1:Overview ${RESET}"
+    out+="${REV}${BOLD} 1:Tasks ${RESET}"
   else
-    out+="${DIM} 1:Overview ${RESET}"
+    out+="${DIM} 1:Tasks ${RESET}"
   fi
   if [[ $CURRENT_TAB -eq 2 ]]; then
-    out+="${REV}${BOLD} 2:Activity ${RESET}"
+    out+="${REV}${BOLD} 2:Commands ${RESET}"
   else
-    out+="${DIM} 2:Activity ${RESET}"
-  fi
-  if [[ $CURRENT_TAB -eq 3 ]]; then
-    out+="${REV}${BOLD} 3:Agents ${RESET}"
-  else
-    out+="${DIM} 3:Agents ${RESET}"
-  fi
-  if [[ $CURRENT_TAB -eq 4 ]]; then
-    out+="${REV}${BOLD} 4:Stdout ${RESET}"
-  else
-    out+="${DIM} 4:Stdout ${RESET}"
+    out+="${DIM} 2:Commands ${RESET}"
   fi
   printf '%s' "$out"
 }
@@ -809,7 +800,13 @@ render_overview() {
   buf_line ""
 
   if [[ "$LOG_VIEW_MODE" == true ]]; then
-    render_task_log_view_buf
+    render_task_stdout_view_buf
+    buf_flush
+    return
+  fi
+
+  if [[ "$AGENTS_VIEW_MODE" == true ]]; then
+    render_agents_view_buf
     buf_flush
     return
   fi

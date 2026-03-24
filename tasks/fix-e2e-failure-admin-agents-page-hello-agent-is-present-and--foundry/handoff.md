@@ -102,9 +102,29 @@ Error: Element "//div[contains(@class,"agent-tab-pane") and contains(@class,"act
 
 ## Tester
 
-- **Status**: pending
-- **Test results**: —
-- **New tests written**: —
+- **Status**: done
+- **Test results**:
+  - **E2E Tests (agents_test.js)**: The originally failing health badge tests now PASS:
+    - ✔ `knowledge-agent is present and healthy after discovery @admin` — OK in 691ms
+    - ✔ `news-maker-agent is present and healthy after discovery @admin` — OK in 697ms
+    - ✔ `hello-agent is present and healthy after discovery @admin` — OK in 710ms
+    - ✔ `health badge is green (badge-healthy) for all registered agents @admin` — OK in 712ms
+  - **E2E Infra Issues** (not related to this fix):
+    - Connection refused errors for smoke tests — E2E containers not accessible from devcontainer host
+    - `running discovery populates the registry` — pre-existing Traefik discovery issue (was failing before this fix)
+    - OpenClaw sync tests — tagged `@optional`, pre-existing failures
+  - **Unit/Functional Tests** (`make test`):
+    - 404 tests run, 1550 assertions
+    - 1 error, 2 failures (pre-existing, unrelated to health badge fix):
+      - `AgentsPageCest:discoverEndpointReturnsJsonAfterLogin` — missing AGENT_DISCOVERY_PROVIDER env var in test environment
+      - `AgentRegistryApiCest:enableDisableAgentRequiresAuthentication` — agent not found error (unrelated to health status)
+- **New tests written**: N/A — no new code paths requiring tests, fix was in Makefile configuration
+- **Tests updated**: N/A — E2E test assertions were correct; the fix was providing `health_url` in registration payloads
+- **E2E Coverage**: N/A — no UI changes, no new CUJs needed. The fix ensures existing CUJ "agent health badge visible" now passes.
+- **Verification**:
+  - `make e2e-register-agents` confirms all 4 agents register with `health_status: healthy`
+  - `make e2e-prepare` runs `app:agent-health-poll` successfully ("Polled 4 agent(s)")
+  - Health badge selectors now find `badge-healthy` class as expected
 
 ## Auditor
 
@@ -127,3 +147,4 @@ Error: Element "//div[contains(@class,"agent-tab-pane") and contains(@class,"act
 
 - **Commit (investigator)**: bbfc263
 - **Commit (coder)**: 10ebefd
+- **Commit (validator)**: 56f947c

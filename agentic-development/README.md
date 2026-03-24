@@ -80,6 +80,28 @@ Foundry is the queue-driven sequential runtime.
 ./agentic-development/foundry.sh env-check
 ```
 
+### E2E to Task Flow
+
+Use `autotest` when you want Foundry to run the E2E suite, extract failures, and create bug-fix tasks in the queue.
+
+```bash
+# Run smoke E2E, create up to 3 fix tasks, then start Foundry
+./agentic-development/foundry.sh autotest 3 --smoke --start
+
+# Run the full E2E suite, create up to 10 fix tasks, then start Foundry
+./agentic-development/foundry.sh autotest -n 10 --start
+
+# Reuse an existing E2E report without rerunning tests
+./agentic-development/foundry.sh autotest 5 --from-report .opencode/pipeline/reports/e2e-autofix-20260324_154309.json
+```
+
+Notes:
+
+- positional `N` and `-n N` both mean "maximum number of fix tasks to create"
+- `--smoke` limits the E2E run to smoke-tagged scenarios
+- `--start` starts Foundry headless after tasks are created
+- `--from-report` is the fastest path when E2E already ran and you only need task creation
+
 ### How Foundry Task Pool Works
 
 Foundry does not use a separate database-backed queue. The queue is simply the set of task directories in [`tasks/`](/Users/nmdimas/work/brama-workspace/tasks) whose workflow is `foundry` and whose `state.json` status is `pending`.

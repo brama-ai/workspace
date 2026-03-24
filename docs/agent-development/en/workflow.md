@@ -217,6 +217,14 @@ sequenceDiagram
 
 ## 5. Foundry Planner Flow (E2E to Bug Delegation)
 
+Daily entrypoint for this flow:
+
+```bash
+./agentic-development/foundry.sh autotest 3 --smoke --start
+./agentic-development/foundry.sh autotest -n 10 --start
+./agentic-development/foundry.sh autotest 5 --from-report .opencode/pipeline/reports/e2e-autofix-20260324_154309.json
+```
+
 ```mermaid
 sequenceDiagram
     participant BP as Foundry Planner

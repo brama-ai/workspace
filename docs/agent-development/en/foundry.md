@@ -67,6 +67,28 @@ Stop it with:
 ./agentic-development/foundry.sh stop
 ```
 
+### Run E2E and Create Fix Tasks
+
+Use `autotest` for the standard E2E to Foundry flow. It runs E2E, parses the report, and creates up to `N` bug-fix tasks in `tasks/*--foundry/`.
+
+```bash
+# Smoke suite, create up to 3 tasks, then start Foundry
+./agentic-development/foundry.sh autotest 3 --smoke --start
+
+# Full suite, create up to 10 tasks, then start Foundry
+./agentic-development/foundry.sh autotest -n 10 --start
+
+# Reuse an existing report without rerunning E2E
+./agentic-development/foundry.sh autotest 5 --from-report .opencode/pipeline/reports/e2e-autofix-20260324_154309.json
+```
+
+Behavior:
+
+- positional `N` and `-n N` both set the maximum number of tasks to create
+- `--smoke` limits the run to smoke-tagged E2E scenarios
+- `--start` hands newly created tasks to background Foundry processing
+- `--from-report` parses a saved Codecept JSON report and skips the E2E run entirely
+
 ## Creating Tasks
 
 ### Immediate mode
@@ -136,6 +158,7 @@ So today the practical throughput per checkout is one active Foundry task at a t
 ./agentic-development/foundry.sh status
 ./agentic-development/foundry.sh headless
 ./agentic-development/foundry.sh stop
+./agentic-development/foundry.sh autotest 5 --smoke --start
 ./agentic-development/foundry.sh run --task-file /absolute/path/to/task.md
 ./agentic-development/foundry.sh batch --watch
 ./agentic-development/foundry.sh retry
