@@ -1,0 +1,60 @@
+# =============================================================================
+# SSH Environment Configuration for Devcontainer
+# =============================================================================
+# Copy this file to .ssh-env and fill in your values.
+# .ssh-env is gitignored — your credentials stay local.
+#
+#   cp .devcontainer/.ssh-env.example .devcontainer/.ssh-env
+#
+# post-start.sh reads this file and:
+#   - configures SSH keys for the agent
+#   - sets up ~/.ssh/config entries
+#   - injects MCP SSH server defaults into OpenCode
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Git SSH key (used for git push/pull over SSH)
+# -----------------------------------------------------------------------------
+# Path on the HOST machine. The key is mounted read-only via ~/.ssh volume.
+# Inside devcontainer it maps to /home/vscode/.ssh/<filename>
+#
+# GIT_SSH_KEY=id_ed25519
+
+# -----------------------------------------------------------------------------
+# Remote server SSH access (for MCP SSH tool, deployments, etc.)
+# -----------------------------------------------------------------------------
+# REMOTE_SSH_HOST=46.62.135.86
+# REMOTE_SSH_PORT=22
+# REMOTE_SSH_USER=root
+# REMOTE_SSH_KEY=ai_platform
+# REMOTE_SSH_KEY_PASSPHRASE=
+# REMOTE_SSH_PASSWORD=
+#
+# Multiple servers: use numbered suffixes
+# REMOTE_SSH_HOST_2=10.0.0.5
+# REMOTE_SSH_PORT_2=22
+# REMOTE_SSH_USER_2=deploy
+# REMOTE_SSH_KEY_2=deploy_key
+
+# -----------------------------------------------------------------------------
+# SSH Agent: auto-load keys into the agent on container start
+# -----------------------------------------------------------------------------
+# Comma-separated list of key filenames (relative to ~/.ssh/)
+# Keys with passphrases are supported — set REMOTE_SSH_KEY_PASSPHRASE above.
+# SSH_AGENT_KEYS=id_ed25519,ai_platform
+
+# -----------------------------------------------------------------------------
+# SSH known_hosts: skip strict host checking for these patterns
+# Used by mcp-server-ssh (SSH_MCP_STRICT_HOST_CHECK)
+# -----------------------------------------------------------------------------
+# SSH_SKIP_HOST_CHECK=true
+
+# -----------------------------------------------------------------------------
+# MCP SSH server defaults (optional overrides)
+# See: https://github.com/bacarrdy/mcp-ssh-server#environment-variables
+# -----------------------------------------------------------------------------
+# SSH_MCP_DEFAULT_USERNAME=root
+# SSH_MCP_DEFAULT_KEY=~/.ssh/ai_platform
+# SSH_MCP_IDLE_TIMEOUT=1800000
+# SSH_MCP_EXEC_TIMEOUT=30000
+# SSH_MCP_ALLOWED_HOSTS=*.example.com,10.0.0.*

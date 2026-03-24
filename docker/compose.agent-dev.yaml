@@ -1,7 +1,7 @@
 services:
   dev-agent:
     build:
-      context: ../agents/dev-agent
+      context: ../brama-agents/dev-agent
       dockerfile: Dockerfile
     labels:
       - traefik.enable=true
@@ -28,7 +28,7 @@ services:
       LANGFUSE_SECRET_KEY: lf_sk_local_dev
       LANGFUSE_ENV: local
     volumes:
-      - ../agents/dev-agent:/var/www/html
+      - ../brama-agents/dev-agent:/var/www/html
       - ..:/repo:rw
     depends_on:
       - postgres
@@ -40,7 +40,7 @@ services:
   dev-agent-e2e:
     profiles: [e2e]
     build:
-      context: ../agents/dev-agent
+      context: ../brama-agents/dev-agent
       dockerfile: Dockerfile
     environment:
       MIGRATE_ON_START: "1"
@@ -58,7 +58,7 @@ services:
     ports:
       - "18088:80"
     volumes:
-      - ../agents/dev-agent:/var/www/html
+      - ../brama-agents/dev-agent:/var/www/html
       - ..:/repo:ro
     depends_on:
       - postgres

@@ -1,0 +1,11 @@
+{
+  "task_id": "fix-docker-compose-agent-paths--foundry",
+  "workflow": "foundry",
+  "started_at": "2026-03-24T12:33:42.004117Z",
+  "attempt": 1,
+  "status": "in_progress",
+  "current_step": "planner",
+  "resume_from": "planner",
+  "updated_at": "2026-03-24T12:33:42.245995Z",
+  "branch": "pipeline/fix-docker-compose-agent-paths-agents-brama-agents"
+}

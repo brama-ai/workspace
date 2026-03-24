@@ -1,7 +1,7 @@
 services:
   knowledge-agent:
     build:
-      context: ../agents/knowledge-agent
+      context: ../brama-agents/knowledge-agent
       dockerfile: Dockerfile
     labels:
       - traefik.enable=true
@@ -29,7 +29,7 @@ services:
       - path: ../.env.deployment
         required: false
     volumes:
-      - ../agents/knowledge-agent:/var/www/html
+      - ../brama-agents/knowledge-agent:/var/www/html
     depends_on:
       - postgres
       - opensearch
@@ -39,7 +39,7 @@ services:
 
   knowledge-worker:
     build:
-      context: ../agents/knowledge-agent
+      context: ../brama-agents/knowledge-agent
       dockerfile: Dockerfile
     command: php bin/console knowledge:worker
     environment:
@@ -52,7 +52,7 @@ services:
       RABBITMQ_URL: amqp://app:app@rabbitmq:5672
       APP_INTERNAL_TOKEN: dev-internal-token
     volumes:
-      - ../agents/knowledge-agent:/var/www/html
+      - ../brama-agents/knowledge-agent:/var/www/html
     depends_on:
       - postgres
       - opensearch
@@ -65,7 +65,7 @@ services:
   knowledge-agent-e2e:
     profiles: [e2e]
     build:
-      context: ../agents/knowledge-agent
+      context: ../brama-agents/knowledge-agent
       dockerfile: Dockerfile
     environment:
       PHP_INI_SCAN_DIR: /var/www/html/conf.d:/usr/local/etc/php/conf.d
@@ -82,7 +82,7 @@ services:
     ports:
       - "18083:80"
     volumes:
-      - ../agents/knowledge-agent:/var/www/html
+      - ../brama-agents/knowledge-agent:/var/www/html
     depends_on:
       - postgres
       - opensearch
@@ -93,7 +93,7 @@ services:
   knowledge-worker-e2e:
     profiles: [e2e]
     build:
-      context: ../agents/knowledge-agent
+      context: ../brama-agents/knowledge-agent
       dockerfile: Dockerfile
     command: php bin/console knowledge:worker
     environment:
@@ -106,7 +106,7 @@ services:
       RABBITMQ_URL: amqp://app:app@rabbitmq:5672/test
       APP_INTERNAL_TOKEN: dev-internal-token
     volumes:
-      - ../agents/knowledge-agent:/var/www/html
+      - ../brama-agents/knowledge-agent:/var/www/html
     depends_on:
       - postgres
       - opensearch

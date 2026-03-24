@@ -1,0 +1,5 @@
+# Only include what Dockerfiles actually need
+*
+!brama-core/src/
+!brama-agents/
+!docker/

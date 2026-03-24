@@ -1,7 +1,7 @@
 services:
   news-maker-agent:
     build:
-      context: ../agents/news-maker-agent
+      context: ../brama-agents/news-maker-agent
       dockerfile: Dockerfile
     labels:
       - traefik.enable=true
@@ -25,7 +25,7 @@ services:
       - path: ../.env.deployment
         required: false
     volumes:
-      - ../agents/news-maker-agent:/app
+      - ../brama-agents/news-maker-agent:/app
     depends_on:
       - postgres
       - litellm
@@ -36,7 +36,7 @@ services:
   news-maker-agent-e2e:
     profiles: [e2e]
     build:
-      context: ../agents/news-maker-agent
+      context: ../brama-agents/news-maker-agent
       dockerfile: Dockerfile
     environment:
       MIGRATE_ON_START: "1"
@@ -56,7 +56,7 @@ services:
     ports:
       - "18084:8000"
     volumes:
-      - ../agents/news-maker-agent:/app
+      - ../brama-agents/news-maker-agent:/app
     depends_on:
       - postgres
       - litellm

@@ -1,0 +1,51 @@
+# Deployment Setup Log
+# =============================================
+# Server: 46.62.135.86 (ubuntu-8gb-hel1-1)
+# OS: Ubuntu 24.04.4 LTS (Noble Numbat), x86_64
+# Date: 2026-03-24
+# =============================================
+
+# =============================================================================
+# Attempt 1 (from macOS host via run_deploy.sh) — FAILED
+# =============================================================================
+# 1. Docker removed: apt-get purge docker-ce containerd.io docker-buildx-plugin etc.
+# 2. K3s installed: v1.34.5+k3s1 via curl -sfL https://get.k3s.io | sh -
+# 3. Images built locally (macOS arm64):
+#    - docker build -t brama/core:dev -f docker/brama-core/Dockerfile .
+#    - docker build -t brama/hello-agent:dev brama-agents/hello-agent/
+# 4. Images transferred via: docker save IMAGE | ssh root@46.62.135.86 "k3s ctr images import -"
+# 5. Namespace + secrets created:
+#    - kubectl create namespace brama
+#    - kubectl create secret generic brama-core-secrets ...
+#    - kubectl create secret generic litellm-secrets ...
+# 6. Helm install attempted: helm upgrade --install brama ... -f values-remote.yaml
+#
+# FAILURE REASONS:
+# - Images were linux/arm64 (built on macOS), server is x86_64 (amd64) -> ImagePullBackOff
+# - Helm was run from local macOS, not from server -> context canceled
+# - values-remote.yaml had duplicate keys
+# =============================================================================
+
+# =============================================================================
+# Attempt 2 (from devcontainer via SSH MCP) — CURRENT
+# =============================================================================
+
+## Step 1: Cleanup broken state
+# ssh root@46.62.135.86
+kubectl delete namespace brama --timeout=60s
+# -> namespace "brama" deleted (waited ~30s for terminating resources)
+k3s ctr images rm docker.io/brama/core:dev docker.io/brama/hello-agent:dev
+# -> old arm64 images removed
+
+## Step 2: Install Helm on server
+# (K3s does not ship with helm CLI)
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+# -> helm v3.20.1 installed to /usr/local/bin/helm
+# DOC NOTE: kubernetes-install.md lists "Helm 3.12+" as prerequisite but doesn't
+#           mention it needs to be installed on the server for remote K3s.
+
+## Step 3: Build images for linux/amd64
+# devcontainer runs on arm64 (macOS host), need cross-platform build
+# Docker Desktop supports --platform via QEMU emulation
+# IN PROGRESS...
+

@@ -1,7 +1,7 @@
 services:
   dev-reporter-agent:
     build:
-      context: ../agents/dev-reporter-agent
+      context: ../brama-agents/dev-reporter-agent
       dockerfile: Dockerfile
     labels:
       - traefik.enable=true
@@ -23,7 +23,7 @@ services:
       LANGFUSE_SECRET_KEY: lf_sk_local_dev
       LANGFUSE_ENV: local
     volumes:
-      - ../agents/dev-reporter-agent:/var/www/html
+      - ../brama-agents/dev-reporter-agent:/var/www/html
     depends_on:
       - postgres
       - opensearch
@@ -33,7 +33,7 @@ services:
   dev-reporter-agent-e2e:
     profiles: [e2e]
     build:
-      context: ../agents/dev-reporter-agent
+      context: ../brama-agents/dev-reporter-agent
       dockerfile: Dockerfile
     environment:
       MIGRATE_ON_START: "1"
@@ -46,7 +46,7 @@ services:
     ports:
       - "18087:80"
     volumes:
-      - ../agents/dev-reporter-agent:/var/www/html
+      - ../brama-agents/dev-reporter-agent:/var/www/html
     depends_on:
       - postgres
       - opensearch

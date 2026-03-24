@@ -21,7 +21,7 @@ services:
       - ${HOME}/.npm:/home/vscode/.npm:cached
       - ${HOME}/.bun:/home/vscode/.bun:cached
       - ${HOME}/.gitconfig:/home/vscode/.gitconfig:ro
-      - ${HOME}/.ssh:/home/vscode/.ssh:ro
+      - ${HOME}/.ssh:/home/vscode/.ssh:cached
       # Kubernetes access (kubeconfig from host)
       - ${HOME}/.kube:/home/vscode/.kube:cached
       # Docker-in-Docker support

@@ -1,0 +1,15 @@
+{
+  "profile": "quick-fix",
+  "reasoning": "Pure path string replacement (../agents/ → ../brama-agents/) across 7 Docker Compose YAML files after workspace restructure. No logic, API, migration, or architectural changes. 28 occurrences in 6 agent compose files + 2 in template.",
+  "agents": ["coder", "validator", "summarizer"],
+  "skip_openspec": true,
+  "estimated_files": 7,
+  "apps_affected": ["workspace"],
+  "needs_migration": false,
+  "needs_api_change": false,
+  "is_agent_task": false,
+  "is_bug": false,
+  "bug_severity": null,
+  "timeout_overrides": {},
+  "model_overrides": {}
+}

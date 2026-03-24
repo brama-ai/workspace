@@ -29,6 +29,7 @@
 .env.local
 .env.deployment
 .env.*.local
+.devcontainer/.ssh-env
 .local/
 docker/openclaw/.env
 docker/openclaw/main/.env
