@@ -90,9 +90,25 @@ Changed `AgentDiscoveryProviderFactory::create()` to accept `?string $providerMo
 
 ## Tester
 
-- **Status**: pending
-- **Test results**: —
-- **New tests written**: —
+- **Status**: done
+- **Test results**:
+  - `brama-core` unit+functional tests: **402 passed, 2 failed** (failures unrelated to fix)
+    - `AgentHealthPollerCommandCest::healthPollerCommandCleansUpStaleMarketplaceAgents` — DB null constraint issue (pre-existing)
+    - `AgentRegistryApiCest::enableDisableAgentRequiresAuthentication` — auth test failure (pre-existing)
+  - New unit tests: **9 passed** (AgentDiscoveryProviderFactoryTest)
+- **New tests written**:
+  - `brama-core/tests/Unit/A2AGateway/Discovery/AgentDiscoveryProviderFactoryTest.php` — Comprehensive unit tests for the factory:
+    - `testCreateWithNullProviderModeReturnsTraefikProvider` — Tests the fix for null `$providerMode`
+    - `testCreateWithEmptyStringProviderModeReturnsTraefikProvider` — Tests empty string handling
+    - `testCreateWithWhitespaceProviderModeReturnsTraefikProvider` — Tests whitespace trimming
+    - `testCreateWithTraefikModeReturnsTraefikProvider` — Tests explicit 'traefik' mode
+    - `testCreateWithTraefikModeCaseInsensitive` — Tests case insensitivity
+    - `testCreateWithTraefikModeWithWhitespace` — Tests whitespace handling for 'traefik'
+    - `testCreateWithKubernetesModeReturnsKubernetesProvider` — Tests explicit 'kubernetes' mode
+    - `testCreateWithKubernetesModeCaseInsensitive` — Tests case insensitivity for 'kubernetes'
+    - `testCreateWithKubernetesModeWithWhitespaceReturnsKubernetesProvider` — Tests whitespace handling for 'kubernetes'
+- **E2E coverage**: N/A — no new UI features, fix addresses backend null handling
+- **Convention tests**: Skipped (npm infrastructure issue in devcontainer)
 
 ## Auditor
 
@@ -113,5 +129,13 @@ Changed `AgentDiscoveryProviderFactory::create()` to accept `?string $providerMo
 
 ---
 
+## Recommended follow-up tasks
+
+- Fix pre-existing test failures (unrelated to this fix):
+  1. `AgentHealthPollerCommandCest::healthPollerCommandCleansUpStaleMarketplaceAgents` — tenant_id NOT NULL constraint violation
+  2. `AgentRegistryApiCest::enableDisableAgentRequiresAuthentication` — expects "_username" in response but gets agent not found error
+
 - **Commit (investigator)**: 25d0345
 - **Commit (coder)**: c22e066
+- **Commit (validator)**: 403bacd
+- **Commit (tester)**: (pending)
