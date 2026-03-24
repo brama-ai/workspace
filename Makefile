@@ -279,22 +279,22 @@ e2e-register-agents:
 	@curl -sf -X POST http://localhost:18080/api/v1/internal/agents/register \
 		-H "Content-Type: application/json" \
 		-H "X-Platform-Internal-Token: dev-internal-token" \
-		-d '{"name":"hello-agent","version":"1.0.0","description":"Simple hello-world reference agent","url":"http://hello-agent-e2e/api/v1/a2a","skills":[{"id":"hello.greet","name":"Hello Greet","description":"Greet a user by name"}],"skill_schemas":{"hello.greet":{"input_schema":{"type":"object","properties":{"name":{"type":"string"}}}}}}' \
+		-d '{"name":"hello-agent","version":"1.0.0","description":"Simple hello-world reference agent","url":"http://hello-agent-e2e/api/v1/a2a","health_url":"http://hello-agent-e2e/health","skills":[{"id":"hello.greet","name":"Hello Greet","description":"Greet a user by name"}],"skill_schemas":{"hello.greet":{"input_schema":{"type":"object","properties":{"name":{"type":"string"}}}}}}' \
 		&& echo "  registered hello-agent" || echo "  FAILED hello-agent"
 	@curl -sf -X POST http://localhost:18080/api/v1/internal/agents/register \
 		-H "Content-Type: application/json" \
 		-H "X-Platform-Internal-Token: dev-internal-token" \
-		-d '{"name":"knowledge-agent","version":"1.0.0","description":"Knowledge base management and semantic search","url":"http://knowledge-agent-e2e/api/v1/knowledge/a2a","admin_url":"http://localhost:18083/admin/knowledge","skills":[{"id":"knowledge.search","name":"Knowledge Search","description":"Search the knowledge base"},{"id":"knowledge.upload","name":"Knowledge Upload","description":"Extract and store knowledge from messages"},{"id":"knowledge.store_message","name":"Knowledge Store Message","description":"Persist source messages with metadata"}]}' \
+		-d '{"name":"knowledge-agent","version":"1.0.0","description":"Knowledge base management and semantic search","url":"http://knowledge-agent-e2e/api/v1/knowledge/a2a","health_url":"http://knowledge-agent-e2e/health","admin_url":"http://localhost:18083/admin/knowledge","skills":[{"id":"knowledge.search","name":"Knowledge Search","description":"Search the knowledge base"},{"id":"knowledge.upload","name":"Knowledge Upload","description":"Extract and store knowledge from messages"},{"id":"knowledge.store_message","name":"Knowledge Store Message","description":"Persist source messages with metadata"}]}' \
 		&& echo "  registered knowledge-agent" || echo "  FAILED knowledge-agent"
 	@curl -sf -X POST http://localhost:18080/api/v1/internal/agents/register \
 		-H "Content-Type: application/json" \
 		-H "X-Platform-Internal-Token: dev-internal-token" \
-		-d '{"name":"news-maker-agent","version":"0.1.0","description":"AI-powered news curation and publishing","url":"http://news-maker-agent-e2e:8000/api/v1/a2a","admin_url":"http://localhost:18084/admin/sources","skills":[{"id":"news.publish","name":"News Publish","description":"Publish curated news content"},{"id":"news.curate","name":"News Curate","description":"Curate and summarize news articles"}]}' \
+		-d '{"name":"news-maker-agent","version":"0.1.0","description":"AI-powered news curation and publishing","url":"http://news-maker-agent-e2e:8000/api/v1/a2a","health_url":"http://news-maker-agent-e2e:8000/health","admin_url":"http://localhost:18084/admin/sources","skills":[{"id":"news.publish","name":"News Publish","description":"Publish curated news content"},{"id":"news.curate","name":"News Curate","description":"Curate and summarize news articles"}]}' \
 		&& echo "  registered news-maker-agent" || echo "  FAILED news-maker-agent"
 	@curl -sf -X POST http://localhost:18080/api/v1/internal/agents/register \
 		-H "Content-Type: application/json" \
 		-H "X-Platform-Internal-Token: dev-internal-token" \
-		-d '{"name":"dev-reporter-agent","version":"1.0.0","description":"Pipeline observability agent","url":"http://dev-reporter-agent-e2e/api/v1/a2a","admin_url":"http://localhost:18087/admin/pipeline","skills":[{"id":"devreporter.ingest","name":"Pipeline Ingest","description":"Ingest pipeline run reports"},{"id":"devreporter.status","name":"Pipeline Status","description":"Query pipeline run status"},{"id":"devreporter.notify","name":"Pipeline Notify","description":"Send notification messages"}]}' \
+		-d '{"name":"dev-reporter-agent","version":"1.0.0","description":"Pipeline observability agent","url":"http://dev-reporter-agent-e2e/api/v1/a2a","health_url":"http://dev-reporter-agent-e2e/health","admin_url":"http://localhost:18087/admin/pipeline","skills":[{"id":"devreporter.ingest","name":"Pipeline Ingest","description":"Ingest pipeline run reports"},{"id":"devreporter.status","name":"Pipeline Status","description":"Query pipeline run status"},{"id":"devreporter.notify","name":"Pipeline Notify","description":"Send notification messages"}]}' \
 		&& echo "  registered dev-reporter-agent" || echo "  FAILED dev-reporter-agent"
 	@$(E2E_COMPOSE) exec -T postgres psql -U app -d brama_test -q \
 		-c "UPDATE agent_registry SET enabled = true, installed_at = now() WHERE name IN ('hello-agent', 'knowledge-agent', 'news-maker-agent', 'dev-reporter-agent') AND tenant_id = '00000000-0000-4000-a000-000000000001'"
@@ -309,6 +309,7 @@ e2e-prepare: e2e-db-init e2e-rabbitmq-init
 	$(E2E_COMPOSE) exec -T dev-reporter-agent-e2e php bin/console doctrine:migrations:migrate --no-interaction
 	$(E2E_COMPOSE) exec -T news-maker-agent-e2e alembic upgrade head
 	@$(MAKE) e2e-register-agents
+	$(E2E_COMPOSE) exec -T core-e2e php bin/console app:agent-health-poll
 
 e2e-cleanup:
 	$(E2E_COMPOSE) stop core-e2e knowledge-agent-e2e knowledge-worker-e2e news-maker-agent-e2e hello-agent-e2e dev-reporter-agent-e2e openclaw-gateway-e2e 2>/dev/null || true
