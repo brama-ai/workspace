@@ -4,7 +4,7 @@
 
 `brama-workspace` це локальний workspace-репозиторій для платформи Brama. Він відповідає за devcontainer, Docker Compose топологію, локальні env-шаблони, bootstrap-скрипти та helper-команди для розробника.
 
-Код застосунків живе в [`core`](/Users/nmdimas/work/brama-workspace/core), який залишається окремим Git-репозиторієм. Цей repo відповідає не за продуктову логіку, а за те, як уся платформа піднімається і працює на машині розробника.
+Код застосунків живе в [`core`](/Users/nmdimas/work/brama-workspace/brama-core), який залишається окремим Git-репозиторієм. Цей repo відповідає не за продуктову логіку, а за те, як уся платформа піднімається і працює на машині розробника.
 
 ## Структура Репозиторію
 
@@ -12,7 +12,7 @@
 - [`docker/`](/Users/nmdimas/work/brama-workspace/docker) містить усі Docker Compose файли (`compose.yaml`, `compose.*.yaml`), Dockerfile-и та спільні Docker-асети.
 - [`scripts/`](/Users/nmdimas/work/brama-workspace/scripts) містить bootstrap та operator helper scripts.
 - [`Makefile`](/Users/nmdimas/work/brama-workspace/Makefile) є головною точкою входу для щоденних команд.
-- [`core/`](/Users/nmdimas/work/brama-workspace/core) містить продуктовий код, тести, документацію та app-рівневі ресурси.
+- [`brama-core/`](/Users/nmdimas/work/brama-workspace/brama-core) містить продуктовий код, тести, документацію та app-рівневі ресурси.
 
 ## Вимоги
 
@@ -59,7 +59,7 @@ make bootstrap
 Всередині devcontainer почни з `core + postgres + redis`:
 
 ```bash
-cd core/src
+cd brama-core/src
 composer install
 php bin/console doctrine:migrations:migrate --no-interaction
 php bin/console server:start
@@ -121,14 +121,19 @@ make migrate
 
 Використовуй це, якщо хочеш запускати платформу в Kubernetes через Helm chart і values-файли.
 
+Повні operator guides:
+
+- [Kubernetes install guide (UA)](/workspaces/brama/brama-core/docs/guides/deployment/ua/kubernetes-install.md)
+- [Kubernetes upgrade guide (UA)](/workspaces/brama/brama-core/docs/guides/deployment/ua/kubernetes-upgrade.md)
+
 Розташування chart:
 
-- [Brama Helm chart](/Users/nmdimas/work/brama-workspace/core/deploy/charts/brama)
+- [Brama Helm chart](/Users/nmdimas/work/brama-workspace/brama-core/deploy/charts/brama)
 
 Корисні values-файли:
 
-- локальний K3s/dev профіль: [values-k3s-dev.yaml](/Users/nmdimas/work/brama-workspace/core/deploy/charts/brama/values-k3s-dev.yaml)
-- production-oriented приклад: [values-prod.example.yaml](/Users/nmdimas/work/brama-workspace/core/deploy/charts/brama/values-prod.example.yaml)
+- локальний K3s/dev профіль: [values-k3s-dev.yaml](/Users/nmdimas/work/brama-workspace/brama-core/deploy/charts/brama/values-k3s-dev.yaml)
+- production-oriented приклад: [values-prod.example.yaml](/Users/nmdimas/work/brama-workspace/brama-core/deploy/charts/brama/values-prod.example.yaml)
 
 Для локального K3s через workspace helper-и:
 
@@ -139,6 +144,19 @@ make k8s-secrets
 make k8s-deploy
 make k8s-status
 ```
+
+Найшвидший шлях:
+
+```bash
+make k8s-ctx
+make k8s-setup
+make k8s-port-forward svc=core port=8080:80
+curl -sf http://localhost:8080/health
+```
+
+> `make k8s-load` зараз очікує локальний K3s у Rancher Desktop і використовує `rdctl`.
+> Якщо у вас `kind`, `minikube` або віддалений кластер, краще йти через прямий Helm install і
+> власний спосіб доставки образів.
 
 Зараз цей профіль деплоїть:
 
@@ -152,10 +170,10 @@ make k8s-status
 Прямий Helm install:
 
 ```bash
-helm upgrade --install brama core/deploy/charts/brama \
+helm upgrade --install brama brama-core/deploy/charts/brama \
   --namespace brama \
   --create-namespace \
-  -f core/deploy/charts/brama/values-k3s-dev.yaml \
+  -f brama-core/deploy/charts/brama/values-k3s-dev.yaml \
   --wait --timeout 5m
 ```
 
@@ -277,7 +295,7 @@ Devcontainer розрахований на workspace-рівень:
 `core` це продуктовий репозиторій. Типовий приклад:
 
 ```bash
-cd core
+cd brama-core
 git status
 ```
 
@@ -333,4 +351,4 @@ make setup
 
 ## Пов’язані Репозиторії
 
-- [`core`](/Users/nmdimas/work/brama-workspace/core): application source code, тести та продуктова документація.
+- [`core`](/Users/nmdimas/work/brama-workspace/brama-core): application source code, тести та продуктова документація.

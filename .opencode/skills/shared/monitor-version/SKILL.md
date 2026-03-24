@@ -1,7 +1,7 @@
 ---
 name: monitor-version
 description: >
-  Auto-bump pipeline monitor version when builder/monitor/pipeline-monitor.sh is modified.
+  Auto-bump pipeline monitor version when agentic-development/lib/foundry-monitor.sh is modified.
   Triggers automatically as a post-edit convention — not user-invocable directly.
   When any change is made to pipeline-monitor.sh, increment the patch version
   in the "# Version:" header comment. Triggers on: "pipeline-monitor", "monitor version",
@@ -10,11 +10,11 @@ description: >
 
 # Monitor Version Bump
 
-Automatically increment the version in `builder/monitor/pipeline-monitor.sh` whenever the file is modified.
+Automatically increment the version in `agentic-development/lib/foundry-monitor.sh` whenever the file is modified.
 
 ## Convention
 
-The version lives on line 4 of `builder/monitor/pipeline-monitor.sh` in the format:
+The version lives near the top of `agentic-development/lib/foundry-monitor.sh` in the format:
 
 ```
 # Version: X.Y.Z
@@ -28,7 +28,7 @@ The version lives on line 4 of `builder/monitor/pipeline-monitor.sh` in the form
 
 ## Workflow
 
-### When modifying `builder/monitor/pipeline-monitor.sh`:
+### When modifying `agentic-development/lib/foundry-monitor.sh`:
 
 1. Read the current version from the `# Version:` line (line 4)
 2. Determine bump type based on the nature of the change:

@@ -15,7 +15,7 @@ services:
       DATABASE_URL: postgresql://dev_reporter_agent:dev_reporter_agent@postgres:5432/dev_reporter_agent?serverVersion=16&charset=utf8
       OPENSEARCH_URL: http://opensearch:9200
       APP_INTERNAL_TOKEN: dev-internal-token
-      PLATFORM_CORE_URL: http://core
+      PLATFORM_CORE_URL: http://brama-core
       ADMIN_PUBLIC_URL: http://localhost:8087/admin/pipeline
       LANGFUSE_ENABLED: "0"
       LANGFUSE_BASE_URL: http://langfuse-web:3000

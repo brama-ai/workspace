@@ -7,7 +7,7 @@ description: "Validator role: static analysis workflow, PHPStan/CS-Fixer rules, 
 
 | App | CS Check | CS Fix | Analyse |
 |-----|----------|--------|---------|
-| core/src/ | `make cs-check` | `make cs-fix` | `make analyse` |
+| brama-core/src/ | `make cs-check` | `make cs-fix` | `make analyse` |
 | agents/knowledge-agent/ | `make knowledge-cs-check` | `make knowledge-cs-fix` | `make knowledge-analyse` |
 | agents/hello-agent/ | `make hello-cs-check` | `make hello-cs-fix` | `make hello-analyse` |
 | agents/dev-reporter-agent/ | `make dev-reporter-cs-check` | `make dev-reporter-cs-fix` | `make dev-reporter-analyse` |

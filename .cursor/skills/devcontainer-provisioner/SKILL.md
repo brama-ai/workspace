@@ -146,7 +146,7 @@ This devcontainer runs **Ubuntu (noble)** with these runtimes pre-installed:
 | Bun | 1.x | `bun` |
 
 Infrastructure services are defined in the workspace root `compose.yaml` and shared with the
-devcontainer via merged Docker Compose project (not duplicated). Product code lives in `core/`:
+devcontainer via merged Docker Compose project (not duplicated). Product code lives in `brama-core/`:
 
 | Service | Host | Port | Image |
 |---------|------|------|-------|
@@ -392,7 +392,7 @@ psql -h postgres -U postgres -d <dbname> -c "CREATE EXTENSION IF NOT EXISTS vect
 
 ```bash
 # PHP (Doctrine — Core)
-php core/src/bin/console doctrine:migrations:migrate --no-interaction
+php brama-core/src/bin/console doctrine:migrations:migrate --no-interaction
 
 # PHP (Doctrine — Knowledge Agent)
 php agents/knowledge-agent/bin/console doctrine:migrations:migrate --no-interaction
@@ -404,7 +404,7 @@ cd agents/news-maker-agent && alembic upgrade head
 ### Playwright/E2E test dependencies
 
 ```bash
-cd core/tests/e2e && npm install && npx playwright install --with-deps
+cd brama-core/tests/e2e && npm install && npx playwright install --with-deps
 ```
 
 ## Error Patterns Quick Reference

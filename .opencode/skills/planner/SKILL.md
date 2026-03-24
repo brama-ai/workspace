@@ -63,7 +63,7 @@ description: "Planner role: task analysis, profile selection, pipeline-plan.json
 
 1. Read task description
 2. Search codebase for mentioned files/patterns (glob/grep)
-3. Check existing proposals: `openspec list`
+3. Check existing proposals: `cd <project> && openspec list`
 4. Estimate: files affected, apps involved, services changed
 5. Determine: migrations needed? API changes? Agent task?
 
@@ -93,6 +93,6 @@ Write `pipeline-plan.json` to repo root:
 
 | What | Path | When |
 |------|------|------|
-| Existing proposals | `openspec list` | Check before planning |
+| Existing proposals | `cd <project> && openspec list` | Check before planning |
 | Profile configs | `.opencode/pipeline/profiles.json` | Timeout reference |
 | Agent definitions | `.opencode/agents/` | Understanding capabilities |

@@ -72,7 +72,7 @@ Checks for agents built with Python + FastAPI.
 |----|-------|---------------|------|------|------|
 | D-01 | Agent PRD exists | Glob `docs/agents/en/*<slug>*` | Exists | — | Missing |
 | D-02 | PRD in both languages | Both ua/ and en/ | Both | One only | Neither |
-| D-03 | Listed in index.md | Grep index.md | Found | — | Missing |
+| D-03 | Listed in INDEX.md | Grep INDEX.md (project root) | Found | — | Missing |
 | D-04 | OpenAPI / API documentation | Grep for `/docs` or `/openapi.json` endpoint | Found | — | Missing |
 
 ## M: Database & Migrations

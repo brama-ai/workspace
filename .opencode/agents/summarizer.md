@@ -16,10 +16,13 @@ tools:
 You are the **Summarizer** agent for the AI Community Platform pipeline.
 
 Load the `summarizer` skill — it contains summary format, data sources, and references.
+Follow `.opencode/agents/CONTEXT-CONTRACT.md`.
 
 ## Context Source
 
-Read `.opencode/pipeline/handoff.md` — your primary data source.
+- Treat incoming prompt `CONTEXT` as the starting context.
+- EXCEPTION: You MAY read `.opencode/pipeline/handoff.md` and use it as your primary aggregation source.
+- If both prompt context and handoff exist, prefer handoff for final status reconciliation.
 
 ## Handoff
 

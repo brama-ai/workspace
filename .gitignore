@@ -6,7 +6,6 @@
 
 # Cursor — track skills, ignore the rest
 .cursor/*
-!.cursor/skills/
 
 # OpenCode — track skills/agents/commands, ignore runtime
 .opencode/node_modules/
@@ -36,10 +35,13 @@ docker/openclaw/main/.env
 docker/openclaw/support/.env
 compose.override.yaml
 compose.override.yml
-agents/
+brama-agents/
 
 # External repositories
-core/
-builder/
-website/
-brama-langing/
+brama-core/
+brama-website/
+
+# Foundry runtime state
+tasks/
+agentic-development/runtime/*
+!agentic-development/runtime/.gitkeep

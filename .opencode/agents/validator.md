@@ -1,7 +1,7 @@
 ---
 description: "Validator: runs PHPStan, CS-check, fixes all issues"
 mode: primary
-model: openai/gpt-5.2
+model: openai/gpt-5.4
 temperature: 0
 tools:
   edit: true

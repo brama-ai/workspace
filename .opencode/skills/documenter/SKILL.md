@@ -6,8 +6,9 @@ description: "Documenter role: bilingual docs workflow, templates, INDEX.md rule
 ## Documentation Structure
 
 ```
-core/docs/
-├── INDEX.md                        # Agent-facing index (English-only, always update)
+INDEX.md                            # Root-level agent-facing index (English-only, always update)
+
+brama-core/docs/                          # Platform & core documentation
 ├── agents/{ua,en}/*.md             # Agent PRDs and feature docs (bilingual)
 ├── specs/{ua,en}/*.md              # Interface specifications (bilingual)
 ├── features/{ua,en}/*.md           # Feature documentation (bilingual)
@@ -17,6 +18,11 @@ core/docs/
 ├── decisions/*.md                  # ADRs (English-only)
 ├── templates/*.md                  # Reusable templates (English-only)
 └── guides/<topic>/{ua,en}/*.md     # How-to guides (bilingual)
+
+docs/                               # Developer workflow documentation
+├── agent-development/{ua,en}/*.md  # Foundry, Ultraworks, pipeline workflows
+├── setup/*.md                      # Devcontainer, provider setup (English-only)
+└── guides/*.md                     # Env checker, pipeline models (English-only)
 ```
 
 ## Language Rules
@@ -34,12 +40,12 @@ core/docs/
 
 - Both `ua/` and `en/` MUST have identical structure and headings
 - `ua/` is canonical — write it first, then mirror to `en/`
-- `INDEX.md` always references `en/` paths
+- `INDEX.md` (project root) always references `en/` paths
 - If only one language needed: English, no `ua/en` split
 
 ## Directory Constraint
 
-**No `.md` files in intermediate directories.** If a directory has subdirectories, it MUST NOT contain `.md` files directly (exception: `docs/INDEX.md`).
+**No `.md` files in intermediate directories.** If a directory has subdirectories, it MUST NOT contain `.md` files directly (exception: `./INDEX.md` at project root).
 
 ## Templates
 
@@ -66,7 +72,7 @@ core/docs/
 ## Workflow
 
 1. Determine what needs documenting from context
-2. Read `core/docs/INDEX.md` for current landscape
+2. Read `INDEX.md` (project root) for current landscape
 3. Write UA version first (canonical)
 4. Mirror to EN with matching headings
 5. Update `INDEX.md` with new entries
@@ -77,6 +83,6 @@ core/docs/
 | What | Path | When |
 |------|------|------|
 | Full doc conventions | `.cursor/skills/documentation/SKILL.md` | Complex doc tasks |
-| Current index | `core/docs/INDEX.md` | Always — check before writing |
-| Agent template | `core/docs/templates/` | New agent docs |
-| Existing agents | `core/docs/agents/en/` | Pattern reference |
+| Current index | `INDEX.md` (project root) | Always — check before writing |
+| Agent template | `brama-core/docs/templates/` | New agent docs |
+| Existing agents | `brama-core/docs/agents/en/` | Pattern reference |

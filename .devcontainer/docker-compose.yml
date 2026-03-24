@@ -9,11 +9,17 @@ services:
     volumes:
       - ..:/workspaces/brama:cached
       - commandhistory:/commandhistory
-      - antigravity-server:/home/vscode/.antigravity-server
-      - vscode-server:/home/vscode/.vscode-server
+      - ${HOME}/.antigravity-server:/home/vscode/.antigravity-server:cached
+      - ${HOME}/.vscode-server:/home/vscode/.vscode-server:cached
       - ${HOME}/.claude:/home/vscode/.claude:cached
+      - ${HOME}/.codex:/home/vscode/.codex:cached
+      - ${HOME}/.cursor:/home/vscode/.cursor:cached
+      - ${HOME}/.gemini:/home/vscode/.gemini:cached
       - ${HOME}/.config/opencode:/home/vscode/.config/opencode:cached
+      - ${HOME}/.config/Cursor:/home/vscode/.config/Cursor:cached
       - ${HOME}/.local/share/opencode:/home/vscode/.local/share/opencode:cached
+      - ${HOME}/.npm:/home/vscode/.npm:cached
+      - ${HOME}/.bun:/home/vscode/.bun:cached
       - ${HOME}/.gitconfig:/home/vscode/.gitconfig:ro
       - ${HOME}/.ssh:/home/vscode/.ssh:ro
       # Kubernetes access (kubeconfig from host)
@@ -34,10 +40,10 @@ services:
       - /bin/sh
       - -lc
       - >
-        mkdir -p /commandhistory /home/vscode/.antigravity-server /home/vscode/.vscode-server /home/vscode/.local /home/vscode/.local/state /home/vscode/.local/share /home/vscode/.config /home/vscode/.claude /home/vscode/.gemini
+        mkdir -p /commandhistory /home/vscode/.antigravity-server /home/vscode/.vscode-server /home/vscode/.local /home/vscode/.local/state /home/vscode/.local/share /home/vscode/.config /home/vscode/.claude /home/vscode/.codex /home/vscode/.cursor /home/vscode/.gemini /home/vscode/.npm /home/vscode/.bun /home/vscode/.config/Cursor /home/vscode/.config/opencode
         && touch /commandhistory/.bash_history /commandhistory/.zsh_history
         && chown -R vscode:vscode /commandhistory /home/vscode/.antigravity-server /home/vscode/.vscode-server
-        && chown vscode:vscode /home/vscode/.local /home/vscode/.local/state /home/vscode/.local/share /home/vscode/.config /home/vscode/.claude /home/vscode/.gemini || true
+        && chown vscode:vscode /home/vscode/.local /home/vscode/.local/state /home/vscode/.local/share /home/vscode/.config /home/vscode/.claude /home/vscode/.codex /home/vscode/.cursor /home/vscode/.gemini /home/vscode/.npm /home/vscode/.bun /home/vscode/.config/Cursor /home/vscode/.config/opencode || true
         && exec sleep infinity
     depends_on:
       postgres:
@@ -50,5 +56,3 @@ services:
 
 volumes:
   commandhistory:
-  antigravity-server:
-  vscode-server:

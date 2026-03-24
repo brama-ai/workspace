@@ -113,8 +113,8 @@ Append to `.opencode/pipeline/handoff.md` — **Investigator** section:
 
 | What | Path | When |
 |------|------|------|
-| Agent debugger skill | `core/skills/agent-debugger/SKILL.md` | Bug involves agent calls |
+| Agent debugger skill | `brama-core/skills/agent-debugger/SKILL.md` | Bug involves agent calls |
 | OpenSearch logs | `docker compose exec core php -r "..."` | Need runtime logs |
 | Langfuse traces | `http://localhost:8086/` | LLM-related bugs |
-| OpenSpec specs | `core/openspec/specs/` | Check if behavior is spec'd |
-| Project context | `core/openspec/project.md` | Tech stack reference |
+| OpenSpec specs | `<project>/openspec/specs/` | Check if behavior is spec'd |
+| Project context | `<project>/openspec/project.md` | Tech stack reference |

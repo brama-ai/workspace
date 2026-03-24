@@ -1,7 +1,7 @@
 services:
   website:
     build:
-      context: ../website
+      context: ../brama-website
       dockerfile: Dockerfile
     labels:
       - traefik.enable=true

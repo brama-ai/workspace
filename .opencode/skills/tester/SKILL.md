@@ -7,7 +7,7 @@ description: "Tester role: test workflow, frameworks, conventions, per-app targe
 
 | App | Unit + Functional | Convention | Framework |
 |-----|-------------------|------------|-----------|
-| apps/core/ | `make test` | `make conventions-test` | Codeception 5 |
+| apps/brama-core/ | `make test` | `make conventions-test` | Codeception 5 |
 | apps/knowledge-agent/ | `make knowledge-test` | `make conventions-test` | Codeception 5 |
 | apps/hello-agent/ | `make hello-test` | `make conventions-test` | Codeception 5 |
 | apps/dev-reporter-agent/ | `make dev-reporter-test` | `make conventions-test` | Codeception 5 |
@@ -21,6 +21,7 @@ description: "Tester role: test workflow, frameworks, conventions, per-app targe
 | Full E2E | `make e2e` | Codecept.js + Playwright | UI changes, new features |
 | Smoke only | `make e2e-smoke` | Codecept.js (API) | API/health changes |
 | E2E setup | `make e2e-prepare` | Docker + DB isolation | Before E2E run |
+| E2E env check | `make e2e-env-check` | Shell preflight | Fail fast if the E2E stack is not healthy |
 
 ## Test Conventions
 
@@ -67,9 +68,10 @@ Run with `make conventions-test` — validates agent contract compliance:
    d. If no CUJ exists for a new UI feature → **add CUJ row** to matrix + write test
    e. Follow existing Page Object patterns in `tests/e2e/support/pages/`
    f. Register new Page Objects in `tests/e2e/codecept.conf.js`
-8. If E2E infra is available (`make e2e-prepare` succeeds): run `make e2e`
-9. If E2E infra is NOT available: write tests anyway, note "E2E written but not executed" in handoff
-10. Run full unit/functional suite one last time
+8. If E2E infra is available (`make e2e-prepare` succeeds): run `make e2e-env-check`
+9. If env check passes: run `make e2e`
+10. If E2E infra is NOT available or env check fails: write tests anyway, note "E2E written but not executed" in handoff with the failing dependency
+11. Run full unit/functional suite one last time
 
 ## E2E Decision Tree
 
@@ -101,4 +103,4 @@ Change touches UI? (templates, controllers rendering HTML, CSS, admin JS)
 | E2E config | `tests/e2e/codecept.conf.js` | Registering page objects |
 | Page Objects | `tests/e2e/support/pages/` | Following existing patterns |
 | Convention tests | `tests/e2e/tests/` | Understanding E2E structure |
-| Spec scenarios | `openspec/changes/<id>/specs/` | Verifying scenario coverage |
+| Spec scenarios | `<project>/openspec/changes/<id>/specs/` | Verifying scenario coverage |

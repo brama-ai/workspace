@@ -5,24 +5,32 @@ description: "Architect role: OpenSpec workflow, proposal scaffold, spec format,
 
 ## OpenSpec Workflow
 
+OpenSpec is **per-project** — specs live inside each project, not at the workspace root.
+
 Every API/architecture change MUST follow:
-1. **Spec first** — write spec in `core/openspec/changes/<id>/specs/`
-2. **Validate** — `openspec validate <id> --strict`
-3. **Implement** — code matches spec contract
-4. **Test** — tests validate spec scenarios
+1. **Identify target project** — determine which project owns the change (`brama-core/`, `agents/<name>/`, etc.)
+2. **Spec first** — write spec in `<project>/openspec/changes/<id>/specs/`
+3. **Validate** — `cd <project> && openspec validate <id> --strict`
+4. **Implement** — code matches spec contract
+5. **Test** — tests validate spec scenarios
 
 ## Proposal Structure
 
-Scaffold under `core/openspec/changes/<change-id>/`:
+Scaffold under `<project>/openspec/changes/<change-id>/`:
 
 ```
-core/openspec/changes/<change-id>/
+<project>/openspec/changes/<change-id>/
 ├── proposal.md                 # What and why
 ├── design.md                   # Architecture reasoning, trade-offs, component interactions
 ├── tasks.md                    # Ordered work items with - [ ] checkboxes
 └── specs/
     └── <capability>/spec.md    # Spec deltas with scenarios
 ```
+
+Common project paths:
+- `brama-core/openspec/changes/` — platform core
+- `agents/<name>/openspec/changes/` — individual agents
+- `brama-website/openspec/changes/` — website
 
 ## Spec Delta Format
 
@@ -70,7 +78,7 @@ A good `design.md` covers:
 
 | Component | Stack | Key Files |
 |-----------|-------|-----------|
-| Core | PHP 8.5, Symfony 7 | `core/src/src/`, `core/src/config/` |
+| Core | PHP 8.5, Symfony 7 | `brama-core/src/src/`, `brama-core/src/config/` |
 | Knowledge agent | PHP 8.5, Symfony 7 | `agents/knowledge-agent/src/` |
 | News maker | Python, FastAPI | `agents/news-maker-agent/app/` |
 | Wiki agent | Node.js, TS | `agents/wiki-agent/src/` |
@@ -79,8 +87,8 @@ A good `design.md` covers:
 ## Rules
 
 - Choose a unique verb-led `change-id` (e.g., `add-streaming-support`)
-- Run `openspec list` first — update existing proposal if one exists
-- Run `openspec list --specs` for existing capability specs
+- Run `cd <project> && openspec list` first — update existing proposal if one exists
+- Run `cd <project> && openspec list --specs` for existing capability specs
 - Reference existing specs to avoid duplication
 - Never write implementation code — only specs and docs
 
@@ -88,8 +96,8 @@ A good `design.md` covers:
 
 | What | Path | When |
 |------|------|------|
-| OpenSpec conventions | `core/openspec/AGENTS.md` | Always — primary reference |
-| Project state | `core/openspec/project.md` | Understanding current scope |
-| Existing specs | `openspec list --specs` | Avoiding duplication |
-| Agent conventions | `core/docs/agent-requirements/conventions.md` | Agent-related changes |
-| Existing proposals | `core/openspec/changes/` | Checking for conflicts |
+| OpenSpec conventions | `<project>/openspec/AGENTS.md` | Always — primary reference |
+| Project state | `<project>/openspec/project.md` | Understanding current scope |
+| Existing specs | `cd <project> && openspec list --specs` | Avoiding duplication |
+| Agent conventions | `brama-core/docs/agent-requirements/conventions.md` | Agent-related changes |
+| Existing proposals | `<project>/openspec/changes/` | Checking for conflicts |

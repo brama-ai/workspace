@@ -2,7 +2,7 @@ services:
   core:
     build:
       context: ..
-      dockerfile: docker/core/Dockerfile
+      dockerfile: docker/brama-core/Dockerfile
     env_file:
       - ./openclaw/.env
       - path: ../.env.deployment
@@ -13,7 +13,7 @@ services:
       - traefik.http.routers.core.rule=Host(`brama.localhost`) || Host(`localhost`)
       - traefik.http.routers.core.entrypoints=web
       - traefik.http.services.core.loadbalancer.server.port=80
-      - traefik.http.middlewares.edge-auth.forwardauth.address=http://core/edge/auth/verify
+      - traefik.http.middlewares.edge-auth.forwardauth.address=http://brama-core/edge/auth/verify
       - traefik.http.middlewares.edge-auth.forwardauth.trustForwardHeader=true
       - traefik.http.middlewares.edge-auth.forwardauth.authResponseHeaders=X-Forwarded-User
       # Route /edge/auth/ on any subdomain to core WITHOUT edge-auth (login must work on the subdomain itself)
@@ -45,7 +45,7 @@ services:
       # Direct access bypass (useful when Traefik has issues; does not conflict with Traefik ports)
       - "8081:80"
     volumes:
-      - ../core/src:/var/www/html
+      - ../brama-core/src:/var/www/html
     networks:
       - dev-edge
       - agents-internal
@@ -53,7 +53,7 @@ services:
   core-scheduler:
     build:
       context: ..
-      dockerfile: docker/core/Dockerfile
+      dockerfile: docker/brama-core/Dockerfile
     env_file:
       - ./openclaw/.env
       - path: ../.env.deployment
@@ -79,7 +79,7 @@ services:
       EDGE_AUTH_LOGIN_BASE_URL: ${EDGE_AUTH_LOGIN_BASE_URL:-http://localhost}
       EDGE_AUTH_COOKIE_DOMAIN: ${EDGE_AUTH_COOKIE_DOMAIN:-localhost}
     volumes:
-      - ../core/src:/var/www/html
+      - ../brama-core/src:/var/www/html
     depends_on:
       - core
     restart: unless-stopped
@@ -91,7 +91,7 @@ services:
     profiles: [e2e]
     build:
       context: ..
-      dockerfile: docker/core/Dockerfile
+      dockerfile: docker/brama-core/Dockerfile
     env_file:
       - ./openclaw/.env
       - path: ../.env.deployment
@@ -112,7 +112,7 @@ services:
     ports:
       - "18080:80"
     volumes:
-      - ../core/src:/var/www/html
+      - ../brama-core/src:/var/www/html
     depends_on:
       - postgres
     networks:

@@ -91,13 +91,13 @@ After tables, output a prioritized action list:
 | Agent source | `agents/<agent>/` |
 | Dockerfiles | `docker/<agent>/Dockerfile` |
 | Compose config | `docker/compose.yaml` |
-| Convention spec | `core/docs/agent-requirements/conventions.md` |
-| Agent Card schema | `core/src/config/agent-card.schema.json` |
-| Observability spec | `core/docs/agent-requirements/observability-requirements.md` |
-| Storage spec | `core/docs/agent-requirements/storage-provisioning.md` |
-| Test case spec | `core/docs/agent-requirements/test-cases.md` |
-| Agent PRDs | `core/docs/agents/en/<agent-prd>.md` |
-| Doc index | `core/index.md` |
+| Convention spec | `brama-core/docs/agent-requirements/conventions.md` |
+| Agent Card schema | `brama-core/src/config/agent-card.schema.json` |
+| Observability spec | `brama-core/docs/agent-requirements/observability-requirements.md` |
+| Storage spec | `brama-core/docs/agent-requirements/storage-provisioning.md` |
+| Test case spec | `brama-core/docs/agent-requirements/test-cases.md` |
+| Agent PRDs | `brama-core/docs/agents/en/<agent-prd>.md` |
+| Doc index | `brama-core/index.md` |
 | Makefile | `Makefile` |
 
 ## CI Conversion Notes

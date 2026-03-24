@@ -14,7 +14,7 @@ if ! pg_isready -h postgres -U app -q 2>/dev/null; then
   exit 0
 fi
 
-for console in core/src/bin/console agents/knowledge-agent/bin/console; do
+for console in brama-core/src/bin/console agents/knowledge-agent/bin/console; do
   if [ -f "${console}" ]; then
     echo "  doctrine:migrations:migrate (${console})"
     php "${console}" doctrine:migrations:migrate --no-interaction

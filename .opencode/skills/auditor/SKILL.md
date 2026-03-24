@@ -21,7 +21,7 @@ For each modified app/agent, check:
 - [ ] Test suite passes (`make test`)
 
 ### E2E Coverage (E)
-- [ ] If change touches UI: CUJ row exists in `core/docs/agent-requirements/e2e-cuj-matrix.md`
+- [ ] If change touches UI: CUJ row exists in `brama-core/docs/agent-requirements/e2e-cuj-matrix.md`
 - [ ] If CUJ exists: E2E test file exists and Page Object registered
 - [ ] If new UI feature: CUJ added to matrix (non-blocking recommendation)
 - [ ] E2E test uses Page Object pattern (no raw selectors in test files)
@@ -92,8 +92,8 @@ On subsequent iterations:
 
 | What | Path | When |
 |------|------|------|
-| Agent conventions | `core/docs/agent-requirements/conventions.md` | Full contract reference |
-| Test cases TC-01..05 | `core/docs/agent-requirements/test-cases.md` | Validating test coverage |
-| Agent Card schema | `core/src/config/agent-card.schema.json` | Manifest validation |
-| **CUJ matrix** | `core/docs/agent-requirements/e2e-cuj-matrix.md` | **E2E coverage audit** |
-| E2E Page Objects | `core/tests/e2e/support/pages/` | Verifying PO patterns |
+| Agent conventions | `brama-core/docs/agent-requirements/conventions.md` | Full contract reference |
+| Test cases TC-01..05 | `brama-core/docs/agent-requirements/test-cases.md` | Validating test coverage |
+| Agent Card schema | `brama-core/src/config/agent-card.schema.json` | Manifest validation |
+| **CUJ matrix** | `brama-core/docs/agent-requirements/e2e-cuj-matrix.md` | **E2E coverage audit** |
+| E2E Page Objects | `brama-core/tests/e2e/support/pages/` | Verifying PO patterns |

@@ -88,7 +88,7 @@ Checks for agents built with PHP 8.5 + Symfony 7.
 |----|-------|---------------|------|------|------|
 | D-01 | Agent PRD exists | Glob `docs/agents/en/*<agent-slug>*.md` | Exists | — | Missing |
 | D-02 | PRD in both languages | Check `docs/agents/ua/` and `docs/agents/en/` | Both | One only | Neither |
-| D-03 | Listed in index.md | Grep `index.md` for agent reference | Found | — | Missing |
+| D-03 | Listed in INDEX.md | Grep `INDEX.md` (project root) for agent reference | Found | — | Missing |
 | D-04 | OpenAPI / API documentation exists | Glob for openapi spec or Grep for API doc references | Found | — | Missing |
 
 ## M: Database & Migrations

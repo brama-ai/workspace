@@ -243,8 +243,8 @@ include/require with user-controlled path
 - Missing rate limiting on login/registration endpoints
 
 ### Configuration Files to Check
-- `core/src/config/packages/security.yaml` — firewalls, access control, password hashers
-- `core/src/config/packages/framework.yaml` — session config, CSRF
+- `brama-core/src/config/packages/security.yaml` — firewalls, access control, password hashers
+- `brama-core/src/config/packages/framework.yaml` — session config, CSRF
 - `.env` / `.env.local` — no secrets in committed files
 - `docker/*/Dockerfile` — no secrets in build args
 - `docker/compose.yaml` — no secrets in environment variables
@@ -264,8 +264,8 @@ include/require with user-controlled path
 
 | Resource | Path |
 |----------|------|
-| Security config | `core/src/config/packages/security.yaml` |
-| Framework config | `core/src/config/packages/framework.yaml` |
+| Security config | `brama-core/src/config/packages/security.yaml` |
+| Framework config | `brama-core/src/config/packages/framework.yaml` |
 | Controllers | `agents/*/src/Controller/` |
 | Forms | `agents/*/src/Form/` |
 | Voters | `agents/*/src/Security/Voter/` |

@@ -1,0 +1,192 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=/dev/null
+source "$REPO_ROOT/agentic-development/lib/foundry-common.sh"
+
+maybe_migrate_legacy_foundry_tasks
+ensure_foundry_task_root
+ensure_runtime_root
+auto_cleanup
+
+LOG_FILE="$(runtime_log_file foundry-headless)"
+DEFAULT_WORKERS="${FOUNDRY_WORKERS:-${MONITOR_WORKERS:-1}}"
+
+show_help() {
+  cat <<EOF
+Foundry runtime
+
+Usage:
+  ./agentic-development/foundry.sh
+  ./agentic-development/foundry.sh headless
+  ./agentic-development/foundry.sh command <name> [args...]
+  ./agentic-development/foundry.sh <command> [args...]
+
+Commands:
+  monitor              Open the interactive Foundry monitor (default)
+  headless             Start background queue processing for ${FOUNDRY_TASK_ROOT_REL}
+  run [runtime args]   Run a single sequential Foundry task
+  batch [args]         Consume pending Foundry task directories from ${FOUNDRY_TASK_ROOT_REL}
+  retry [args]         Retry failed Foundry tasks
+  stats [args]         Show Foundry pipeline statistics
+  cleanup [args]       Clean old runtime artifacts
+  env-check [args]     Run environment checks
+  setup                Initialize Foundry directories and optional monitor deps
+  start                Alias for headless
+  stop                 Stop running Foundry batch workers
+  status               Show current Foundry worker status
+  list                 List available top-level Foundry commands
+
+Task pool:
+  Foundry uses ${FOUNDRY_TASK_ROOT_REL}/<slug>--foundry/ as its queue/state store.
+  A task is pending when task.md exists and state.json is missing or has status=pending.
+
+Background mode:
+  ./agentic-development/foundry.sh headless
+  Starts lib/foundry-batch.sh in watch mode and writes to:
+    ${LOG_FILE}
+    $(runtime_log_file foundry)
+
+Concurrency:
+  The current runtime accepts worker counts for compatibility, but still processes serially.
+  In one checkout, treat Foundry as a single queue consumer with one active task at a time.
+
+Examples:
+  ./agentic-development/foundry.sh
+  ./agentic-development/foundry.sh status
+  ./agentic-development/foundry.sh run --task-file /absolute/path/to/task.md
+  ./agentic-development/foundry.sh batch --watch
+  FOUNDRY_WORKERS=2 ./agentic-development/foundry.sh headless
+EOF
+}
+
+foundry_start_headless() {
+  if foundry_is_batch_running; then
+    runtime_log foundry "headless already running"
+    echo "Foundry headless is already running."
+    return 0
+  fi
+
+  local _caff=""
+  command -v caffeinate &>/dev/null && _caff="caffeinate -s"
+  $_caff nohup "$REPO_ROOT/agentic-development/lib/foundry-batch.sh" \
+    --workers "$DEFAULT_WORKERS" \
+    --no-stop-on-failure \
+    --watch \
+    > "$LOG_FILE" 2>&1 &
+
+  runtime_log foundry "headless started pid=$! workers=${DEFAULT_WORKERS} log=${LOG_FILE}"
+  echo "Foundry headless started (PID $!, workers=${DEFAULT_WORKERS})."
+  echo "Monitor: ./agentic-development/foundry.sh"
+}
+
+foundry_stop_headless() {
+  if ! foundry_is_batch_running; then
+    runtime_log foundry "stop requested but no workers running"
+    echo "No running Foundry batch workers."
+    return 0
+  fi
+  pkill -f 'agentic-development/lib/foundry-batch\.sh' 2>/dev/null || true
+  pkill -f 'foundry-batch\.sh' 2>/dev/null || true
+  runtime_log foundry "headless workers stopped"
+  echo "Foundry headless workers stopped."
+}
+
+foundry_status() {
+  local pending=0 in_progress=0 completed=0 failed=0 suspended=0 cancelled=0
+  while IFS='=' read -r key value; do
+    case "$key" in
+      pending) pending="$value" ;;
+      in_progress) in_progress="$value" ;;
+      completed) completed="$value" ;;
+      failed) failed="$value" ;;
+      suspended) suspended="$value" ;;
+      cancelled) cancelled="$value" ;;
+    esac
+  done < <(foundry_task_counts)
+
+  echo "Foundry root: ${FOUNDRY_TASK_ROOT_REL}"
+  if foundry_is_batch_running; then
+    echo "Status: running"
+  else
+    echo "Status: idle"
+  fi
+  echo "Pending: ${pending}"
+  echo "In progress: ${in_progress}"
+  echo "Completed: ${completed}"
+  echo "Failed: ${failed}"
+  echo "Suspended: ${suspended}"
+  echo "Cancelled: ${cancelled}"
+  echo "Log: ${LOG_FILE}"
+  runtime_log foundry "status pending=${pending} in_progress=${in_progress} completed=${completed} failed=${failed}"
+}
+
+run_command() {
+  local cmd="${1:-monitor}"
+  shift || true
+
+  case "$cmd" in
+    monitor)
+      runtime_log foundry "command=monitor"
+      exec "$REPO_ROOT/agentic-development/lib/foundry-monitor.sh" "$FOUNDRY_TASK_ROOT"
+      ;;
+    headless|start)
+      foundry_start_headless "$@"
+      ;;
+    stop)
+      foundry_stop_headless
+      ;;
+    status)
+      foundry_status
+      ;;
+    run)
+      runtime_log foundry "command=run args=$*"
+      exec "$REPO_ROOT/agentic-development/lib/foundry-run.sh" "$@"
+      ;;
+    batch)
+      runtime_log foundry "command=batch args=$*"
+      exec "$REPO_ROOT/agentic-development/lib/foundry-batch.sh" "$@"
+      ;;
+    retry)
+      runtime_log foundry "command=retry args=$*"
+      exec "$REPO_ROOT/agentic-development/lib/foundry-retry.sh" "$@"
+      ;;
+    stats)
+      runtime_log foundry "command=stats args=$*"
+      exec "$REPO_ROOT/agentic-development/lib/foundry-stats.sh" "$@"
+      ;;
+    cleanup)
+      runtime_log foundry "command=cleanup args=$*"
+      exec "$REPO_ROOT/agentic-development/lib/foundry-cleanup.sh" "$@"
+      ;;
+    env-check)
+      runtime_log foundry "command=env-check args=$*"
+      exec "$REPO_ROOT/agentic-development/lib/env-check.sh" "$@"
+      ;;
+    setup)
+      runtime_log foundry "command=setup"
+      exec "$REPO_ROOT/agentic-development/lib/foundry-setup.sh" "$@"
+      ;;
+    list)
+      show_help
+      ;;
+    *)
+      echo "Unknown Foundry command: $cmd" >&2
+      echo "" >&2
+      show_help >&2
+      exit 1
+      ;;
+  esac
+}
+
+if [[ $# -eq 0 ]]; then
+  run_command monitor
+fi
+
+if [[ "${1:-}" == "command" ]]; then
+  shift
+fi
+
+run_command "$@"

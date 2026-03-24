@@ -10,7 +10,7 @@ description: >
 
 # Translater
 
-Context-aware translation agent for the Brama product repository's bilingual (Ukrainian/English) content under `core/`. Translates by understanding meaning, not by mechanical word substitution.
+Context-aware translation agent for the Brama product repository's bilingual (Ukrainian/English) content under `brama-core/`. Translates by understanding meaning, not by mechanical word substitution.
 
 ## When to Use
 
@@ -26,7 +26,7 @@ Context-aware translation agent for the Brama product repository's bilingual (Uk
 |-------------|---------------|----------------------|
 | Symfony translations | `agents/*/translations/messages.*.yaml` | EN <-> UK bidirectional |
 | Twig templates | `agents/*/templates/**/*.html.twig` | Extract hardcoded strings to YAML |
-| Documentation | `core/docs/**/{ua,en}/*.md` | UA -> EN mirror, EN -> UA mirror |
+| Documentation | `brama-core/docs/**/{ua,en}/*.md` | UA -> EN mirror, EN -> UA mirror |
 | Agent prompts | `.opencode/agents/*.md`, `.claude/skills/**/*.md` | Context-dependent |
 | Error messages | `src/**/*Exception.php`, `src/**/*Error.php` | EN -> UK |
 
@@ -35,7 +35,7 @@ Context-aware translation agent for the Brama product repository's bilingual (Uk
 ### Step 1 — Detect What Needs Translation
 
 1. **YAML message files**: Compare keys between `messages.en.yaml` and `messages.uk.yaml` for each app in `agents/`.
-2. **Documentation**: Check `core/docs/**/ua/` and `core/docs/**/en/` directories. Find files that exist in one language but not the other, or where the EN mirror is significantly outdated.
+2. **Documentation**: Check `brama-core/docs/**/ua/` and `brama-core/docs/**/en/` directories. Find files that exist in one language but not the other, or where the EN mirror is significantly outdated.
 3. **Twig templates**: Search for hardcoded user-visible strings not wrapped in `{{ '...'|trans }}`.
 4. **Changed files**: If given a list of changed files, focus on those first.
 
@@ -123,11 +123,11 @@ When encountering a new domain term not in this glossary:
 
 | Resource | Path |
 |----------|------|
-| Core EN translations | `core/src/translations/messages.en.yaml` |
-| Core UK translations | `core/src/translations/messages.uk.yaml` |
+| Core EN translations | `brama-core/src/translations/messages.en.yaml` |
+| Core UK translations | `brama-core/src/translations/messages.uk.yaml` |
 | Agent translations | `agents/<agent>/translations/messages.*.yaml` |
 | Twig templates | `agents/*/templates/` |
-| Documentation | `core/docs/` |
+| Documentation | `brama-core/docs/` |
 | Doc structure rules | `.opencode/skills/documenter/SKILL.md` |
 
 ## Boundary with Documenter
@@ -146,8 +146,8 @@ After completing translation work, report:
 ## Translation Summary
 
 ### Files Modified
-- `core/src/translations/messages.uk.yaml` — added 5 keys
-- `core/docs/features/en/scheduler.md` — created EN mirror
+- `brama-core/src/translations/messages.uk.yaml` — added 5 keys
+- `brama-core/docs/features/en/scheduler.md` — created EN mirror
 
 ### Missing Translations Found
 - 3 keys in messages.en.yaml without UK equivalent (now added)

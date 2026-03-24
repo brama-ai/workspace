@@ -17,7 +17,7 @@ else
     exit 1
 fi
 
-if [ -f "core/docs/deployment-configuration.md" ]; then
+if [ -f "brama-core/docs/deployment-configuration.md" ]; then
     echo "✅ docs/deployment-configuration.md exists"
 else
     echo "❌ docs/deployment-configuration.md is missing"
@@ -55,8 +55,8 @@ echo
 echo "🏥 Checking health endpoint implementations..."
 
 # Core health controller
-if [ -f "core/src/src/Controller/HealthController.php" ]; then
-    if grep -q "health/ready" "core/src/src/Controller/HealthController.php"; then
+if [ -f "brama-core/src/src/Controller/HealthController.php" ]; then
+    if grep -q "health/ready" "brama-core/src/src/Controller/HealthController.php"; then
         echo "✅ Core platform has enhanced health endpoints"
     else
         echo "❌ Core platform missing enhanced health endpoints"
@@ -109,9 +109,9 @@ echo
 echo "🔄 Checking signal handling in long-running commands..."
 
 signal_commands=(
-    "core/src/src/Command/CoderWorkerStartCommand.php"
-    "core/src/src/Command/SchedulerRunCommand.php"
-    "core/src/src/Command/TelegramPollCommand.php"
+    "brama-core/src/src/Command/CoderWorkerStartCommand.php"
+    "brama-core/src/src/Command/SchedulerRunCommand.php"
+    "brama-core/src/src/Command/TelegramPollCommand.php"
 )
 
 for cmd in "${signal_commands[@]}"; do
@@ -132,8 +132,8 @@ echo
 # Check E2E tests exist
 echo "🧪 Checking E2E test coverage..."
 
-if [ -f "core/tests/e2e/tests/smoke/health_test.js" ]; then
-    if grep -q "health/ready" "core/tests/e2e/tests/smoke/health_test.js"; then
+if [ -f "brama-core/tests/e2e/tests/smoke/health_test.js" ]; then
+    if grep -q "health/ready" "brama-core/tests/e2e/tests/smoke/health_test.js"; then
         echo "✅ E2E health tests include readiness checks"
     else
         echo "❌ E2E health tests missing readiness checks"
@@ -144,7 +144,7 @@ else
     exit 1
 fi
 
-if [ -f "core/tests/e2e/tests/smoke/deployment_config_test.js" ]; then
+if [ -f "brama-core/tests/e2e/tests/smoke/deployment_config_test.js" ]; then
     echo "✅ Deployment configuration E2E tests exist"
 else
     echo "❌ Deployment configuration E2E tests missing"

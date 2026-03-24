@@ -4,7 +4,7 @@
 
 `brama-workspace` is the local development workspace for the Brama platform. It owns the developer runtime layer: devcontainer setup, Docker Compose topology, local environment templates, bootstrap scripts, and operator-focused helper commands.
 
-Application source code stays in [`core`](/Users/nmdimas/work/brama-workspace/core), which remains a separate Git repository. The workspace repository is responsible for how the whole platform is assembled and run on a developer machine.
+Application source code stays in [`core`](/Users/nmdimas/work/brama-workspace/brama-core), which remains a separate Git repository. The workspace repository is responsible for how the whole platform is assembled and run on a developer machine.
 
 ## Repository Layout
 
@@ -12,7 +12,7 @@ Application source code stays in [`core`](/Users/nmdimas/work/brama-workspace/co
 - [`docker/`](/Users/nmdimas/work/brama-workspace/docker) contains all Docker Compose files (`compose.yaml`, `compose.*.yaml`), Dockerfiles, and shared Docker assets.
 - [`scripts/`](/Users/nmdimas/work/brama-workspace/scripts) contains bootstrap and operator helper scripts.
 - [`Makefile`](/Users/nmdimas/work/brama-workspace/Makefile) is the main entry point for day-to-day commands.
-- [`core/`](/Users/nmdimas/work/brama-workspace/core) contains the product codebase, tests, docs, and application-level assets.
+- [`brama-core/`](/Users/nmdimas/work/brama-workspace/brama-core) contains the product codebase, tests, docs, and application-level assets.
 
 ## Requirements
 
@@ -59,7 +59,7 @@ make bootstrap
 Inside the devcontainer, start with `core + postgres + redis`:
 
 ```bash
-cd core/src
+cd brama-core/src
 composer install
 php bin/console doctrine:migrations:migrate --no-interaction
 php bin/console server:start
@@ -121,14 +121,19 @@ make migrate
 
 Use this when you want the platform inside Kubernetes and prefer chart-driven configuration.
 
+Full operator guides:
+
+- [Kubernetes install guide (EN)](/workspaces/brama/brama-core/docs/guides/deployment/en/kubernetes-install.md)
+- [Kubernetes upgrade guide (EN)](/workspaces/brama/brama-core/docs/guides/deployment/en/kubernetes-upgrade.md)
+
 Chart location:
 
-- [Brama Helm chart](/Users/nmdimas/work/brama-workspace/core/deploy/charts/brama)
+- [Brama Helm chart](/Users/nmdimas/work/brama-workspace/brama-core/deploy/charts/brama)
 
 Useful values files:
 
-- local K3s/dev profile: [values-k3s-dev.yaml](/Users/nmdimas/work/brama-workspace/core/deploy/charts/brama/values-k3s-dev.yaml)
-- production-oriented example: [values-prod.example.yaml](/Users/nmdimas/work/brama-workspace/core/deploy/charts/brama/values-prod.example.yaml)
+- local K3s/dev profile: [values-k3s-dev.yaml](/Users/nmdimas/work/brama-workspace/brama-core/deploy/charts/brama/values-k3s-dev.yaml)
+- production-oriented example: [values-prod.example.yaml](/Users/nmdimas/work/brama-workspace/brama-core/deploy/charts/brama/values-prod.example.yaml)
 
 For local K3s with the workspace helpers:
 
@@ -139,6 +144,19 @@ make k8s-secrets
 make k8s-deploy
 make k8s-status
 ```
+
+Fastest path:
+
+```bash
+make k8s-ctx
+make k8s-setup
+make k8s-port-forward svc=core port=8080:80
+curl -sf http://localhost:8080/health
+```
+
+> `make k8s-load` currently assumes local K3s in Rancher Desktop and uses `rdctl`.
+> If you are on `kind`, `minikube`, or a remote cluster, prefer direct Helm install plus your own
+> image delivery workflow.
 
 This profile currently deploys:
 
@@ -152,10 +170,10 @@ This profile currently deploys:
 For a direct Helm install:
 
 ```bash
-helm upgrade --install brama core/deploy/charts/brama \
+helm upgrade --install brama brama-core/deploy/charts/brama \
   --namespace brama \
   --create-namespace \
-  -f core/deploy/charts/brama/values-k3s-dev.yaml \
+  -f brama-core/deploy/charts/brama/values-k3s-dev.yaml \
   --wait --timeout 5m
 ```
 
@@ -277,7 +295,7 @@ If you update devcontainer image assets, rebuild the container instead of trying
 `core` is the application repository. Typical examples:
 
 ```bash
-cd core
+cd brama-core
 git status
 ```
 
@@ -333,4 +351,4 @@ or rebuild the devcontainer if the issue is image-level rather than project-leve
 
 ## Related Repositories
 
-- [`core`](/Users/nmdimas/work/brama-workspace/core): application source, tests, and product documentation.
+- [`core`](/Users/nmdimas/work/brama-workspace/brama-core): application source, tests, and product documentation.

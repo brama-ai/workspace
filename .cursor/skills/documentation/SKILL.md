@@ -5,15 +5,15 @@ Manage bilingual project documentation following the folder-based language conve
 ## Directory Structure Rule
 
 ```
-core/docs/<domain>/<theme>/<chapter>/<lang>/<file>.md
+brama-core/docs/<domain>/<theme>/<chapter>/<lang>/<file>.md
 ```
 
 **Key constraint: no .md files in intermediate directories.** If a directory has subdirectories, it MUST NOT contain .md files directly. Documentation files live ONLY in leaf directories.
 
 Examples:
-- `core/docs/agents/ua/hello-agent.md` — correct (leaf)
-- `core/docs/agents/hello-agent.md` — WRONG (agents/ has ua/ and en/ subdirs)
-- `core/docs/plans/mvp-plan.md` — correct (plans/ is a leaf, English-only)
+- `brama-core/docs/agents/ua/hello-agent.md` — correct (leaf)
+- `brama-core/docs/agents/hello-agent.md` — WRONG (agents/ has ua/ and en/ subdirs)
+- `brama-core/docs/plans/mvp-plan.md` — correct (plans/ is a leaf, English-only)
 
 The only exception is `INDEX.md` (project root) — see below.
 
@@ -22,10 +22,10 @@ The only exception is `INDEX.md` (project root) — see below.
 `INDEX.md` (project root) is the **agent-facing index** of all documentation. It is:
 
 - **English-only** — intended for AI agents, not humans
-- **Always in the root** of `core/docs/` — the sole allowed .md file there
+- **Always in the root** of `brama-core/docs/` — the sole allowed .md file there
 - **Compact** — flat list of relative paths with one-line descriptions
 - **Mandatory to update** — every Create, Delete, or Move operation MUST update `INDEX.md` (project root)
-- **Links to `en/` versions** — for bilingual sections, INDEX.md always references the `en/` path (e.g., `core/docs/agents/en/hello-agent.md`)
+- **Links to `en/` versions** — for bilingual sections, INDEX.md always references the `en/` path (e.g., `brama-core/docs/agents/en/hello-agent.md`)
 
 Agents should load `INDEX.md` (project root) first to understand the documentation landscape before reading specific files.
 
@@ -46,23 +46,23 @@ For English-only sections, files go directly in the deepest topic folder without
 - `ua/` and `en/` are always the LAST level before .md files
 - Developer-facing technical docs (code contracts, runbooks) stay English-only — no `ua/en` split
 - Both `ua/` and `en/` files MUST have identical structure and headings; only language differs
-- Templates and reusable boilerplate go in `core/docs/templates/` (English-only)
-- Reference: `core/openspec/project.md` → Documentation Language
+- Templates and reusable boilerplate go in `brama-core/docs/templates/` (English-only)
+- Reference: `brama-core/openspec/project.md` → Documentation Language
 
 ## Domains
 
 | Domain | Path | Bilingual | Description |
 |--------|------|-----------|-------------|
-| agents | `core/docs/agents/` | yes | Agent PRDs and feature docs |
-| specs | `core/docs/specs/` | yes | Interface specifications |
-| plans | `core/docs/plans/` | no (English) | Development plans |
-| agent-requirements | `core/docs/agent-requirements/` | no (English) | Agent contracts & conventions |
-| neuron-ai | `core/docs/neuron-ai/` | no (English) | AI framework reference |
-| decisions | `core/docs/decisions/` | no (English) | Architecture Decision Records |
-| product | `core/docs/product/` | yes | Product vision, PRDs, brainstorms |
-| templates | `core/docs/templates/` | no (English) | Reusable doc templates |
-| features | `core/docs/features/` | yes | Feature documentation |
-| fetched | `core/docs/fetched/` | per-source | External docs fetched by `web-to-docs` skill |
+| agents | `brama-core/docs/agents/` | yes | Agent PRDs and feature docs |
+| specs | `brama-core/docs/specs/` | yes | Interface specifications |
+| plans | `brama-core/docs/plans/` | no (English) | Development plans |
+| agent-requirements | `brama-core/docs/agent-requirements/` | no (English) | Agent contracts & conventions |
+| neuron-ai | `brama-core/docs/neuron-ai/` | no (English) | AI framework reference |
+| decisions | `brama-core/docs/decisions/` | no (English) | Architecture Decision Records |
+| product | `brama-core/docs/product/` | yes | Product vision, PRDs, brainstorms |
+| templates | `brama-core/docs/templates/` | no (English) | Reusable doc templates |
+| features | `brama-core/docs/features/` | yes | Feature documentation |
+| fetched | `brama-core/docs/fetched/` | per-source | External docs fetched by `web-to-docs` skill |
 
 ## Operations
 
@@ -73,10 +73,10 @@ Create a new documentation file.
 **Input**: `<domain>/<filename>` (e.g., `agents/hello-agent`)
 
 **Steps**:
-1. Resolve target path: `core/docs/<domain>/`
+1. Resolve target path: `brama-core/docs/<domain>/`
 2. Verify target is a leaf directory (no subdirectories) OR create `ua/` and `en/` subdirs
-3. For bilingual: write `core/docs/<domain>/ua/<filename>.md` and `core/docs/<domain>/en/<filename>.md`
-4. For English-only: write `core/docs/<domain>/<filename>.md`
+3. For bilingual: write `brama-core/docs/<domain>/ua/<filename>.md` and `brama-core/docs/<domain>/en/<filename>.md`
+4. For English-only: write `brama-core/docs/<domain>/<filename>.md`
 5. Use the appropriate template (see Templates below)
 6. **Update `INDEX.md` (project root)**: add the new file entry to the appropriate section
 7. **Validate**: no .md files in intermediate directories after creation
@@ -88,7 +88,7 @@ Update an existing documentation file.
 **Input**: `<domain>/<filename>` (e.g., `agents/hello-agent`)
 
 **Steps**:
-1. Locate both files: `core/docs/<domain>/ua/<filename>.md` and `core/docs/<domain>/en/<filename>.md`
+1. Locate both files: `brama-core/docs/<domain>/ua/<filename>.md` and `brama-core/docs/<domain>/en/<filename>.md`
 2. If only legacy format exists, migrate to folder structure first
 3. Apply changes to both files, keeping structure and headings in sync
 4. Verify both files have the same sections after update
@@ -100,8 +100,8 @@ Remove a documentation file pair.
 **Input**: `<domain>/<filename>` (e.g., `agents/hello-agent`)
 
 **Steps**:
-1. Remove `core/docs/<domain>/ua/<filename>.md`
-2. Remove `core/docs/<domain>/en/<filename>.md`
+1. Remove `brama-core/docs/<domain>/ua/<filename>.md`
+2. Remove `brama-core/docs/<domain>/en/<filename>.md`
 3. If `ua/` or `en/` folder is now empty, remove it
 4. **Update `INDEX.md` (project root)**: remove the deleted file entry
 5. Check for references to the deleted doc in other files and flag them
@@ -125,11 +125,11 @@ Convert legacy files to proper structure.
 Run this check after any operation:
 
 ```
-1. For each directory in core/docs/:
-     IF directory has subdirectories AND contains .md files (except core/docs/INDEX.md):
+1. For each directory in brama-core/docs/ and docs/:
+     IF directory has subdirectories AND contains .md files (except ./INDEX.md):
        → VIOLATION — move .md files to appropriate leaf directory
 
-2. Every .md file under core/docs/ (except INDEX.md) MUST have a corresponding entry in core/docs/INDEX.md
+2. Every .md file under brama-core/docs/ or docs/ MUST have a corresponding entry in ./INDEX.md (project root)
 ```
 
 ## Templates

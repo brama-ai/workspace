@@ -19,18 +19,28 @@ ensure_dir() {
 ensure_dir /home/vscode/.cache
 ensure_dir /home/vscode/.npm
 ensure_dir /home/vscode/.bun
+ensure_dir /home/vscode/.codex
+ensure_dir /home/vscode/.cursor
+ensure_dir /home/vscode/.gemini
 ensure_dir /home/vscode/.local
 ensure_dir /home/vscode/.local/state
 ensure_dir /home/vscode/.local/share
 ensure_dir /home/vscode/.config
+ensure_dir /home/vscode/.config/Cursor
+ensure_dir /home/vscode/.config/opencode
 ensure_dir /commandhistory
 
 fix_dir /home/vscode/.antigravity-server
 fix_dir /home/vscode/.vscode-server
 fix_dir /home/vscode/.local
 fix_dir /home/vscode/.claude
+fix_dir /home/vscode/.codex
+fix_dir /home/vscode/.cursor
 fix_dir /home/vscode/.gemini
+fix_dir /home/vscode/.npm
+fix_dir /home/vscode/.bun
 fix_dir /home/vscode/.kube
+fix_dir /home/vscode/.config/Cursor
 fix_dir /home/vscode/.config/opencode
 fix_dir /home/vscode/.local/share/opencode
 fix_dir /commandhistory
@@ -73,13 +83,19 @@ if [ -f /home/vscode/.kube/config ]; then
   chown vscode:vscode "$kube_dev" 2>/dev/null || true
 fi
 
-# SSH agent: start once per container lifecycle so git push doesn't re-ask for passphrase.
-# Keys are not auto-added — each developer runs `ssh-add <key>` once after container start.
+# SSH agent: prefer the host agent forwarded by Dev Containers.
+# Only fall back to a container-local agent when no forwarded socket is available.
 ssh_env="/home/vscode/.ssh/agent.env"
-if [ -f "$ssh_env" ]; then
+if [ -z "${SSH_AUTH_SOCK:-}" ] && [ -f "$ssh_env" ]; then
   . "$ssh_env" > /dev/null
 fi
-if ! ssh-add -l &>/dev/null; then
+
+if [ -n "${SSH_AUTH_SOCK:-}" ] && ssh-add -l &>/dev/null; then
+  :
+elif [ -n "${SSH_AUTH_SOCK:-}" ] && [ -S "${SSH_AUTH_SOCK}" ]; then
+  # A forwarded agent may legitimately have no identities yet.
+  :
+else
   eval "$(ssh-agent -s)" > /dev/null
   echo "export SSH_AUTH_SOCK=$SSH_AUTH_SOCK" > "$ssh_env"
   echo "export SSH_AGENT_PID=$SSH_AGENT_PID" >> "$ssh_env"

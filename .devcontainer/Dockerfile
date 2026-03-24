@@ -67,6 +67,11 @@ RUN php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');" \
     && php composer-setup.php --install-dir=/usr/local/bin --filename=composer \
     && rm composer-setup.php
 
+# Install pip
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3-pip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # Install Go dynamically based on architecture
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "amd64" ]; then GOARCH="amd64"; else GOARCH="arm64"; fi && \
@@ -77,7 +82,7 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 RUN npm install -g opencode-ai bun typescript ts-node @fission-ai/openspec intelephense @anthropic-ai/claude-code
 
 # Preinstall Playwright browser dependencies and binaries so they cache in the image.
-COPY core/tests/e2e/package.json core/tests/e2e/package-lock.json /tmp/tests-e2e/
+COPY brama-core/tests/e2e/package.json brama-core/tests/e2e/package-lock.json /tmp/tests-e2e/
 RUN cd /tmp/tests-e2e \
     && npm ci \
     && npx playwright install --with-deps \

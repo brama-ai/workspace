@@ -7,9 +7,9 @@ services:
     env_file:
       - ./openclaw/.env
     environment:
-      PLATFORM_CORE_URL: http://core
-      PLATFORM_DISCOVERY_URL: http://core/api/v1/a2a/discovery
-      PLATFORM_INVOKE_URL: http://core/api/v1/a2a/send-message
+      PLATFORM_CORE_URL: http://brama-core
+      PLATFORM_DISCOVERY_URL: http://brama-core/api/v1/a2a/discovery
+      PLATFORM_INVOKE_URL: http://brama-core/api/v1/a2a/send-message
       OPENSEARCH_URL: http://opensearch:9200
       OTEL_EXPORTER_OTLP_ENDPOINT: http://langfuse-web:3000/api/public/otel
       OTEL_EXPORTER_OTLP_HEADERS: Authorization=Basic bGZfcGtfbG9jYWxfZGV2OmxmX3NrX2xvY2FsX2Rldg==

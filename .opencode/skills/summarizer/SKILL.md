@@ -6,8 +6,8 @@ description: "Summarizer role: final pipeline summary format, Ukrainian output"
 ## Summary Format
 
 Write in **Ukrainian**. File naming convention:
-- **Builder** workflow: `builder/tasks/summary/b-<timestamp>-<slug>.md`
-- **Ultraworks** workflow: `builder/tasks/summary/u-<timestamp>-<slug>.md`
+- **Foundry** workflow: `tasks/<slug>--foundry/summary.md`
+- **Ultraworks** workflow: `tasks/<slug>--ultraworks/summary.md`
 
 Determine the workflow from handoff.md (`**Workflow:**` field) or from the pipeline context.
 
@@ -15,7 +15,7 @@ Determine the workflow from handoff.md (`**Workflow:**` field) or from the pipel
 # <Назва задачі>
 
 **Статус:** PASS | FAIL
-**Workflow:** Builder | Ultraworks
+**Workflow:** Foundry | Ultraworks
 **Профіль:** <profile name>
 **Тривалість:** Xm Ys
 
@@ -41,7 +41,7 @@ Determine the workflow from handoff.md (`**Workflow:**` field) or from the pipel
 
 ## Files Read By Agent
 ### coder
-- `builder/pipeline.sh`
+- `agentic-development/lib/foundry-run.sh`
 - `.opencode/skills/summarizer/SKILL.md`
 
 ## Труднощі
@@ -70,9 +70,9 @@ Determine the workflow from handoff.md (`**Workflow:**` field) or from the pipel
 | Source | Path | What to extract |
 |--------|------|-----------------|
 | Handoff | `.opencode/pipeline/handoff.md` | What each agent did, verdicts |
-| Checkpoint | `builder/tasks/artifacts/<slug>/checkpoint.json` | **Actual model used** (may differ from primary due to fallback), status, duration, tokens |
+| Checkpoint | `tasks/<slug>--foundry/artifacts/checkpoint.json` | **Actual model used** (may differ from primary due to fallback), status, duration, tokens |
 | Meta files | `.opencode/pipeline/logs/*_*.meta.json` | Tokens, cost, duration, **actual model** |
-| Telemetry | `builder/tasks/artifacts/<slug>/telemetry/*.json` | Tools, files read, actual cost per agent |
+| Telemetry | `tasks/<slug>--foundry/artifacts/telemetry/*.json` | Tools, files read, actual cost per agent |
 | Plan | `pipeline-plan.json` | Profile, reasoning, apps |
 | Audit reports | `.opencode/pipeline/reports/*_audit.md` | Verdict, findings |
 
@@ -80,16 +80,16 @@ Determine the workflow from handoff.md (`**Workflow:**` field) or from the pipel
 
 Prefer generating the telemetry block via the helper script instead of hand-building the tables.
 
-### Builder
+### Foundry
 
 ```bash
-builder/cost-tracker.sh summary-block --workflow builder --task-slug "<slug>"
+agentic-development/lib/cost-tracker.sh summary-block --workflow builder --task-slug "<slug>"
 ```
 
 ### Ultraworks
 
 ```bash
-builder/cost-tracker.sh summary-block --workflow ultraworks
+agentic-development/lib/cost-tracker.sh summary-block --workflow ultraworks
 ```
 
 If the helper finds no telemetry for a section, preserve the section header and print `- none recorded`.
@@ -180,4 +180,4 @@ Use 🔴 for blocking issues (failed/incomplete), 🟡 for warnings (slow/expens
 |------|------|------|
 | Handoff bus | `.opencode/pipeline/handoff.md` | Always — primary data |
 | Pipeline plan | `pipeline-plan.json` | If exists |
-| Task file | `builder/tasks/in-progress/*.md` or `done/*.md` | Original task description |
+| Task file | `tasks/<slug>--foundry/task.md` | Original task description |

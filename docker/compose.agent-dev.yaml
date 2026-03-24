@@ -15,7 +15,7 @@ services:
       DATABASE_URL: postgresql://dev_agent:dev_agent@postgres:5432/dev_agent?serverVersion=16&charset=utf8
       OPENSEARCH_URL: http://opensearch:9200
       APP_INTERNAL_TOKEN: dev-internal-token
-      PLATFORM_CORE_URL: http://core
+      PLATFORM_CORE_URL: http://brama-core
       ADMIN_PUBLIC_URL: http://localhost:8088/admin/tasks
       LITELLM_BASE_URL: http://litellm:4000
       LITELLM_API_KEY: dev-key

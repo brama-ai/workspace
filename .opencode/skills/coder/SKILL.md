@@ -20,7 +20,7 @@ description: "Coder role: implementation workflow, tech stack, per-app targets, 
 
 | App | Test | Analyse | CS Fix | Migrate |
 |-----|------|---------|--------|---------|
-| core/src/ | `make test` | `make analyse` | `make cs-fix` | `make migrate` |
+| brama-core/src/ | `make test` | `make analyse` | `make cs-fix` | `make migrate` |
 | agents/knowledge-agent/ | `make knowledge-test` | `make knowledge-analyse` | `make knowledge-cs-fix` | `make knowledge-migrate` |
 | agents/hello-agent/ | `make hello-test` | `make hello-analyse` | `make hello-cs-fix` | — |
 | agents/dev-reporter-agent/ | `make dev-reporter-test` | `make dev-reporter-analyse` | `make dev-reporter-cs-fix` | `make dev-reporter-migrate` |
@@ -80,9 +80,9 @@ Every agent MUST expose:
 
 | What | Path | When |
 |------|------|------|
-| Agent conventions | `core/docs/agent-requirements/conventions.md` | Creating/modifying agents |
-| OpenSpec proposal | `core/openspec/changes/<id>/proposal.md` | Any spec-driven task |
-| Spec deltas | `core/openspec/changes/<id>/specs/` | Implementation details |
-| Existing specs | `openspec list --specs` | Avoid duplication |
-| Test cases | `core/docs/agent-requirements/test-cases.md` | Agent endpoint implementation |
-| E2E patterns | `core/docs/agent-requirements/e2e-testing.md` | Integration test setup |
+| Agent conventions | `brama-core/docs/agent-requirements/conventions.md` | Creating/modifying agents |
+| OpenSpec proposal | `<project>/openspec/changes/<id>/proposal.md` | Any spec-driven task |
+| Spec deltas | `<project>/openspec/changes/<id>/specs/` | Implementation details |
+| Existing specs | `cd <project> && openspec list --specs` | Avoid duplication |
+| Test cases | `brama-core/docs/agent-requirements/test-cases.md` | Agent endpoint implementation |
+| E2E patterns | `brama-core/docs/agent-requirements/e2e-testing.md` | Integration test setup |

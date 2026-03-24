@@ -1,0 +1,286 @@
+# Foundry
+
+Foundry is the sequential, queue-driven runtime for task execution. The public CLI is [`agentic-development/foundry.sh`](/Users/nmdimas/work/brama-workspace/agentic-development/foundry.sh).
+
+## Overview
+
+Foundry uses task directories as its queue and state store:
+
+```text
+tasks/<slug>--foundry/
+  task.md
+  handoff.md
+  state.json
+  events.jsonl
+  summary.md
+  meta.json
+  artifacts/
+```
+
+Execution flow:
+
+```text
+task.md -> foundry.sh -> foundry-run.sh -> agent chain -> summary.md
+```
+
+The queue is not a separate service. The queue is the set of `tasks/*--foundry/` directories whose state is `pending`.
+
+## Quick Start
+
+### Setup
+
+```bash
+./agentic-development/foundry.sh setup
+make builder-setup
+```
+
+### Open the Monitor
+
+```bash
+./agentic-development/foundry.sh
+```
+
+### Check Status
+
+```bash
+./agentic-development/foundry.sh status
+```
+
+### Run a Task Immediately
+
+```bash
+./agentic-development/foundry.sh run "Add streaming support to A2A gateway"
+./agentic-development/foundry.sh run --task-file /absolute/path/to/task.md
+```
+
+### Start Queue Processing in Background
+
+```bash
+./agentic-development/foundry.sh headless
+```
+
+This starts the Foundry batch watcher in the background and keeps polling the shared [`tasks/`](/Users/nmdimas/work/brama-workspace/tasks) root for pending Foundry tasks.
+
+Stop it with:
+
+```bash
+./agentic-development/foundry.sh stop
+```
+
+## Creating Tasks
+
+### Immediate mode
+
+Use `run` when you want Foundry to materialize the task directory and start right away:
+
+```bash
+./agentic-development/foundry.sh run --task-file /absolute/path/to/task.md
+```
+
+### Queue-first mode
+
+Use this when you want a pool of pending tasks that background processing will consume later:
+
+```bash
+mkdir -p tasks/add-streaming-support--foundry
+cp /absolute/path/to/task.md tasks/add-streaming-support--foundry/task.md
+```
+
+If `state.json` does not exist yet, Foundry treats the task as `pending`.
+
+## Task Pool Semantics
+
+Foundry's task pool lives at the repository root:
+
+```text
+tasks/
+```
+
+Relevant directories for Foundry are:
+
+```text
+tasks/*--foundry/
+```
+
+Each task directory is one unit of work. `state.json` decides whether it is:
+
+- `pending`
+- `in_progress`
+- `completed`
+- `failed`
+- `suspended`
+- `cancelled`
+
+## Background Workers
+
+The runtime exposes worker-related flags and env vars:
+
+```bash
+FOUNDRY_WORKERS=2 ./agentic-development/foundry.sh headless
+./agentic-development/foundry.sh batch --workers 2
+```
+
+Current implementation detail:
+
+- the interface accepts a worker count
+- the current batch runtime still processes serially
+- only one active queue consumer should run in one checkout
+- `.opencode/pipeline/.batch.lock` enforces that constraint
+
+So today the practical throughput per checkout is one active Foundry task at a time.
+
+## Main Commands
+
+```bash
+./agentic-development/foundry.sh
+./agentic-development/foundry.sh status
+./agentic-development/foundry.sh headless
+./agentic-development/foundry.sh stop
+./agentic-development/foundry.sh run --task-file /absolute/path/to/task.md
+./agentic-development/foundry.sh batch --watch
+./agentic-development/foundry.sh retry
+./agentic-development/foundry.sh stats
+./agentic-development/foundry.sh env-check
+```
+
+Useful targeted runs:
+
+```bash
+./agentic-development/foundry.sh run --skip-architect "implement change add-a2a-streaming"
+./agentic-development/foundry.sh run --from coder "Continue implementing add-a2a-streaming"
+./agentic-development/foundry.sh run --only validator "Run PHPStan on core"
+./agentic-development/foundry.sh run --audit "Add agent feature X"
+```
+
+## Logs and Artifacts
+
+Wrapper-level runtime logs:
+
+- [`agentic-development/runtime/logs/foundry.log`](/Users/nmdimas/work/brama-workspace/agentic-development/runtime/logs/foundry.log)
+- `agentic-development/runtime/logs/foundry-headless.log`
+
+Execution logs and reports:
+
+- `.opencode/pipeline/logs/`
+- `.opencode/pipeline/reports/`
+
+Per-task outputs:
+
+- `tasks/<slug>--foundry/handoff.md`
+- `tasks/<slug>--foundry/summary.md`
+- `tasks/<slug>--foundry/artifacts/`
+
+## Monitor and Admin UI
+
+CLI monitor:
+
+```bash
+./agentic-development/foundry.sh
+```
+
+Core admin UI, when core is running:
+
+- `/admin/coder`
+- `/admin/coder/create`
+- `/admin/coder/{id}`
+
+## Pipeline Profiles
+
+Planner chooses the profile based on task analysis:
+
+| Profile | Agents | Use Case |
+|---------|--------|----------|
+| `docs-only` | documenter → summarizer | Documentation only |
+| `quality-gate` | coder → validator → summarizer | Fix lint/phpstan/cs |
+| `tests-only` | coder → tester → summarizer | Write missing tests |
+| `quick-fix` | coder → validator → summarizer | Typos, config, 1-3 files |
+| `standard` | coder → validator → tester → summarizer | Normal feature |
+| `standard+docs` | coder → validator → tester → documenter → summarizer | Feature + docs |
+| `complex` | coder → validator → tester → summarizer | Multi-service, migrations |
+| `complex+agent` | coder → auditor → validator → tester → summarizer | Agent modifications |
+| `bugfix` | investigator → coder → validator → tester → summarizer | Bug fix (no spec change) |
+| `bugfix+spec` | investigator → architect → coder → validator → tester → summarizer | Bug that changes spec |
+
+## Environment Check
+
+Before running the pipeline, check your environment:
+
+```bash
+./agentic-development/foundry.sh env-check
+
+# Check specific app
+./agentic-development/foundry.sh env-check --app core
+
+# Multiple apps
+./agentic-development/foundry.sh env-check --app core --app knowledge-agent
+
+# JSON output
+./agentic-development/foundry.sh env-check --json
+```
+
+Exit codes: `0` = OK, `1` = warnings, `2` = critical (pipeline should stop).
+
+The Foundry runtime runs env-check automatically before task execution unless explicitly disabled.
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MONITOR_WORKERS` / `FOUNDRY_WORKERS` | `1` | Compatibility worker count; current runtime still consumes tasks serially |
+| `MONITOR_AUTOSTART` | `true` | Monitor default for auto-start behavior |
+| `MONITOR_LOG_RETENTION` | `7` | Days to keep logs |
+| `PIPELINE_MAX_RETRIES` | `2` | Retries per agent |
+| `PIPELINE_RETRY_DELAY` | `30` | Seconds between retries |
+
+### Agent Timeouts
+
+| Agent | Default | Env Variable |
+|-------|---------|-------------|
+| Investigator | 15 min | `PIPELINE_TIMEOUT_INVESTIGATOR` |
+| Architect | 45 min | `PIPELINE_TIMEOUT_ARCHITECT` |
+| Coder | 60 min | `PIPELINE_TIMEOUT_CODER` |
+| Validator | 20 min | `PIPELINE_TIMEOUT_VALIDATOR` |
+| Tester | 30 min | `PIPELINE_TIMEOUT_TESTER` |
+| Documenter | 15 min | `PIPELINE_TIMEOUT_DOCUMENTER` |
+| Auditor | 20 min | `PIPELINE_TIMEOUT_AUDITOR` |
+| Summarizer | 15 min | `PIPELINE_TIMEOUT_SUMMARIZER` |
+
+### Model Configuration
+
+Models are configured in `.opencode/agents.yaml`:
+
+```bash
+# Show current config
+./agentic-development/agents-config.sh show
+
+# Change model for an agent
+./agentic-development/agents-config.sh set coder claude-opus-4-20250514
+
+# Switch strategy
+./agentic-development/agents-config.sh strategy free_only
+
+# Validate
+./agentic-development/validate-config.sh
+```
+
+## Output
+
+Each Foundry run produces:
+
+- Git branch: `pipeline/<task-slug>`
+- Summary: `tasks/<slug>--foundry/summary.md`
+- Handoff: `tasks/<slug>--foundry/handoff.md`
+- State: `tasks/<slug>--foundry/state.json`
+- Events: `tasks/<slug>--foundry/events.jsonl`
+- Artifacts: `tasks/<slug>--foundry/artifacts/`
+- Reports: `.opencode/pipeline/reports/`
+
+## Make Targets
+
+```bash
+make pipeline TASK="Add feature X"      # Run single task
+make pipeline-batch  # Batch run
+make builder-setup                       # Legacy alias for initial setup
+```

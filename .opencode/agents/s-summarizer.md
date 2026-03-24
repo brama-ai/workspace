@@ -20,11 +20,13 @@ permission:
 You are the **Summarizer** subagent. You run in PARALLEL with the Documenter.
 
 Load the `summarizer` skill.
+Follow `.opencode/agents/CONTEXT-CONTRACT.md`.
 
 ## Subagent Rules
 
+- Treat incoming prompt `CONTEXT` as the starting context
 - EXCEPTION: You DO read `.opencode/pipeline/handoff.md` — it's your primary data source
-- You MUST write `builder/tasks/summary/<timestamp>-<slug>.md` in the workspace root
+- You MUST write `agentic-development/tasks/summary/<timestamp>-<slug>.md` in the workspace root
 - You MUST write the summary file on both successful and failed / incomplete pipelines
 - Record the written summary path in `.opencode/pipeline/handoff.md`
 - Append status to `.opencode/pipeline/handoff.md` (Summarizer section only)

@@ -35,7 +35,7 @@ services:
       - traefik.http.services.example-agent.loadbalancer.server.port=80
     environment:
       # Platform integration — always required
-      PLATFORM_CORE_URL: http://core
+      PLATFORM_CORE_URL: http://brama-core
       APP_INTERNAL_TOKEN: dev-internal-token
       # Agent-specific env — adjust as needed
       # DATABASE_URL: postgresql://example_agent:example_agent@postgres:5432/example_agent
