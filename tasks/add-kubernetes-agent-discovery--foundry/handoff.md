@@ -84,10 +84,12 @@ The current `AgentDiscoveryService` only works in Docker Compose (queries Traefi
 
 ## Validator
 
-- **Status**: pending
-- **PHPStan**: —
-- **CS-check**: —
-- **Files fixed**: —
+- **Status**: completed
+- **PHPStan**:
+  - `brama-core`: pass
+- **CS-check**:
+  - `brama-core`: pass
+- **Files fixed**: none
 
 ## Tester
 
@@ -113,3 +115,4 @@ The current `AgentDiscoveryService` only works in Docker Compose (queries Traefi
 - **Next task recommendation**: —
 
 ---
+- **Commit (coder)**: c8f9d51
