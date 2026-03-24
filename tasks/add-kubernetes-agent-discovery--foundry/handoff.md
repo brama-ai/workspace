@@ -110,9 +110,12 @@ The current `AgentDiscoveryService` only works in Docker Compose (queries Traefi
 
 ## Summarizer
 
-- **Status**: pending
-- **Summary file**: —
-- **Next task recommendation**: —
+- **Status**: completed
+- **Summary file**: `/workspaces/brama/tasks/add-kubernetes-agent-discovery--foundry/summary.md`
+- **Next task recommendation**: Add mandatory Helm chart validation to Foundry validator for `brama-core`
+- **Final recommendation**: Mark as **PIPELINE INCOMPLETE** until `helm template` is executed successfully for `brama-core/deploy/charts/brama`.
 
 ---
 - **Commit (coder)**: c8f9d51
+- **Commit (validator)**: 40c3fba
+- **PIPELINE INCOMPLETE**
