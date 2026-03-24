@@ -99,3 +99,4 @@ Auto-generated Foundry bugfix task from E2E failure analysis.
 
 - **Commit (coder)**: 24591e0
 - **Commit (validator)**: db9a963
+- **Commit (summarizer)**: fef5b38

@@ -1,0 +1,36 @@
+{
+  "task_id": "fix-e2e-failure-admin-agents-page-running-discovery-populate--foundry",
+  "workflow": "foundry",
+  "started_at": "2026-03-24T17:38:10.578352Z",
+  "attempt": 1,
+  "status": "in_progress",
+  "current_step": "investigator",
+  "resume_from": "investigator",
+  "updated_at": "2026-03-24T19:12:30.092581Z",
+  "task_file": "/workspaces/brama/tasks/fix-e2e-failure-admin-agents-page-running-discovery-populate--foundry/task.md",
+  "branch": "pipeline/fix-e2e-failure-admin-agents-page-running-discovery-populate",
+  "agents": [
+    {
+      "agent": "planner",
+      "status": "done",
+      "model": "anthropic/claude-opus-4-6",
+      "duration_seconds": 90,
+      "input_tokens": 15,
+      "output_tokens": 3173,
+      "cost": 1.1473,
+      "call_count": 1,
+      "updated_at": "2026-03-24T19:12:26.965555Z"
+    },
+    {
+      "agent": "investigator",
+      "status": "done",
+      "model": "anthropic/claude-opus-4-6",
+      "duration_seconds": 0,
+      "input_tokens": 15,
+      "output_tokens": 3173,
+      "cost": 1.1473,
+      "call_count": 1,
+      "updated_at": "2026-03-24T19:12:30.092572Z"
+    }
+  ]
+}
