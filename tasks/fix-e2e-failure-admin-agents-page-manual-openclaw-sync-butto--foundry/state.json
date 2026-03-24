@@ -3,10 +3,10 @@
   "workflow": "foundry",
   "started_at": "2026-03-24T21:36:53.249447Z",
   "attempt": 1,
-  "status": "in_progress",
-  "current_step": "u-summarizer",
-  "resume_from": "u-summarizer",
-  "updated_at": "2026-03-24T22:53:42.718848Z",
+  "status": "completed",
+  "current_step": null,
+  "resume_from": null,
+  "updated_at": "2026-03-24T22:54:04.268083Z",
   "task_file": "/workspaces/brama/tasks/fix-e2e-failure-admin-agents-page-manual-openclaw-sync-butto--foundry/task.md",
   "branch": "pipeline/fix-e2e-failure-admin-agents-page-manual-openclaw-sync-butto",
   "agents": [
@@ -47,12 +47,12 @@
       "agent": "u-summarizer",
       "status": "done",
       "model": "openai/gpt-5.4",
-      "duration_seconds": 262,
+      "duration_seconds": 271,
       "input_tokens": 35956,
       "output_tokens": 11211,
       "cost": 0.2738,
       "call_count": 1,
-      "updated_at": "2026-03-24T22:53:42.718824Z"
+      "updated_at": "2026-03-24T22:53:55.461990Z"
     }
   ]
 }
