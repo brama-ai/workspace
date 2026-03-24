@@ -93,8 +93,6 @@ trap 'cleanup_all; release_lock' EXIT
 
 # ── Worker PID tracking ──────────────────────────────────────────────
 declare -A WORKER_PIDS=()      # worker_id -> PID
-  # Cancel orphaned in_progress tasks
-  foundry_cancel_in_progress_tasks
 declare -A WORKER_TASKS=()     # worker_id -> task_dir
 BATCH_FAILED=false
 
