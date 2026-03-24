@@ -45,3 +45,112 @@ Rollback plan (documented BEFORE deploy):
 Command:
   docker build -t brama/hello-agent:dev brama-agents/hello-agent/
 
+Result  : SUCCESS
+Image   : brama/hello-agent:dev (sha256:1f03ff3b2cd8...)
+Arch    : linux/arm64 (devcontainer native)
+Note    : arm64 image cannot run on amd64 server → see STEP 1b
+
+────────────────────────────────────────────────────────────────────────────────
+[STEP 1b] ARCHITECTURE MISMATCH — BUILD ON SERVER
+────────────────────────────────────────────────────────────────────────────────
+Problem : devcontainer is arm64, server is amd64 (x86_64)
+Error   : exec /usr/local/bin/docker-php-entrypoint: exec format error
+
+Solution: Build image directly on the server using nerdctl + buildkitd
+
+Commands executed on server (46.62.135.86):
+  # 1. Transfer source code
+  tar czf /tmp/hello-agent-src.tar.gz -C brama-agents/hello-agent .
+  scp /tmp/hello-agent-src.tar.gz root@46.62.135.86:/tmp/
+
+  # 2. Extract on server
+  mkdir -p /tmp/hello-agent-build
+  tar xzf /tmp/hello-agent-src.tar.gz -C /tmp/hello-agent-build
+
+  # 3. Build with nerdctl (uses buildkitd, produces native amd64 image)
+  nerdctl --namespace k8s.io build -t brama/hello-agent:dev /tmp/hello-agent-build/
+
+  # 4. Import into K3S containerd
+  nerdctl --namespace k8s.io save brama/hello-agent:dev | k3s ctr images import -
+
+Result  : SUCCESS
+Image   : docker.io/brama/hello-agent:dev (sha256:e017de4d0798...)
+Arch    : linux/amd64
+Size    : 215.3 MiB (in K3S containerd)
+
+────────────────────────────────────────────────────────────────────────────────
+[STEP 2] TRANSFER HELM CHART TO SERVER
+────────────────────────────────────────────────────────────────────────────────
+Commands:
+  tar czf /tmp/brama-chart.tar.gz -C brama-core/deploy/charts brama
+  scp /tmp/brama-chart.tar.gz root@46.62.135.86:/tmp/
+  # On server:
+  mkdir -p /tmp/brama-deploy
+  tar xzf /tmp/brama-chart.tar.gz -C /tmp/brama-deploy
+
+Result  : SUCCESS
+Chart   : /tmp/brama-deploy/brama/ (ai-community-platform-0.1.0)
+
+────────────────────────────────────────────────────────────────────────────────
+[STEP 3] HELM UPGRADE
+────────────────────────────────────────────────────────────────────────────────
+Command (on server):
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  helm upgrade --install brama /tmp/brama-deploy/brama \
+    --namespace brama \
+    -f /tmp/brama-deploy/brama/values-k3s-dev.yaml \
+    --wait --timeout 5m
+
+Note    : helm upgrade ran in background; pod was restarted manually after
+          image import to pick up new amd64 image:
+  kubectl rollout restart deployment/brama-agent-hello -n brama
+
+Result  : SUCCESS
+Revision: 5 (deployed)
+Chart   : brama-0.1.0
+
+────────────────────────────────────────────────────────────────────────────────
+[STEP 4] POST-DEPLOY VERIFICATION
+────────────────────────────────────────────────────────────────────────────────
+Timestamp : 2026-03-24T23:55:35Z
+
+Pods (after deploy):
+  brama-agent-hello-fdd5bdd4c-nhr8c       1/1  Running  0   59s   ← NEW pod
+  brama-core-57cc9f47dd-cfrk4             1/1  Running  0   14m
+  brama-core-scheduler-6d59dcb466-xhq4z   1/1  Running  3   14m
+  brama-postgresql-0                      1/1  Running  0   11h
+  brama-rabbitmq-0                        1/1  Running  0   11h
+  brama-redis-master-0                    1/1  Running  0   11h
+
+Health check:
+  Command : kubectl exec -n brama brama-agent-hello-fdd5bdd4c-nhr8c -- curl -sf http://localhost/health
+  Response: {"status":"ok","service":"hello-agent","version":"0.1.0","timestamp":"2026-03-24T23:55:35+00:00"}
+  Result  : PASSED ✓
+
+Image verification:
+  Image   : brama/hello-agent:dev
+  Node    : ubuntu-8gb-hel1-1/46.62.135.86
+  Started : Tue, 24 Mar 2026 23:54:32 +0000
+  Ready   : True
+
+Helm release (after deploy):
+  NAME   NAMESPACE  REVISION  STATUS    CHART        APP VERSION
+  brama  brama      5         deployed  brama-0.1.0  0.1.0
+
+================================================================================
+DEPLOYMENT RESULT: SUCCESS
+================================================================================
+Strategy  : helm-upgrade
+Namespace : brama
+Release   : brama (revision 5)
+Agent     : hello-agent
+Pod       : brama-agent-hello-fdd5bdd4c-nhr8c
+Health    : {"status":"ok","service":"hello-agent","version":"0.1.0"}
+
+Rollback plan:
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  helm rollback brama 4 -n brama          # roll back to revision 4
+  kubectl rollout status deployment/brama-agent-hello -n brama
+  kubectl exec -n brama <pod> -- curl -sf http://localhost/health
+================================================================================
+
