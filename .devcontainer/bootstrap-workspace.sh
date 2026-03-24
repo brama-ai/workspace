@@ -39,8 +39,9 @@ job_opencode="$(run_job "OpenCode setup" "${BOOTSTRAP_DIR}/install-opencode.sh")
 job_php="$(run_job "PHP dependencies" "${BOOTSTRAP_DIR}/install-php-deps.sh")"
 job_node="$(run_job "Node dependencies" "${BOOTSTRAP_DIR}/install-node-deps.sh")"
 job_e2e="$(run_job "E2E dependencies" "${BOOTSTRAP_DIR}/install-e2e-deps.sh")"
+job_monitor="$(run_job "Foundry monitor" "${BOOTSTRAP_DIR}/install-monitor.sh")"
 
-wait_for_jobs "${job_opencode}" "${job_php}" "${job_node}" "${job_e2e}"
+wait_for_jobs "${job_opencode}" "${job_php}" "${job_node}" "${job_e2e}" "${job_monitor}"
 
 "${BOOTSTRAP_DIR}/run-migrations.sh"
 

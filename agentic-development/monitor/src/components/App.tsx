@@ -539,8 +539,8 @@ function DetailView({ task, rows }: { task: TaskInfo; rows: number }) {
       } else {
         setContent(["No task description found."]);
       }
-    } catch {
-      setContent(["Cannot read task details."]);
+    } catch (err: any) {
+      setContent(["Cannot read task details.", `Error: ${err?.message || err}`, `Dir: ${task.dir}`]);
     }
   }, [task.dir, rows]);
 

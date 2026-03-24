@@ -7,10 +7,10 @@
 Builder pipeline використовує спеціалізовані AI агенти, кожен з яких виконує певну роль в процесі розробки:
 
 ```
-Task → Planner → Preflight → Env-Check → Architect → Coder → Validator → Tester → Documenter → Summarizer → [Deployer]
+Task → u-Planner → Preflight → Env-Check → u-Architect → u-Coder → u-Validator → u-Tester → u-Documenter → u-Summarizer → [u-Deployer]
                        ↓           ↓
                  preflight()  env_check()    ↓
-                                              Auditor (optional)
+                                              u-Auditor (optional)
                                                                                                               ↑
                                                                                                     Phase 8 (opt-in, deploy: true)
 ```
@@ -26,15 +26,15 @@ Task → Planner → Preflight → Env-Check → Architect → Coder → Validat
 
 | Агент | Роль | Вендор | Модель |
 |-------|------|--------|--------|
-| **planner** | Аналізує задачу, обирає profile та список агентів | Anthropic | claude-opus-4-6 |
+| **u-planner** | Аналізує задачу, обирає profile та список агентів | Anthropic | claude-opus-4-6 |
 | **u-investigator** | Досліджує баги: root cause, reproduction, impact scope | Anthropic | claude-opus-4-6 |
-| **architect** | Створює OpenSpec proposal (specs, design, tasks) | Anthropic | claude-opus-4-6 |
-| **coder** | Пише код на основі specs | Anthropic | claude-sonnet-4-6 |
-| **auditor** | Quality gate — перевіряє якість agent-related змін | Anthropic | claude-opus-4-6 |
-| **validator** | Запускає PHPStan, CS-Fixer, виправляє помилки | MiniMax | MiniMax-M2.5-highspeed |
-| **tester** | Запускає тести, пише нові, виправляє failures | OpenCode Go | kimi-k2.5 |
+| **u-architect** | Створює OpenSpec proposal (specs, design, tasks) | Anthropic | claude-opus-4-6 |
+| **u-coder** | Пише код на основі specs | Anthropic | claude-sonnet-4-6 |
+| **u-auditor** | Quality gate — перевіряє якість agent-related змін | Anthropic | claude-opus-4-6 |
+| **u-validator** | Запускає PHPStan, CS-Fixer, виправляє помилки | MiniMax | MiniMax-M2.5-highspeed |
+| **u-tester** | Запускає тести, пише нові, виправляє failures | OpenCode Go | kimi-k2.5 |
 | **documenter** | Пише білінгвальну документацію (UA+EN) | OpenAI | gpt-5.4 |
-| **summarizer** | Створює фінальний звіт про виконану роботу | OpenAI | gpt-5.4 |
+| **u-summarizer** | Створює фінальний звіт про виконану роботу | OpenAI | gpt-5.4 |
 | **deployer** | Phase 8 (opt-in): деплоїть завершені зміни до цільового середовища | Anthropic | claude-sonnet-4-6 |
 
 ## Політика неймінгу агентів
@@ -43,27 +43,26 @@ Task → Planner → Preflight → Env-Check → Architect → Coder → Validat
 
 | Префікс | Де використовується | Призначення | Приклади |
 |---------|---------------------|-------------|----------|
-| без префікса | Foundry / локальний pipeline | Primary-агенти, які запускає `agentic-development/foundry.sh run` | `coder`, `validator`, `tester`, `summarizer` |
-| `s-` | Ultraworks / Sisyphus | Subagent-обгортка для делегування в OpenCode workflow | `s-coder`, `s-validator`, `s-tester`, `s-auditor` |
-| `u-` | Спільна policy / shared logic | Універсальний агент або gate, який має однаковий зміст у двох workflow | `u-investigator`, `u-regression` |
+| `u-` | Foundry + Ultraworks | Уніфікований агент — один файл для обох workflow | `u-coder`, `u-validator`, `u-tester`, `u-summarizer` |
+| `u-` agents cover all roles. No `s-` or unprefixed agents remain (except `builder-planner`). |
+
 
 ### Матриця агентів
 
-| Тип агента | Builder | Ultraworks | Примітка |
+| Тип агента | Builder (Foundry) | Ultraworks (Sisyphus) | Примітка |
 |------------|---------|------------|----------|
-| Primary agent | `coder`, `tester`, `validator` | не використовується напряму | Builder працює з primary-агентами |
-| Subagent | не використовується | `s-coder`, `s-tester`, `s-validator` | Викликаються тільки Sisyphus orchestration |
-| Universal agent | `u-investigator` (via `investigator`) | `u-investigator` (via `s-investigator`) | Спільна логіка, різні mode-обгортки |
-| Opt-in agent | `deployer` | `s-deployer` | Phase 8 — тільки при `deploy: true` в task metadata |
+| Unified agent | `u-architect`, `u-coder`, `u-validator`, `u-tester`, `u-summarizer`, `u-auditor`, `u-planner`, `u-investigator`, `u-security-review` | ті самі `u-*` агенти | Один файл, обидва workflow |
+
+
 
 ### Поточна рекомендація для тестування
 
 | Роль | Основна відповідальність | Час/вартість |
 |------|---------------------------|--------------|
-| `tester` / `s-tester` | Швидкі task-scoped тести, impact-based suites, написання або оновлення тестів | Дешевий і частий запуск |
+| `u-tester` | Швидкі task-scoped тести, impact-based suites, написання або оновлення тестів | Дешевий і частий запуск |
 | `u-regression` | Повний regression, cross-app flows, long-running та expensive suites | Дорогий умовний gate |
 
-> `u-regression` наразі є policy-level design target. Поки рантайм не підтримує окремий universal stage, Builder і Ultraworks продовжують працювати через `tester` / `s-tester`.
+> `u-regression` наразі є policy-level design target. Поки рантайм не підтримує окремий universal stage, Builder і Ultraworks продовжують працювати через `u-tester`.
 
 ### Поточна рекомендація для багів
 
@@ -76,22 +75,22 @@ Task → Planner → Preflight → Env-Check → Architect → Coder → Validat
 
 > **Правило:** Proposal потрібен тільки якщо фікс змінює публічний контракт або spec. Якщо фікс — це "код має робити те що spec каже, але не робить" — proposal не потрібен.
 >
-> `u-investigator` — перший повноцінний universal agent. Його логіка описана в `u-investigator.md`, а `investigator.md` та `s-investigator.md` — це mode-обгортки (primary та subagent відповідно).
+> `u-investigator` — уніфікований agent. Його логіка описана в `u-investigator.md` і використовується напряму в обох workflow (Foundry та Ultraworks).
 
 ### Profiles (обирає planner)
 
 | Profile | Коли використовується | Агенти |
 |---------|----------------------|--------|
-| **docs-only** | Тільки документація, README | documenter → summarizer |
-| **quality-gate** | PHPStan/CS-Fixer/тести, без нового коду | coder → validator → summarizer |
-| **tests-only** | Написати тести для існуючого коду | coder → tester → summarizer |
-| **quick-fix** | Дрібні правки, 1-3 файли | coder → validator → summarizer |
-| **standard** | Звичайна фіча, один app | coder → validator → tester → summarizer |
-| **standard+docs** | Фіча + документація | coder → validator → tester → documenter → summarizer |
-| **complex** | Multi-service, міграції, API зміни | coder → validator → tester → u-regression? → summarizer |
-| **complex+agent** | Зміни що торкаються агентів | coder → auditor → validator → tester → u-regression? → summarizer |
-| **bugfix** | Баг без зміни spec | investigator → coder → validator → tester → summarizer |
-| **bugfix+spec** | Баг що змінює spec поведінку | investigator → architect → coder → validator → tester → summarizer |
+| **docs-only** | Тільки документація, README | u-documenter → u-summarizer |
+| **quality-gate** | PHPStan/CS-Fixer/тести, без нового коду | u-coder → u-validator → u-summarizer |
+| **tests-only** | Написати тести для існуючого коду | u-coder → u-tester → u-summarizer |
+| **quick-fix** | Дрібні правки, 1-3 файли | u-coder → u-validator → u-summarizer |
+| **standard** | Звичайна фіча, один app | u-coder → u-validator → u-tester → u-summarizer |
+| **standard+docs** | Фіча + документація | u-coder → u-validator → u-tester → u-documenter → u-summarizer |
+| **complex** | Multi-service, міграції, API зміни | u-coder → u-validator → u-tester → u-regression? → u-summarizer |
+| **complex+agent** | Зміни що торкаються агентів | u-coder → u-auditor → u-validator → u-tester → u-regression? → u-summarizer |
+| **bugfix** | Баг без зміни spec | u-investigator → u-coder → u-validator → u-tester → u-summarizer |
+| **bugfix+spec** | Баг що змінює spec поведінку | u-investigator → u-architect → u-coder → u-validator → u-tester → u-summarizer |
 
 > **Примітка 1:** Planner може створити довільний список агентів через `agents` поле в plan.json. Profiles — це лише стартові шаблони.
 >
@@ -151,7 +150,7 @@ Update `.opencode/pipeline/handoff.md` — **Agent Name** section with:
 - `temperature:` - 0-2, контролює креативність (0 = детермінований, 2 = креативний)
 - `tools:` - які інструменти доступні агенту
 
-**Приклад:** [.opencode/agents/coder.md](.opencode/agents/coder.md)
+**Приклад:** [.opencode/agents/u-coder.md](.opencode/agents/u-coder.md)
 
 ### 2. Agent model config (`.opencode/agents.yaml`)
 
@@ -171,15 +170,13 @@ agent_name:
 
 ```
 .opencode/agents/
-├── architect.md          # Системний промпт architect
-├── coder.md             # Системний промпт coder
-├── documenter.md        # Системний промпт documenter
-├── planner.md           # Системний промпт planner
-├── s-*.md               # Ultraworks subagents
-├── summarizer.md        # Системний промпт summarizer
-├── tester.md            # Системний промпт tester
-├── u-*.md               # Universal agents / shared gates (planned)
-├── validator.md         # Системний промпт validator
+├── u-*.md               # Уніфіковані агенти (Foundry + Ultraworks)
+
+
+
+
+├── builder-planner.md   # Foundry-only builder planner
+├── CONTEXT-CONTRACT.md  # Context routing rules
 └── agents.yaml          # Конфігурація моделей для всіх агентів
 
 agentic-development/
@@ -246,7 +243,7 @@ You write clean, minimal, production-ready code.
 
 | Сценарій | Швидкий тестовий gate | Повний regression gate |
 |----------|------------------------|-------------------------|
-| `quick-fix` | `tester` / `s-tester` за потреби | ні |
+| `quick-fix` | `u-tester` за потреби | ні |
 | `standard` | так | лише якщо high-risk |
 | `standard+docs` | так | лише якщо high-risk |
 | `complex` | так | так, умовно через `u-regression` |
