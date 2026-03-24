@@ -438,9 +438,6 @@ function LogsView({ task, rows, tick }: { task: TaskInfo; rows: number; tick: nu
   const [logContent, setLogContent] = useState<string[]>([]);
 
   useEffect(() => {
-    const { readdirSync, readFileSync, existsSync, statSync } = require("node:fs");
-    const { join, basename } = require("node:path");
-
     // Collect all .log files from artifacts (including agent subdirectories)
     const collectLogs = (dir: string): string[] => {
       const logs: string[] = [];
@@ -522,8 +519,6 @@ function DetailView({ task, rows }: { task: TaskInfo; rows: number }) {
 
   useEffect(() => {
     try {
-      const { readFileSync, existsSync } = require("node:fs");
-      const { join } = require("node:path");
       // Try task.md first, then fall back to summary.md or handoff.md
       const candidates = ["task.md", "summary.md", "handoff.md"];
       let md = "";
