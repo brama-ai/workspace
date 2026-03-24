@@ -164,12 +164,13 @@ Document what the deployer needs:
 
 ## Summarizer
 
-- **Status**: pending
-- **Summary file**: —
-- **Next task recommendation**: —
+- **Status**: done (**PIPELINE INCOMPLETE**)
+- **Summary file**: `/workspaces/brama/tasks/add-deployer-agent-proposal--foundry/summary.md`
+- **Next task recommendation**: Завершити Foundry orchestration для no-op стадій `tester` і `documenter`, щоб pipeline міг автоматично переходити в complete-статус без ручного добивання.
 
 ---
 
 - **Commit (architect)**: d7c2187
 - **Commit (coder)**: 41a1ffc
 - **Commit (auditor)**: 7cc82a2
+- **Commit (validator)**: 7a2cdce
