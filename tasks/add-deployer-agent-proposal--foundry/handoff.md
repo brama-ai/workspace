@@ -123,10 +123,18 @@ Document what the deployer needs:
 
 ## Validator
 
-- **Status**: pending
-- **PHPStan**: —
-- **CS-check**: —
-- **Files fixed**: —
+- **Status**: done
+- **PHPStan**:
+  - `apps/brama-core/` — not run (unchanged)
+  - `apps/knowledge-agent/` — not run (unchanged)
+  - `apps/hello-agent/` — not run (unchanged)
+  - `apps/news-maker-agent/` — not run (unchanged)
+- **CS-check**:
+  - `apps/brama-core/` — not run (unchanged)
+  - `apps/knowledge-agent/` — not run (unchanged)
+  - `apps/hello-agent/` — not run (unchanged)
+  - `apps/news-maker-agent/` — not run (unchanged)
+- **Files fixed**: none
 
 ## Tester
 
@@ -164,3 +172,4 @@ Document what the deployer needs:
 
 - **Commit (architect)**: d7c2187
 - **Commit (coder)**: 41a1ffc
+- **Commit (auditor)**: 7cc82a2
