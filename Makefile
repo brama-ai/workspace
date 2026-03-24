@@ -543,7 +543,7 @@ k8s-build:
 	@echo "Building core..."
 	docker build -t $(K8S_CORE_IMAGE) -f docker/brama-core/Dockerfile .
 	@echo "Building hello-agent..."
-	docker build -t $(K8S_HELLO_IMAGE) agents/hello-agent/
+	docker build -t $(K8S_HELLO_IMAGE) brama-agents/hello-agent/
 
 k8s-load:
 	docker save $(K8S_CORE_IMAGE) | rdctl shell sudo k3s ctr images import -
