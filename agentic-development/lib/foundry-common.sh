@@ -460,6 +460,93 @@ print(value)
 PYEOF
 }
 
+foundry_state_upsert_agent() {
+  local task_dir="$1"
+  local agent="$2"
+  local status="$3"
+  local model="${4:-}"
+  local duration_seconds="${5:-}"
+  local input_tokens="${6:-}"
+  local output_tokens="${7:-}"
+  local cost="${8:-}"
+  local call_count="${9:-1}"
+  foundry_repair_state_file "$task_dir"
+  python3 - "$task_dir" "$agent" "$status" "$model" "$duration_seconds" "$input_tokens" "$output_tokens" "$cost" "$call_count" <<'PYEOF'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+task_dir = Path(sys.argv[1])
+agent, status, model = sys.argv[2], sys.argv[3], sys.argv[4]
+duration_seconds = sys.argv[5]
+input_tokens = sys.argv[6]
+output_tokens = sys.argv[7]
+cost = sys.argv[8]
+call_count = sys.argv[9]
+
+state_path = task_dir / "state.json"
+data = {}
+if state_path.exists():
+    try:
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            data = {}
+    except (json.JSONDecodeError, OSError):
+        data = {}
+
+agents = data.get("agents", [])
+if not isinstance(agents, list):
+    agents = []
+
+# Find existing agent entry or create new
+entry = None
+for a in agents:
+    if a.get("agent") == agent:
+        entry = a
+        break
+if entry is None:
+    entry = {"agent": agent}
+    agents.append(entry)
+
+entry["status"] = status
+
+def set_int(key, val):
+    if val:
+        try:
+            entry[key] = int(float(val))
+            return
+        except (ValueError, TypeError):
+            pass
+    entry.setdefault(key, "n/d")
+
+def set_float(key, val):
+    if val:
+        try:
+            entry[key] = round(float(val), 4)
+            return
+        except (ValueError, TypeError):
+            pass
+    entry.setdefault(key, "n/d")
+
+entry["model"] = model if model else entry.get("model", "n/d")
+set_int("duration_seconds", duration_seconds)
+set_int("input_tokens", input_tokens)
+set_int("output_tokens", output_tokens)
+set_float("cost", cost)
+set_int("call_count", call_count)
+
+entry["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+data["agents"] = agents
+data["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+with open(state_path, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, ensure_ascii=True, indent=2)
+    fh.write("\n")
+PYEOF
+}
+
 foundry_create_task_dir() {
   local task_text="$1"
   local slug="${2:-}"

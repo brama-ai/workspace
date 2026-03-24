@@ -1662,6 +1662,12 @@ run_agent() {
     CUMULATIVE_COST=$(echo "$CUMULATIVE_COST $agent_cost" | awk '{printf "%.4f", $1 + $2}')
     emit_event "COST" "agent=${agent}|model=${actual_model_used}|input=${in_tok}|output=${out_tok}|price=${agent_cost}|time=$(( agent_end_epoch - agent_start_epoch ))s"
 
+    # Update state.json with agent telemetry
+    local agent_status_for_state="done"
+    [[ $exit_code -ne 0 ]] && agent_status_for_state="failed"
+    foundry_state_upsert_agent "$TASK_DIR" "$agent" "$agent_status_for_state" "$actual_model_used" \
+      "$(( agent_end_epoch - agent_start_epoch ))" "$in_tok" "$out_tok" "$agent_cost" "1"
+
     # Check result
     if [[ $exit_code -eq 0 ]]; then
       local agent_dur=$(( agent_end_epoch - agent_start_epoch ))
@@ -2394,6 +2400,15 @@ main() {
       write_checkpoint "$agent" "done" "$agent_dur" "$commit_hash" "$agent_tokens"
       save_agent_artifact "$agent" "$agent_log"
 
+      # Update state.json with agent telemetry
+      local _in_tok _out_tok _cost
+      _in_tok=$(echo "$agent_tokens" | jq -r '.input_tokens // 0' 2>/dev/null || echo 0)
+      _out_tok=$(echo "$agent_tokens" | jq -r '.output_tokens // 0' 2>/dev/null || echo 0)
+      _cost=$(echo "$agent_tokens" | jq -r '.cost // 0' 2>/dev/null || echo 0)
+      if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
+        foundry_state_upsert_agent "$TASK_DIR" "$agent" "done" "" "$agent_dur" "$_in_tok" "$_out_tok" "$_cost" "1"
+      fi
+
       # Stage gate: verify coder produced actual code changes
       if [[ "$agent" == "coder" ]]; then
         if ! verify_coder_output; then
@@ -2425,6 +2440,16 @@ main() {
       agent_tokens=$(get_agent_tokens "$agent")
       write_checkpoint "$agent" "failed" "$agent_dur" "" "$agent_tokens"
       save_agent_artifact "$agent" "$agent_log"
+
+      # Update state.json with failed agent telemetry
+      local _in_tok _out_tok _cost
+      _in_tok=$(echo "$agent_tokens" | jq -r '.input_tokens // 0' 2>/dev/null || echo 0)
+      _out_tok=$(echo "$agent_tokens" | jq -r '.output_tokens // 0' 2>/dev/null || echo 0)
+      _cost=$(echo "$agent_tokens" | jq -r '.cost // 0' 2>/dev/null || echo 0)
+      if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
+        foundry_state_upsert_agent "$TASK_DIR" "$agent" "failed" "" "$agent_dur" "$_in_tok" "$_out_tok" "$_cost" "1"
+      fi
+
       failed=true
       failed_agent="$agent"
 

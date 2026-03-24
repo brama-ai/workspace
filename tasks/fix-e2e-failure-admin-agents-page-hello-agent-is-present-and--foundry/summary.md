@@ -183,3 +183,18 @@ _No context modifiers detected (no skills, MCP tools, or commands used)._
 - Назва задачі: Стабілізувати E2E discovery flow на сторінці `/admin/agents`
 - Чому її варто створити зараз: health badge regression вже закрито, але discovery-сценарій досі ламає повний suite і зачіпає суміжні перевірки `news-maker-agent` та admin discovery.
 - Очікуваний результат: сценарій `running discovery populates the registry` стабільно проходить у Foundry E2E середовищі, а залежні admin discovery тести більше не падають через timeout.
+
+---
+
+## Вартість пайплайну
+
+| Агент | Тривалість | Input | Output | Cache Read | Cache Write | ≈ Вартість |
+|-------|-----------|-------|--------|------------|-------------|-----------|
+| investigator | 4s | 17 | 3803 | 959173 | 85170 | $0.664 |
+| coder | 5m 27s | 53 | 12473 | 3352522 | 107195 | $1.595 |
+| validator | 59s | 19274 | 1162 | 107520 | 0 | $0.108 |
+| tester | 10m 23s | 138519 | 3168 | 254976 | 0 | $0.540 |
+| summarizer | 2m 28s | 66416 | 6288 | 146048 | 0 | $0.337 |
+| **Всього** | **19m** | **224279** | **26894** | **4820239** | **192365** | **$3.244** |
+
+_Вартість розрахована приблизно за тарифами Claude Sonnet ($3/$15 per 1M in/out, $0.30/$3.75 cache r/w)._
