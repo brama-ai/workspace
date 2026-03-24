@@ -381,8 +381,8 @@ function DetailView({ task, rows }) {
                 setContent(["No task description found."]);
             }
         }
-        catch (err) {
-            setContent(["Cannot read task details.", `Error: ${err?.message || err}`, `Dir: ${task.dir}`]);
+        catch {
+            setContent(["Cannot read task details."]);
         }
     }, [task.dir, rows]);
     return (_jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { bold: true, children: "  Task Detail" }), _jsx(Text, { children: " " }), content.map((line, i) => (_jsxs(Text, { children: ["  ", line] }, i))), _jsx(Text, { children: " " }), _jsx(Text, { dimColor: true, children: "  q/Esc back" })] }));

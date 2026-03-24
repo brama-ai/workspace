@@ -67,7 +67,6 @@ export function readAllTasks(root) {
         return { tasks, counts, focusDir: null };
     }
     for (const entry of entries) {
-        // Match both --foundry and --ultraworks task dirs
         let workflow;
         if (entry.includes("--foundry")) {
             workflow = "foundry";
@@ -82,18 +81,15 @@ export function readAllTasks(root) {
         const statePath = join(taskDir, "state.json");
         const state = existsSync(statePath) ? readJson(statePath) : null;
         const status = state?.status ?? "pending";
-        // Count
         if (status in counts) {
             counts[status]++;
         }
-        // Skip cancelled from task list
         if (status === "cancelled")
             continue;
         const slug = entry.replace(/--(?:foundry|ultraworks).*/, "");
         const title = extractTitle(taskDir, slug);
         const priority = extractPriority(taskDir);
         const agents = Array.isArray(state?.agents) ? parseAgents(state.agents) : undefined;
-        // Read ultraworks meta.json for session/worktree/branch info
         let sessionName;
         let worktreePath;
         let branchName;
@@ -121,7 +117,6 @@ export function readAllTasks(root) {
             branchName,
         });
     }
-    // Sort: by status order, then pending by priority desc, then by dir name
     tasks.sort((a, b) => {
         const oa = STATUS_ORDER[a.status] ?? 4;
         const ob = STATUS_ORDER[b.status] ?? 4;
@@ -132,7 +127,6 @@ export function readAllTasks(root) {
         }
         return a.dir.localeCompare(b.dir);
     });
-    // Find focus: most recently updated in_progress, or most recent overall
     let focusDir = null;
     const inProgress = tasks.filter((t) => t.status === "in_progress");
     if (inProgress.length > 0) {
