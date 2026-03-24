@@ -123,9 +123,10 @@ Changed `AgentDiscoveryProviderFactory::create()` to accept `?string $providerMo
 
 ## Summarizer
 
-- **Status**: pending
-- **Summary file**: —
-- **Next task recommendation**: —
+- **Status**: done
+- **Summary file**: `/workspaces/brama/tasks/fix-e2e-failure-admin-agents-page-news-maker-agent-is-presen--foundry/summary.md`
+- **Final recommendation**: Створити окрему задачу на виправлення `AgentHealthPollerCommandCest::healthPollerCommandCleansUpStaleMarketplaceAgents`, щоб прибрати pre-existing functional failure і повернути suite до повністю зеленого стану.
+- **Pipeline mark**: `PIPELINE COMPLETE`
 
 ---
 
@@ -139,3 +140,4 @@ Changed `AgentDiscoveryProviderFactory::create()` to accept `?string $providerMo
 - **Commit (coder)**: c22e066
 - **Commit (validator)**: 403bacd
 - **Commit (tester)**: (pending)
+- **Commit (tester)**: e9b2e20
