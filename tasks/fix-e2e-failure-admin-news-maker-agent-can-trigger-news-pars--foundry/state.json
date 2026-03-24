@@ -6,31 +6,31 @@
   "status": "in_progress",
   "current_step": "u-investigator",
   "resume_from": "u-investigator",
-  "updated_at": "2026-03-24T23:01:27.170158Z",
+  "updated_at": "2026-03-24T23:02:23.940849Z",
   "task_file": "/workspaces/brama/tasks/fix-e2e-failure-admin-news-maker-agent-can-trigger-news-pars--foundry/task.md",
   "branch": "pipeline/fix-e2e-failure-admin-news-maker-agent-can-trigger-news-pars",
   "agents": [
     {
       "agent": "u-planner",
       "status": "done",
-      "model": "anthropic/claude-opus-4-6",
-      "duration_seconds": 75,
-      "input_tokens": 10,
-      "output_tokens": 2612,
-      "cost": 0.6951,
+      "model": "anthropic/claude-sonnet-4-6",
+      "duration_seconds": 90,
+      "input_tokens": 11,
+      "output_tokens": 1702,
+      "cost": 0.123,
       "call_count": 1,
-      "updated_at": "2026-03-24T23:01:21.231983Z"
+      "updated_at": "2026-03-24T23:02:18.442719Z"
     },
     {
       "agent": "u-investigator",
       "status": "done",
-      "model": "anthropic/claude-opus-4-6",
+      "model": "anthropic/claude-sonnet-4-6",
       "duration_seconds": 1,
-      "input_tokens": 10,
-      "output_tokens": 2612,
-      "cost": 0.6951,
+      "input_tokens": 11,
+      "output_tokens": 1702,
+      "cost": 0.123,
       "call_count": 1,
-      "updated_at": "2026-03-24T23:01:27.170093Z"
+      "updated_at": "2026-03-24T23:02:23.940835Z"
     }
   ]
 }
