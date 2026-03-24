@@ -111,12 +111,20 @@ Error: Element "//div[contains(@class,"agent-tab-pane") and contains(@class,"act
 
 ## Summarizer
 
-- **Status**: pending
-- **Summary file**: —
-- **Next task recommendation**: —
+- **Status**: done
+- **Summary file**: `/workspaces/brama/tasks/fix-e2e-failure-admin-agents-page-knowledge-agent-is-present--foundry/summary.md`
+- **Next task recommendation**: `Stabilize admin agents discovery regression and OpenClaw E2E failures`
 
 ---
 
 - **Commit (investigator)**: a78336a
 - **Commit (coder)**: bc4b9c0
 - **Commit (validator)**: eda890e
+- **Commit (tester)**: d0d9da2
+
+## Summarizer Final
+
+- **Status**: PIPELINE COMPLETE
+- **Summary file path**: `/workspaces/brama/tasks/fix-e2e-failure-admin-agents-page-knowledge-agent-is-present--foundry/summary.md`
+- **Final recommendation**: `Stabilize admin agents discovery regression and OpenClaw E2E failures`
+- **Mark**: **PIPELINE COMPLETE**

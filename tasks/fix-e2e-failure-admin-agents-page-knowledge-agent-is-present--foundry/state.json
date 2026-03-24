@@ -4,9 +4,9 @@
   "started_at": "2026-03-24T17:38:10.673335Z",
   "attempt": 1,
   "status": "in_progress",
-  "current_step": "tester",
-  "resume_from": "tester",
-  "updated_at": "2026-03-24T18:25:26.739434Z",
+  "current_step": "summarizer",
+  "resume_from": "summarizer",
+  "updated_at": "2026-03-24T18:30:07.587042Z",
   "task_file": "/workspaces/brama/tasks/fix-e2e-failure-admin-agents-page-knowledge-agent-is-present--foundry/task.md",
   "branch": "pipeline/fix-e2e-failure-admin-agents-page-knowledge-agent-is-present"
 }
