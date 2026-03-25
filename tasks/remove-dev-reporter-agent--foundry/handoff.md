@@ -149,3 +149,4 @@ DELETE FROM agent_registry WHERE name = 'dev-reporter-agent';
 
 - **Commit (coder)**: 293966f
 - **Commit (validator)**: 1717793
+- **Commit (summarizer)**: 28016a3
