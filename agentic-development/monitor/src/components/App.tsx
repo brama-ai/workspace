@@ -22,7 +22,10 @@ const VERSION = "2.0.0";
 const REFRESH_MS = 3000;
 
 type ViewMode = "list" | "detail" | "logs" | "agents";
-type DetailTab = "state" | "task" | "handoff";
+
+// Active tasks: state, task, handoff
+// Completed/failed tasks: summary, task, handoff
+type DetailTab = "summary" | "state" | "task" | "handoff";
 
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -155,16 +158,18 @@ export function App({ tasksRoot }: Props) {
 
     // Detail view: tab navigation with left/right arrows
     if (view === "detail") {
+      // All possible tabs in order
+      const allTabs: DetailTab[] = ["summary", "state", "task", "handoff"];
       if (key.leftArrow) {
-        const tabs: DetailTab[] = ["state", "task", "handoff"];
-        const currentIdx = tabs.indexOf(detailTab);
-        setDetailTab(currentIdx > 0 ? tabs[currentIdx - 1] : tabs[2]);
+        const currentIdx = allTabs.indexOf(detailTab);
+        const prevIdx = currentIdx > 0 ? currentIdx - 1 : allTabs.length - 1;
+        setDetailTab(allTabs[prevIdx]);
         return;
       }
       if (key.rightArrow) {
-        const tabs: DetailTab[] = ["state", "task", "handoff"];
-        const currentIdx = tabs.indexOf(detailTab);
-        setDetailTab(currentIdx < 2 ? tabs[currentIdx + 1] : tabs[0]);
+        const currentIdx = allTabs.indexOf(detailTab);
+        const nextIdx = currentIdx < allTabs.length - 1 ? currentIdx + 1 : 0;
+        setDetailTab(allTabs[nextIdx]);
         return;
       }
     } else {
@@ -206,6 +211,12 @@ export function App({ tasksRoot }: Props) {
       return;
     }
     if (key.return) {
+      // Set initial tab based on task status
+      // Completed/failed tasks show summary first, active tasks show state
+      if (selected) {
+        const isFinished = selected.status === "completed" || selected.status === "failed";
+        setDetailTab(isFinished ? "summary" : "state");
+      }
       setView("detail");
       return;
     }
@@ -590,8 +601,18 @@ function DetailView({
 }) {
   const [stateData, setStateData] = useState<any>(null);
   const [loopCount, setLoopCount] = useState(0);
+  const [summaryContent, setSummaryContent] = useState<string[]>([]);
   const [taskContent, setTaskContent] = useState<string[]>([]);
   const [handoffContent, setHandoffContent] = useState<string[]>([]);
+
+  // Determine tabs based on task status
+  // Completed/failed tasks show summary first
+  // Active tasks show state first
+  const isFinished = task.status === "completed" || task.status === "failed";
+  const defaultFirstTab = isFinished ? "summary" : "state";
+  const availableTabs: DetailTab[] = isFinished 
+    ? ["summary", "task", "handoff"] 
+    : ["state", "task", "handoff"];
 
   // Load state.json on every tick (auto-refresh)
   useEffect(() => {
@@ -615,6 +636,24 @@ function DetailView({
       setStateData(null);
     }
   }, [task.dir, tick]);
+
+  // Load summary.md lazily
+  useEffect(() => {
+    if (tab !== "summary") return;
+    try {
+      const path = join(task.dir, "summary.md");
+      if (existsSync(path)) {
+        const lines = readFileSync(path, "utf-8")
+          .split("\n")
+          .slice(0, rows - 12);
+        setSummaryContent(lines);
+      } else {
+        setSummaryContent(["No summary.md found", "", "Summary is generated after task completion."]);
+      }
+    } catch (e: any) {
+      setSummaryContent([`Error: ${e.message}`]);
+    }
+  }, [task.dir, tab, rows]);
 
   // Load task.md lazily
   useEffect(() => {
@@ -661,10 +700,6 @@ function DetailView({
     }
   };
 
-  // Tab bar
-  const tabs: DetailTab[] = ["state", "task", "handoff"];
-  const tabLabels = { state: "State", task: "Task", handoff: "Handoff" };
-
   // Spinner for in_progress
   const spinner = SPINNER_FRAMES[tick % 10];
 
@@ -676,6 +711,17 @@ function DetailView({
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
     return `${Math.floor(diff / 3600)}h ago`;
   };
+
+  // Tab labels
+  const tabLabels: Record<DetailTab, string> = {
+    summary: "Summary",
+    state: "State",
+    task: "Task",
+    handoff: "Handoff",
+  };
+
+  // Check if current tab is valid for this task
+  const activeTab = availableTabs.includes(tab) ? tab : defaultFirstTab;
 
   return (
     <Box flexDirection="column">
@@ -690,20 +736,52 @@ function DetailView({
       {/* Tab bar */}
       <Box gap={1}>
         <Text>  </Text>
-        {tabs.map((t) => (
+        {availableTabs.map((t) => (
           <Text
             key={t}
-            bold={tab === t}
-            inverse={tab === t}
-            color={tab === t ? "cyan" : undefined}
-            dimColor={tab !== t}
+            bold={activeTab === t}
+            inverse={activeTab === t}
+            color={activeTab === t ? "cyan" : undefined}
+            dimColor={activeTab !== t}
           >{` ${tabLabels[t]} `}</Text>
         ))}
       </Box>
       <Text dimColor>{"  " + "─".repeat(40)}</Text>
 
       {/* Content based on tab */}
-      {tab === "state" && (
+      {activeTab === "summary" && (
+        <Box flexDirection="column">
+          {/* Task result header */}
+          <Box>
+            <Text dimColor>  Status: </Text>
+            <Text bold color={
+              task.status === "completed" ? "green" :
+              task.status === "failed" ? "red" : undefined
+            }>
+              {task.status}
+            </Text>
+            {task.updatedAt && <Text dimColor> {timeAgo(task.updatedAt)}</Text>}
+          </Box>
+          {task.agents && task.agents.length > 0 && (
+            <Box>
+              <Text dimColor>  Duration: </Text>
+              <Text>{
+                formatDuration(
+                  task.agents.reduce((sum, a) => sum + (a.durationSeconds || 0), 0)
+                )
+              }</Text>
+            </Box>
+          )}
+          <Text> </Text>
+          <Text bold>  Summary</Text>
+          <Text dimColor>{"  " + "─".repeat(40)}</Text>
+          {summaryContent.map((line, i) => (
+            <Text key={i}>  {line}</Text>
+          ))}
+        </Box>
+      )}
+
+      {activeTab === "state" && (
         <Box flexDirection="column">
           {/* Status */}
           <Box>
@@ -779,7 +857,7 @@ function DetailView({
         </Box>
       )}
 
-      {tab === "task" && (
+      {activeTab === "task" && (
         <Box flexDirection="column">
           {taskContent.map((line, i) => (
             <Text key={i}>  {line}</Text>
@@ -787,7 +865,7 @@ function DetailView({
         </Box>
       )}
 
-      {tab === "handoff" && (
+      {activeTab === "handoff" && (
         <Box flexDirection="column">
           {handoffContent.map((line, i) => (
             <Text key={i}>  {line}</Text>
