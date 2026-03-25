@@ -4,9 +4,9 @@
   "started_at": "2026-03-25T18:58:14.916550Z",
   "attempt": 1,
   "status": "in_progress",
-  "current_step": "u-coder",
-  "resume_from": "u-coder",
-  "updated_at": "2026-03-25T21:04:53.980829Z",
+  "current_step": "u-summarizer",
+  "resume_from": "u-summarizer",
+  "updated_at": "2026-03-25T21:04:57.668692Z",
   "task_file": "/workspaces/brama/tasks/auto-slug-test--foundry/task.md",
   "branch": "pipeline/auto-slug-test",
   "agents": [
@@ -36,12 +36,23 @@
       "agent": "u-validator",
       "status": "done",
       "model": "opencode-go/kimi-k2.5",
-      "duration_seconds": 65,
+      "duration_seconds": 1287,
       "input_tokens": 41337,
       "output_tokens": 1477,
       "cost": 0.0285,
       "call_count": 1,
-      "updated_at": "2026-03-25T21:04:53.980816Z"
+      "updated_at": "2026-03-25T21:04:54.331352Z"
+    },
+    {
+      "agent": "u-summarizer",
+      "status": "done",
+      "model": "opencode-go/kimi-k2.5",
+      "duration_seconds": 0,
+      "input_tokens": 41337,
+      "output_tokens": 1477,
+      "cost": 0.0285,
+      "call_count": 1,
+      "updated_at": "2026-03-25T21:04:57.668679Z"
     }
   ]
 }
