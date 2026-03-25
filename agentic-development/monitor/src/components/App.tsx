@@ -132,6 +132,17 @@ export function App({ tasksRoot }: Props) {
     return () => clearTimeout(id);
   }, [msg]);
 
+  // Refresh proc log when selection or tick changes
+  useEffect(() => {
+    const allProcs = [...procStatus.workers, ...procStatus.zombies];
+    const proc = allProcs[procIdx];
+    if (proc?.log) {
+      setProcLogLines(tailLog(proc.log, 20));
+    } else {
+      setProcLogLines([]);
+    }
+  }, [procIdx, tick, procStatus]);
+
   // Handle CmdResult from actions
   const handleCmd = (result: CmdResult) => {
     setMsg(result.message);

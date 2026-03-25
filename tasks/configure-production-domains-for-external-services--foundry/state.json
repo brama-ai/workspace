@@ -4,9 +4,9 @@
   "started_at": "2026-03-25T17:42:58.325844Z",
   "attempt": 1,
   "status": "in_progress",
-  "current_step": "summarizer",
-  "resume_from": "summarizer",
-  "updated_at": "2026-03-25T17:45:43.095865Z",
+  "current_step": "u-summarizer",
+  "resume_from": "u-summarizer",
+  "updated_at": "2026-03-25T17:45:46.118474Z",
   "task_file": "/workspaces/brama/tasks/configure-production-domains-for-external-services--foundry/task.md",
   "branch": "pipeline/configure-production-domains-for-external-services",
   "agents": [
@@ -47,12 +47,23 @@
       "agent": "summarizer",
       "status": "done",
       "model": "anthropic/claude-sonnet-4-6",
-      "duration_seconds": 1,
+      "duration_seconds": 4,
       "input_tokens": 196,
       "output_tokens": 42942,
       "cost": 4.9067,
       "call_count": 1,
-      "updated_at": "2026-03-25T17:45:43.095851Z"
+      "updated_at": "2026-03-25T17:45:43.292329Z"
+    },
+    {
+      "agent": "u-summarizer",
+      "status": "done",
+      "model": "anthropic/claude-sonnet-4-6",
+      "duration_seconds": 0,
+      "input_tokens": 197,
+      "output_tokens": 43290,
+      "cost": 4.9624,
+      "call_count": 1,
+      "updated_at": "2026-03-25T17:45:46.118463Z"
     }
   ]
 }

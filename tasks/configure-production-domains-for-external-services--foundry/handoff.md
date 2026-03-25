@@ -282,3 +282,4 @@ Create `docs/production-domains-setup.md` with:
 
 - **Commit (coder)**: 0175ac1
 - **Commit (validator)**: 1a379bc
+- **Commit (summarizer)**: 3bf3f5d
