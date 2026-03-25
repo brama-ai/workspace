@@ -199,10 +199,12 @@ export function readAllTasks(root: string): ReadResult {
         worktreePath = meta.worktree_path;
         branchName = meta.branch_name;
       }
+    } else {
+      // Foundry: branch from state.json
+      branchName = state?.branch;
     }
 
     // Diagnostic info for stale detection
-    const branch = state?.branch;
     const lastEvent = getLastEvent(taskDir);
 
     tasks.push({
@@ -218,13 +220,13 @@ export function readAllTasks(root: string): ReadResult {
       agents,
       sessionName,
       worktreePath,
-      branchName: branch,
+      branchName,
       attempt: state?.attempt,
       // Diagnostic fields
       hasStaleLock: checkStaleLock(taskDir, status),
       lastEventTime: lastEvent?.time,
       lastEventAge: lastEvent?.age,
-      branchExists: checkBranchExists(branch),
+      branchExists: checkBranchExists(branchName),
     });
   }
 
