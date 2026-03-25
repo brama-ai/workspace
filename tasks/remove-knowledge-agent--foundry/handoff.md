@@ -147,3 +147,4 @@ DELETE FROM agent_registry WHERE name = 'knowledge-agent';
 
 ---
 
+- **Commit (coder)**: c1b2799
