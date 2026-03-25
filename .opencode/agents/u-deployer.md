@@ -38,12 +38,23 @@ Before any deployment action:
 4. Check dry-run mode (default: `true` unless `dry_run: false` is explicit)
 5. NEVER force-push to any branch
 
+## Strategy Selection
+
+- **`ghcr-deploy`** (recommended for K3s): Push to main → wait for GHCR image build → update K3s deployment image. No build on server, architecture-independent.
+- **`pr-only`** (default, safest): Push branch + create PR. No server changes.
+- **`merge-and-deploy`**: Create PR + auto-merge, wait for CI to deploy.
+- **`direct-ssh`**: Legacy — SSH to server, git pull, docker compose build.
+- **`helm-upgrade`**: SSH to server, helm upgrade with image tag.
+
+When the task targets K3s and a GHCR workflow exists, prefer `ghcr-deploy` over `direct-ssh` or `helm-upgrade`.
+
 ## Handoff
 
 Append to `.opencode/pipeline/handoff.md` — **Deployer** section:
 - Deployment strategy used
 - Actions taken (or planned, in dry-run mode)
 - PR URL (for `pr-only` / `merge-and-deploy`)
+- Image tag and digest (for `ghcr-deploy`)
 - Health check result
-- Rollback plan (for `direct-ssh` / `helm-upgrade`)
+- Rollback plan (for `direct-ssh` / `helm-upgrade` / `ghcr-deploy`)
 - Final status: `deployed` / `dry-run` / `skipped` / `failed`
