@@ -1,0 +1,36 @@
+{
+  "task_id": "add-cloudflare-turnstile-captcha-to-edge-auth--foundry",
+  "workflow": "foundry",
+  "started_at": "2026-03-25T17:42:35.366911Z",
+  "attempt": 1,
+  "status": "in_progress",
+  "current_step": "coder",
+  "resume_from": "coder",
+  "updated_at": "2026-03-25T17:42:41.444037Z",
+  "task_file": "/workspaces/brama/tasks/add-cloudflare-turnstile-captcha-to-edge-auth--foundry/task.md",
+  "branch": "pipeline/add-cloudflare-turnstile-captcha-to-edge-auth",
+  "agents": [
+    {
+      "agent": "u-planner",
+      "status": "done",
+      "model": "anthropic/claude-sonnet-4-6",
+      "duration_seconds": 0,
+      "input_tokens": 177,
+      "output_tokens": 36104,
+      "cost": 4.0132,
+      "call_count": 1,
+      "updated_at": "2026-03-25T17:42:38.065301Z"
+    },
+    {
+      "agent": "coder",
+      "status": "done",
+      "model": "anthropic/claude-sonnet-4-6",
+      "duration_seconds": 0,
+      "input_tokens": 177,
+      "output_tokens": 36104,
+      "cost": 4.0132,
+      "call_count": 1,
+      "updated_at": "2026-03-25T17:42:41.444008Z"
+    }
+  ]
+}

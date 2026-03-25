@@ -3,7 +3,7 @@
   "workflow": "foundry",
   "started_at": "2026-03-24T21:36:53.249447Z",
   "attempt": 1,
-  "status": "in_progress",
+  "status": "cancelled",
   "current_step": "u-validator",
   "resume_from": "u-validator",
   "updated_at": "2026-03-24T22:49:11.140291Z",
