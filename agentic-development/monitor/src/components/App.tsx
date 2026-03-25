@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Box, Text, useInput, useApp, useStdout } from "ink";
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { join, basename } from "node:path";
+import { execSync } from "node:child_process";
 import { readAllTasks, type ReadResult, type TaskInfo } from "../lib/tasks.js";
 import { formatDuration, formatTokens, formatCost } from "../lib/format.js";
 import {
@@ -51,6 +52,25 @@ const COMMANDS: Command[] = [
 ];
 
 const EXECUTABLE_COMMANDS = COMMANDS.filter((c) => c.action);
+
+function copyToClipboard(text: string): boolean {
+  try {
+    if (process.platform === "darwin") {
+      execSync(`echo -n "${text}" | pbcopy`, { encoding: "utf-8" });
+      return true;
+    } else if (process.env.DISPLAY || process.env.WAYLAND_DISPLAY) {
+      if (process.env.WAYLAND_DISPLAY) {
+        execSync(`echo -n "${text}" | wl-copy`, { encoding: "utf-8" });
+      } else {
+        execSync(`echo -n "${text}" | xclip -selection clipboard`, { encoding: "utf-8" });
+      }
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 interface Props {
   tasksRoot: string;
@@ -186,6 +206,19 @@ export function App({ tasksRoot }: Props) {
       return;
     }
 
+    // Copy task slug to clipboard
+    if (input === "y" || input === "Y") {
+      if (selected) {
+        const slug = basename(selected.dir);
+        if (copyToClipboard(slug)) {
+          setMsg(`Copied: ${slug}`);
+        } else {
+          setMsg(`Copy failed (no clipboard tool)`);
+        }
+      }
+      return;
+    }
+
     // Actions (shortcut keys still work from Tasks tab)
     if (input === "s" || input === "S") { handleCmd(startWorkers(repoRoot)); return; }
     if (input === "k" || input === "K") { handleCmd(stopWorkers(repoRoot)); return; }
@@ -249,10 +282,10 @@ export function App({ tasksRoot }: Props) {
       <Text dimColor>{"─".repeat(cols)}</Text>
       {tab === 1 && view === "list" ? (
         <Text dimColor>
-          {"  ↑/↓ select  Enter detail  [a] agents  [l] logs  [d] archive  [s] start  [k] stop  [t] autotest  [q] quit"}
+          {"  ↑/↓ select  Enter detail  [y] copy  [a] agents  [l] logs  [d] archive  [s] start  [k] stop  [t] autotest  [q] quit"}
         </Text>
       ) : tab === 1 ? (
-        <Text dimColor>{"  q/Esc back"}</Text>
+        <Text dimColor>{"  [y] copy slug  [Esc] back  [q] quit"}</Text>
       ) : (
         <Text dimColor>{"  ↑/↓ select  Enter run  ←/→ tabs  [q] quit"}</Text>
       )}
