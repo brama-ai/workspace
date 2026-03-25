@@ -160,6 +160,13 @@ worker_loop() {
       if [[ "$STOP_ON_FAILURE" == true ]]; then
         return 1
       fi
+      # BUG-FIX: after a failure, release the task back to pending so it can
+      # be retried, then STOP the worker loop — do NOT immediately claim the
+      # next task. One failure = one stop. The watch loop will respawn the
+      # worker on the next interval, giving time for transient errors to clear
+      # (git lock contention, rate limits, etc.).
+      foundry_release_task "$task_dir" 2>/dev/null || true
+      return 0
     else
       log_batch "${GREEN}${worker_id}${NC} task done: ${task_name}"
     fi

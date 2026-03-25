@@ -3,12 +3,10 @@
   "workflow": "foundry",
   "started_at": "2026-03-25T17:42:35.366911Z",
   "attempt": 1,
-  "status": "in_progress",
+  "status": "cancelled",
   "current_step": null,
   "resume_from": null,
-  "updated_at": "2026-03-25T17:51:18.584303Z",
+  "updated_at": "2026-03-25T18:13:40.533257Z",
   "task_file": "/workspaces/brama/tasks/add-cloudflare-turnstile-captcha-to-edge-auth--foundry/task.md",
-  "branch": "pipeline/add-cloudflare-turnstile-captcha-to-edge-auth",
-  "worker_id": "worker-1",
-  "claimed_at": "2026-03-25T17:51:18.584303Z"
+  "branch": "pipeline/add-cloudflare-turnstile-captcha-to-edge-auth"
 }

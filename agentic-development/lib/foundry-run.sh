@@ -1027,9 +1027,22 @@ is_provider_error() {
   grep -qiE 'ProviderModelNotFoundError|Model not found|provider.*not.*found|credential|unauthorized|authentication.*fail|invalid.*api.?key|no.*provider' "$log_file" 2>/dev/null
 }
 
-# Any error that should trigger a fallback to the next model
+# Empty prompt / missing message — pipeline bug, not a provider issue.
+# Must NOT trigger fallback (would waste all fallback slots on a bad prompt).
+is_empty_prompt_error() {
+  local log_file="$1"
+  grep -qiE 'You must provide a message|must provide.*command|message.*required|no.*message.*provided' "$log_file" 2>/dev/null
+}
+
+# Any error that should trigger a fallback to the next model.
+# Empty-prompt errors are excluded — they indicate a pipeline bug, not a
+# provider/rate-limit issue, and retrying with a different model won't help.
 is_fallback_worthy_error() {
   local log_file="$1"
+  # Never fallback on empty-prompt errors
+  if is_empty_prompt_error "$log_file"; then
+    return 1
+  fi
   is_rate_limit_error "$log_file" || is_provider_error "$log_file"
 }
 
@@ -2340,6 +2353,23 @@ main() {
   # Setup branch
   branch=$(setup_branch)
   echo -e "${BLUE}Branch:${NC} ${branch}"
+
+  # Ensure we're on main/master before creating a new feature branch
+  local current_branch
+  current_branch=$(git -C "$REPO_ROOT" branch --show-current 2>/dev/null || true)
+  local main_branch
+  main_branch=$(git -C "$REPO_ROOT" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@refs/remotes/origin/@@' || echo "main")
+
+  # Only enforce main branch requirement for new branches (not for existing task branches)
+  if ! git -C "$REPO_ROOT" rev-parse --verify "$branch" &>/dev/null; then
+    # New branch — must be on main/master
+    if [[ "$current_branch" != "$main_branch" && "$current_branch" != "master" ]]; then
+      echo -e "${RED}✗ Cannot create new task branch: must be on ${main_branch} (currently on ${current_branch})${NC}"
+      echo -e "${RED}  Run: git checkout ${main_branch}${NC}"
+      exit 1
+    fi
+    echo -e "${GREEN}✓ On ${main_branch} — safe to create task branch${NC}"
+  fi
 
   # Create or switch to branch (with retry for lock contention in parallel mode)
   local branch_ok=false

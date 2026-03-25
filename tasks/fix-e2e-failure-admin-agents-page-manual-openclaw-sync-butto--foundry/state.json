@@ -3,10 +3,12 @@
   "workflow": "foundry",
   "started_at": "2026-03-24T21:36:53.249447Z",
   "attempt": 1,
-  "status": "pending",
+  "status": "in_progress",
   "current_step": null,
   "resume_from": null,
-  "updated_at": "2026-03-25T17:51:16.982500Z",
+  "updated_at": "2026-03-25T18:21:34.183777Z",
   "task_file": "/workspaces/brama/tasks/fix-e2e-failure-admin-agents-page-manual-openclaw-sync-butto--foundry/task.md",
-  "branch": "pipeline/fix-e2e-failure-admin-agents-page-manual-openclaw-sync-butto"
+  "branch": "pipeline/fix-e2e-failure-admin-agents-page-manual-openclaw-sync-butto",
+  "worker_id": "worker-1",
+  "claimed_at": "2026-03-25T18:21:34.183777Z"
 }

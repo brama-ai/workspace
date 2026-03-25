@@ -1,4 +1,4 @@
-import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
+import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput, useApp, useStdout } from "ink";
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
@@ -7,7 +7,7 @@ import { execSync } from "node:child_process";
 import { readAllTasks } from "../lib/tasks.js";
 import { formatDuration, formatTokens, formatCost } from "../lib/format.js";
 import { startWorkers, stopWorkers, retryFailed, runAutotest, archiveTask, ultraworksLaunch, ultraworksAttach, ultraworksCleanup, findRepoRoot, cleanZombies, getProcessStatus, tailLog, } from "../lib/actions.js";
-const VERSION = "2.1.0";
+const VERSION = "2.2.0";
 const REFRESH_MS = 3000;
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const COMMANDS = [
@@ -23,9 +23,9 @@ const COMMANDS = [
     // Flow
     { key: "t", label: "Launch autotest (E2E failures → fix tasks)", section: "flow", action: (r) => runAutotest(r, false) },
     { key: "T", label: "Launch autotest --smoke", section: "flow", action: (r) => runAutotest(r, true) },
-    // Navigation (info only, not executable from Commands tab)
+    // Navigation (info only)
     { key: "↑/↓", label: "Select task", section: "nav" },
-    { key: "Enter", label: "View task detail (task.md)", section: "nav" },
+    { key: "Enter", label: "View task detail", section: "nav" },
     { key: "a", label: "View agents table for selected task", section: "nav" },
     { key: "l", label: "View agent stdout logs", section: "nav" },
     { key: "d", label: "Archive task (move to archives/)", section: "nav" },
@@ -69,6 +69,7 @@ export function App({ tasksRoot }) {
     const [msg, setMsg] = useState("");
     const [lastAttachCmd, setLastAttachCmd] = useState("");
     const [tick, setTick] = useState(0);
+    // Processes tab state
     const [procStatus, setProcStatus] = useState({ workers: [], zombies: [], lock: null });
     const [procIdx, setProcIdx] = useState(0);
     const [procLogLines, setProcLogLines] = useState([]);
@@ -76,8 +77,7 @@ export function App({ tasksRoot }) {
     useEffect(() => {
         const refresh = () => {
             setData(readAllTasks(root));
-            const ps = getProcessStatus(repoRoot);
-            setProcStatus(ps);
+            setProcStatus(getProcessStatus(repoRoot));
         };
         refresh();
         const id = setInterval(() => {
@@ -97,37 +97,36 @@ export function App({ tasksRoot }) {
     useEffect(() => {
         const allProcs = [...procStatus.workers, ...procStatus.zombies];
         const proc = allProcs[procIdx];
-        if (proc?.log) {
-            setProcLogLines(tailLog(proc.log, 20));
-        }
-        else {
-            setProcLogLines([]);
-        }
-    }, [procIdx, tick, procStatus]);
+        setProcLogLines(proc?.log ? tailLog(proc.log, rows - 14) : []);
+    }, [procIdx, tick, procStatus, rows]);
+    // Clamp procIdx when process list changes
+    useEffect(() => {
+        const total = procStatus.workers.length + procStatus.zombies.length;
+        if (total > 0 && procIdx >= total)
+            setProcIdx(total - 1);
+    }, [procStatus]);
     // Handle CmdResult from actions
     const handleCmd = (result) => {
         setMsg(result.message);
-        if (result.attachCmd) {
+        if (result.attachCmd)
             setLastAttachCmd(result.attachCmd);
-        }
         setData(readAllTasks(root));
     };
-    // Clamp index
+    // Clamp task index
     useEffect(() => {
-        if (idx >= data.tasks.length && data.tasks.length > 0) {
+        if (idx >= data.tasks.length && data.tasks.length > 0)
             setIdx(data.tasks.length - 1);
-        }
     }, [data.tasks.length]);
     const selected = data.tasks[idx];
+    const allProcs = [...procStatus.workers, ...procStatus.zombies];
     useInput((input, key) => {
         // Quit / back
         if (input === "q" || input === "Q") {
             if (view !== "list") {
                 setView("list");
+                return;
             }
-            else {
-                exit();
-            }
+            exit();
             return;
         }
         if (key.escape) {
@@ -135,7 +134,7 @@ export function App({ tasksRoot }) {
                 setView("list");
             return;
         }
-        // Tabs
+        // Numeric tab switching
         if (input === "1") {
             setTab(1);
             setView("list");
@@ -146,37 +145,24 @@ export function App({ tasksRoot }) {
             setView("list");
             return;
         }
-        // Detail view: tab navigation with left/right arrows
-        if (view === "detail") {
-            // All possible tabs in order
-            const allTabs = ["summary", "state", "task", "handoff"];
-            if (key.leftArrow) {
-                const currentIdx = allTabs.indexOf(detailTab);
-                const prevIdx = currentIdx > 0 ? currentIdx - 1 : allTabs.length - 1;
-                setDetailTab(allTabs[prevIdx]);
-                return;
-            }
-            if (key.rightArrow) {
-                const currentIdx = allTabs.indexOf(detailTab);
-                const nextIdx = currentIdx < allTabs.length - 1 ? currentIdx + 1 : 0;
-                setDetailTab(allTabs[nextIdx]);
-                return;
-            }
+        if (input === "3") {
+            setTab(3);
+            return;
         }
-        else {
-            // List view: left/right for main tabs
+        // Left/right: cycle tabs (except inside detail sub-tabs)
+        if (view !== "detail") {
             if (key.leftArrow) {
-                setTab(tab === 1 ? 2 : 1);
+                setTab((t) => (t === 1 ? 3 : (t - 1)));
                 setView("list");
                 return;
             }
             if (key.rightArrow) {
-                setTab(tab === 1 ? 2 : 1);
+                setTab((t) => (t === 3 ? 1 : (t + 1)));
                 setView("list");
                 return;
             }
         }
-        // ── Commands tab: ↑/↓/j/k navigate, Enter execute ──
+        // ── Tab 2: Commands ──────────────────────────────────────────────
         if (tab === 2) {
             if (key.upArrow || input === "k") {
                 setCmdIdx((i) => Math.max(0, i - 1));
@@ -188,14 +174,44 @@ export function App({ tasksRoot }) {
             }
             if (key.return) {
                 const cmd = EXECUTABLE_COMMANDS[cmdIdx];
-                if (cmd?.action) {
+                if (cmd?.action)
                     handleCmd(cmd.action(repoRoot));
-                }
                 return;
             }
             return;
         }
-        // ── Tasks tab ──
+        // ── Tab 3: Processes ─────────────────────────────────────────────
+        if (tab === 3) {
+            if (key.upArrow || input === "k") {
+                setProcIdx((i) => Math.max(0, i - 1));
+                return;
+            }
+            if (key.downArrow || input === "j") {
+                setProcIdx((i) => Math.min(Math.max(0, allProcs.length - 1), i + 1));
+                return;
+            }
+            // z — clean zombies
+            if (input === "z" || input === "Z") {
+                handleCmd(cleanZombies(repoRoot));
+                return;
+            }
+            return;
+        }
+        // ── Tab 1: Tasks ─────────────────────────────────────────────────
+        // Detail sub-tab navigation
+        if (view === "detail") {
+            const allTabs = ["summary", "state", "task", "handoff"];
+            if (key.leftArrow) {
+                const i = allTabs.indexOf(detailTab);
+                setDetailTab(allTabs[i > 0 ? i - 1 : allTabs.length - 1]);
+                return;
+            }
+            if (key.rightArrow) {
+                const i = allTabs.indexOf(detailTab);
+                setDetailTab(allTabs[i < allTabs.length - 1 ? i + 1 : 0]);
+                return;
+            }
+        }
         // Navigation
         if (key.upArrow) {
             setIdx((i) => Math.max(0, i - 1));
@@ -210,8 +226,6 @@ export function App({ tasksRoot }) {
             return;
         }
         if (key.return) {
-            // Set initial tab based on task status
-            // Completed/failed tasks show summary first, active tasks show state
             if (selected) {
                 const isFinished = selected.status === "completed" || selected.status === "failed";
                 setDetailTab(isFinished ? "summary" : "state");
@@ -228,7 +242,7 @@ export function App({ tasksRoot }) {
             setView("agents");
             return;
         }
-        // Archive (delete → archive)
+        // Archive
         if (input === "d" || input === "D") {
             if (selected) {
                 try {
@@ -242,20 +256,15 @@ export function App({ tasksRoot }) {
             }
             return;
         }
-        // Copy task slug to clipboard
+        // Copy slug
         if (input === "y" || input === "Y") {
             if (selected) {
                 const slug = basename(selected.dir);
-                if (copyToClipboard(slug)) {
-                    setMsg(`Copied: ${slug}`);
-                }
-                else {
-                    setMsg(`Copy failed (no clipboard tool)`);
-                }
+                setMsg(copyToClipboard(slug) ? `Copied: ${slug}` : `Copy failed (no clipboard tool)`);
             }
             return;
         }
-        // Actions (shortcut keys still work from Tasks tab)
+        // Global action shortcuts (work from Tasks tab)
         if (input === "s" || input === "S") {
             handleCmd(startWorkers(repoRoot));
             return;
@@ -285,34 +294,29 @@ export function App({ tasksRoot }) {
             setMsg("Refreshed");
             return;
         }
-        // Process panel navigation (Tab key or p/P)
-        if (input === "p") {
-            const allProcs = [...procStatus.workers, ...procStatus.zombies];
-            setProcIdx((i) => Math.max(0, i - 1));
-            const newIdx = Math.max(0, procIdx - 1);
-            const proc = allProcs[newIdx];
-            if (proc?.log)
-                setProcLogLines(tailLog(proc.log, 20));
-            return;
-        }
-        if (input === "P") {
-            const allProcs = [...procStatus.workers, ...procStatus.zombies];
-            const newIdx = Math.min(allProcs.length - 1, procIdx + 1);
-            setProcIdx(newIdx);
-            const proc = allProcs[newIdx];
-            if (proc?.log)
-                setProcLogLines(tailLog(proc.log, 20));
-            return;
-        }
     });
     const time = new Date().toLocaleTimeString("en-GB", { hour12: false });
-    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time] })] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 })] }), _jsx(Text, { children: " " }), tab === 1 ? (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: cols, rows: rows, tick: tick, detailTab: detailTab, setMsg: setMsg, procStatus: procStatus, procIdx: procIdx, procLogLines: procLogLines })) : (_jsx(CommandsTab, { cols: cols, selectedIdx: cmdIdx })), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), tab === 1 && view === "list" ? (_jsx(Text, { dimColor: true, children: "  ↑/↓ select  Enter detail  [a] agents  [l] logs  [d] archive  [s] start  [k] stop  [z] clean zombies  [p/P] proc  [q] quit" })) : tab === 1 && view === "detail" ? (_jsx(Text, { dimColor: true, children: "  ←/→ tabs  [y] copy  [Esc] back  [q] quit" })) : tab === 1 ? (_jsx(Text, { dimColor: true, children: "  [y] copy slug  [Esc] back  [q] quit" })) : (_jsx(Text, { dimColor: true, children: "  ↑/↓ select  Enter run  ←/→ tabs  [q] quit" }))] }));
+    // Footer hint per tab/view
+    let footerHint = "";
+    if (tab === 1 && view === "list")
+        footerHint = "  ↑/↓ select  Enter detail  [a] agents  [l] logs  [d] archive  [s] start  [k] stop  [q] quit";
+    if (tab === 1 && view === "detail")
+        footerHint = "  ←/→ tabs  [y] copy  [Esc] back  [q] quit";
+    if (tab === 1 && view !== "list" && view !== "detail")
+        footerHint = "  [y] copy slug  [Esc] back  [q] quit";
+    if (tab === 2)
+        footerHint = "  ↑/↓ select  Enter run  ←/→ tabs  [q] quit";
+    if (tab === 3)
+        footerHint = "  ↑/↓ select process  [z] clean zombies  ←/→ tabs  [q] quit";
+    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time] })] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 }), _jsx(TabLabel, { n: 3, label: "Processes", active: tab === 3, hasAlert: procStatus.zombies.length > 0 || procStatus.lock?.zombie === true })] }), _jsx(Text, { children: " " }), tab === 1 && (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: cols, rows: rows, tick: tick, detailTab: detailTab, setMsg: setMsg })), tab === 2 && _jsx(CommandsTab, { cols: cols, selectedIdx: cmdIdx }), tab === 3 && (_jsx(ProcessesTab, { procStatus: procStatus, selectedIdx: procIdx, logLines: procLogLines, cols: cols, rows: rows, tick: tick })), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsx(Text, { dimColor: true, children: footerHint })] }));
 }
-function TabLabel({ n, label, active }) {
-    return active ? (_jsxs(Text, { bold: true, inverse: true, children: [" ", n, ":", label, " "] })) : (_jsxs(Text, { dimColor: true, children: [" ", n, ":", label, " "] }));
+// ── Tab label ─────────────────────────────────────────────────────
+function TabLabel({ n, label, active, hasAlert }) {
+    const badge = hasAlert ? " ⚠" : "";
+    return active ? (_jsxs(Text, { bold: true, inverse: true, color: hasAlert ? "red" : undefined, children: [" ", n, ":", label, badge, " "] })) : (_jsxs(Text, { dimColor: true, color: hasAlert ? "red" : undefined, children: [" ", n, ":", label, badge, " "] }));
 }
-// ── Tasks Tab ──────────────────────────────────────────────────────
-function TasksTab({ data, idx, view, selected, cols, rows, tick, detailTab, setMsg, procStatus, procIdx, procLogLines, }) {
+// ── Tasks Tab ─────────────────────────────────────────────────────
+function TasksTab({ data, idx, view, selected, cols, rows, tick, detailTab, setMsg, }) {
     if (view === "agents" && selected)
         return _jsx(AgentsView, { task: selected, cols: cols });
     if (view === "logs" && selected)
@@ -322,35 +326,42 @@ function TasksTab({ data, idx, view, selected, cols, rows, tick, detailTab, setM
     const { tasks, counts } = data;
     const total = counts.pending + counts.in_progress + counts.completed + counts.failed + counts.suspended;
     const done = counts.completed + counts.failed;
-    // Reserve ~8 lines for ProcessPanel at bottom
-    const PROC_PANEL_HEIGHT = 8;
-    const taskListRows = Math.max(4, rows - 16 - PROC_PANEL_HEIGHT);
-    return (_jsxs(Box, { flexDirection: "column", children: [_jsx(ProgressBar, { done: done, total: total, width: cols - 10 }), _jsx(Text, { children: " " }), _jsxs(Box, { gap: 2, children: [_jsx(Text, { children: "  " }), _jsxs(Text, { color: "blue", bold: true, children: ["Pending: ", counts.pending] }), _jsxs(Text, { color: "yellow", bold: true, children: ["Running: ", counts.in_progress] }), _jsxs(Text, { color: "green", bold: true, children: ["Done: ", counts.completed] }), _jsxs(Text, { color: "red", bold: true, children: ["Failed: ", counts.failed] }), counts.suspended > 0 && _jsxs(Text, { color: "magenta", bold: true, children: ["Suspended: ", counts.suspended] })] }), _jsx(Text, { children: " " }), _jsx(TaskList, { tasks: tasks, selectedIdx: idx, maxLines: taskListRows }), _jsx(ProcessPanel, { procStatus: procStatus, selectedIdx: procIdx, logLines: procLogLines, cols: cols, maxLogLines: PROC_PANEL_HEIGHT - 3 })] }));
+    return (_jsxs(Box, { flexDirection: "column", children: [_jsx(ProgressBar, { done: done, total: total, width: cols - 10 }), _jsx(Text, { children: " " }), _jsxs(Box, { gap: 2, children: [_jsx(Text, { children: "  " }), _jsxs(Text, { color: "blue", bold: true, children: ["Pending: ", counts.pending] }), _jsxs(Text, { color: "yellow", bold: true, children: ["Running: ", counts.in_progress] }), _jsxs(Text, { color: "green", bold: true, children: ["Done: ", counts.completed] }), _jsxs(Text, { color: "red", bold: true, children: ["Failed: ", counts.failed] }), counts.suspended > 0 && _jsxs(Text, { color: "magenta", bold: true, children: ["Suspended: ", counts.suspended] })] }), _jsx(Text, { children: " " }), _jsx(TaskList, { tasks: tasks, selectedIdx: idx, maxLines: rows - 12 })] }));
 }
-// ── Process Panel ─────────────────────────────────────────────────
-function ProcessPanel({ procStatus, selectedIdx, logLines, cols, maxLogLines, }) {
+// ── Processes Tab ─────────────────────────────────────────────────
+function ProcessesTab({ procStatus, selectedIdx, logLines, cols, rows, tick, }) {
     const allProcs = [...procStatus.workers, ...procStatus.zombies];
     const hasZombies = procStatus.zombies.length > 0;
     const lockInfo = procStatus.lock;
-    // Split layout: left = process list (~40%), right = log tail (~60%)
-    const leftW = Math.floor(cols * 0.38);
+    // Layout: left list ~40%, right log ~60%
+    const leftW = Math.floor(cols * 0.40);
     const rightW = cols - leftW - 3;
-    return (_jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { children: [_jsx(Text, { bold: true, color: hasZombies ? "red" : "cyan", children: "  Processes" }), hasZombies && (_jsxs(Text, { color: "red", bold: true, children: ["  \u26A0 ", procStatus.zombies.length, " zombie", procStatus.zombies.length > 1 ? "s" : "", "  [z] clean"] })), lockInfo && (_jsxs(Text, { dimColor: true, children: ["  lock:", lockInfo.pid] })), lockInfo?.zombie && (_jsx(Text, { color: "red", bold: true, children: "  \u26A0 stale lock" })), allProcs.length === 0 && (_jsx(Text, { dimColor: true, children: "  (no foundry processes running)" })), _jsx(Text, { dimColor: true, children: "  [p/P] navigate" })] }), allProcs.length > 0 && (_jsxs(Box, { children: [_jsx(Box, { flexDirection: "column", width: leftW, children: allProcs.slice(0, maxLogLines).map((proc, i) => {
-                            const cursor = i === selectedIdx;
-                            const isZombie = proc.zombie;
-                            const color = isZombie ? "red" : "green";
-                            const icon = isZombie ? "☠" : "▸";
-                            // Shorten args: show last meaningful part
-                            const shortArgs = proc.args.replace(/.*\/(foundry|opencode|ultraworks)/, "$1").slice(0, leftW - 14);
-                            return (_jsxs(Box, { children: [_jsx(Text, { color: "cyan", children: cursor ? " ▶ " : "   " }), _jsxs(Text, { color: color, children: [icon, " "] }), _jsx(Text, { bold: cursor, color: isZombie ? "red" : undefined, children: String(proc.pid).padEnd(6) }), _jsx(Text, { dimColor: true, color: isZombie ? "red" : undefined, children: isZombie ? "ZOMBIE " : proc.etime.padEnd(7) }), _jsx(Text, { dimColor: true, children: shortArgs })] }, proc.pid));
-                        }) }), _jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { dimColor: true, children: "│" }), logLines.slice(0, maxLogLines).map((_, i) => (_jsx(Text, { dimColor: true, children: "│" }, i)))] }), _jsx(Box, { flexDirection: "column", width: rightW, children: logLines.length > 0 ? (logLines.slice(0, maxLogLines).map((line, i) => (_jsx(Text, { dimColor: true, children: " " + line.slice(0, rightW - 2) }, i)))) : (_jsx(Text, { dimColor: true, children: "  (no log)" })) })] }))] }));
+    const listH = rows - 8; // lines available for process list
+    const logH = rows - 8; // lines available for log
+    return (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: hasZombies ? "red" : "cyan", children: "  Processes" }), hasZombies && (_jsxs(Text, { color: "red", bold: true, children: ["  \u26A0 ", procStatus.zombies.length, " zombie", procStatus.zombies.length > 1 ? "s" : "", "  [z] clean"] })), lockInfo && (_jsxs(Text, { dimColor: true, children: ["  lock:", lockInfo.pid] })), lockInfo?.zombie && (_jsx(Text, { color: "red", bold: true, children: "  \u26A0 stale lock" }))] }), _jsx(Text, { dimColor: true, children: "  " + "─".repeat(cols - 4) }), allProcs.length === 0 ? (_jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { children: " " }), _jsx(Text, { dimColor: true, children: "  No foundry processes running." }), _jsx(Text, { children: " " }), _jsx(Text, { dimColor: true, children: "  [s] Start headless workers   [u] Launch Ultraworks" })] })) : (_jsxs(Box, { children: [_jsxs(Box, { flexDirection: "column", width: leftW, children: [_jsxs(Box, { children: [_jsx(Text, { dimColor: true, children: "   " }), _jsx(Text, { bold: true, dimColor: true, children: "PID".padEnd(8) }), _jsx(Text, { bold: true, dimColor: true, children: "Time".padEnd(8) }), _jsx(Text, { bold: true, dimColor: true, children: "Process" })] }), _jsx(Text, { dimColor: true, children: "   " + "─".repeat(leftW - 3) }), allProcs.slice(0, listH).map((proc, i) => {
+                                const cursor = i === selectedIdx;
+                                const isZombie = proc.zombie;
+                                const color = isZombie ? "red" : "green";
+                                const icon = isZombie ? "☠" : "▸";
+                                // Shorten args to fit column
+                                const shortArgs = proc.args
+                                    .replace(/.*\/(foundry|opencode|ultraworks|foundry-run|foundry-batch)/, "$1")
+                                    .replace(/--task-file\s+\S+/, (m) => "--task-file …" + m.split("/").pop())
+                                    .slice(0, leftW - 22);
+                                return (_jsxs(Box, { children: [_jsx(Text, { color: "cyan", children: cursor ? " ▶ " : "   " }), _jsxs(Text, { color: color, children: [icon, " "] }), _jsx(Text, { bold: cursor, color: isZombie ? "red" : undefined, children: String(proc.pid).padEnd(7) }), _jsx(Text, { dimColor: true, children: isZombie ? "ZOMBIE ".padEnd(8) : proc.etime.padEnd(8) }), _jsx(Text, { dimColor: !cursor, children: shortArgs })] }, proc.pid));
+                            })] }), _jsx(Box, { flexDirection: "column", children: Array.from({ length: Math.min(listH + 2, rows - 6) }).map((_, i) => (_jsx(Text, { dimColor: true, children: "\u2502" }, i))) }), _jsx(Box, { flexDirection: "column", width: rightW, children: (() => {
+                            const proc = allProcs[selectedIdx];
+                            return (_jsxs(_Fragment, { children: [_jsxs(Text, { dimColor: true, bold: true, children: [" Log: ", proc ? (proc.log ? proc.log.split("/").slice(-1)[0] : "(no log file)") : "—"] }), _jsx(Text, { dimColor: true, children: " " + "─".repeat(rightW - 2) }), logLines.length > 0 ? (logLines.slice(0, logH).map((line, i) => (_jsx(Text, { dimColor: true, children: " " + line.replace(/\x1b\[[0-9;]*m/g, "").slice(0, rightW - 2) }, i)))) : (_jsx(Text, { dimColor: true, children: "  (no log output)" }))] }));
+                        })() })] })), lockInfo && (_jsx(Box, { children: _jsx(Text, { dimColor: true, children: "  " + "─".repeat(cols - 4) }) })), lockInfo && (_jsxs(Box, { gap: 2, children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Batch lock:" }), _jsxs(Text, { color: lockInfo.zombie ? "red" : "green", bold: true, children: ["PID ", lockInfo.pid] }), _jsx(Text, { color: lockInfo.zombie ? "red" : "green", children: lockInfo.zombie ? "ZOMBIE — stale lock!" : `state=${lockInfo.state}` })] }))] }));
 }
+// ── Progress bar ──────────────────────────────────────────────────
 function ProgressBar({ done, total, width }) {
     const w = Math.max(10, width);
     const filled = total > 0 ? Math.round((done / total) * w) : 0;
     const empty = w - filled;
     return (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsxs(Text, { color: "green", children: ["[", "█".repeat(filled)] }), _jsx(Text, { dimColor: true, children: "░".repeat(empty) }), _jsx(Text, { color: "green", children: "]" }), _jsxs(Text, { children: [" ", done, "/", total] })] }));
 }
+// ── Task list ─────────────────────────────────────────────────────
 function TaskList({ tasks, selectedIdx, maxLines }) {
     const lines = Math.max(5, maxLines);
     let scrollStart = 0;
@@ -383,7 +394,6 @@ function TaskLine({ task, cursor }) {
     const color = { in_progress: "yellow", completed: "green", failed: "red", suspended: "magenta", pending: undefined }[task.status];
     const wfBadge = task.workflow === "ultraworks" ? "U" : "F";
     const wfColor = task.workflow === "ultraworks" ? "magenta" : "blue";
-    // Stale/warning indicators
     const warnings = [];
     if (task.hasStaleLock)
         warnings.push("⚠ stale lock");
@@ -393,11 +403,9 @@ function TaskLine({ task, cursor }) {
     if (task.status === "in_progress" && task.branchName && !task.branchExists) {
         warnings.push("⚠ no branch");
     }
-    // Find failed agent
     const failedAgent = (task.agents ?? []).find(a => a.status === "failed" || a.status === "error");
-    if (failedAgent) {
+    if (failedAgent)
         warnings.push(`✗ ${failedAgent.agent}`);
-    }
     let suffix = "";
     if (task.status === "in_progress") {
         if (task.currentStep)
@@ -412,16 +420,13 @@ function TaskLine({ task, cursor }) {
         if (dur > 0)
             suffix = ` (${formatDuration(dur)})`;
     }
-    if (task.status === "pending" && task.priority > 1) {
+    if (task.status === "pending" && task.priority > 1)
         suffix = ` #${task.priority}`;
-    }
-    if (task.attempt && task.attempt > 1) {
+    if (task.attempt && task.attempt > 1)
         suffix += ` attempt#${task.attempt}`;
-    }
-    const warningText = warnings.length > 0 ? ` ${warnings.join(" ")}` : "";
-    return (_jsxs(Box, { children: [_jsx(Text, { color: "cyan", children: cursor ? "  ▶ " : "    " }), _jsx(Text, { color: wfColor, children: wfBadge }), _jsxs(Text, { color: color, children: [" ", icon] }), _jsxs(Text, { children: [" ", task.title] }), _jsx(Text, { dimColor: true, children: suffix }), warnings.length > 0 && _jsx(Text, { color: "red", children: warningText })] }));
+    return (_jsxs(Box, { children: [_jsx(Text, { color: "cyan", children: cursor ? "  ▶ " : "    " }), _jsx(Text, { color: wfColor, children: wfBadge }), _jsxs(Text, { color: color, children: [" ", icon] }), _jsxs(Text, { children: [" ", task.title] }), _jsx(Text, { dimColor: true, children: suffix }), warnings.length > 0 && _jsxs(Text, { color: "red", children: [" ", warnings.join(" ")] })] }));
 }
-// ── Agents View ──────────────────────────────────────────────────
+// ── Agents View ───────────────────────────────────────────────────
 function AgentsView({ task, cols }) {
     const agents = task.agents ?? [];
     return (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Text, { bold: true, children: ["  Agents: ", task.title] }), _jsx(Text, { children: " " }), _jsxs(Text, { bold: true, children: ["  ", "Agent".padEnd(14), " ", "Status".padEnd(12), " ", "Duration".padStart(8), " ", "Input".padStart(8), " ", "Output".padStart(8), " ", "Cost".padStart(8), " ", "Calls".padStart(6)] }), _jsxs(Text, { dimColor: true, children: ["  ", "─".repeat(Math.min(cols - 4, 70))] }), agents.length === 0 ? (_jsx(Text, { dimColor: true, children: "  No agent data yet." })) : (agents.map((a) => {
@@ -430,11 +435,10 @@ function AgentsView({ task, cols }) {
                 return (_jsxs(Box, { children: [_jsxs(Text, { color: color, children: ["  ", icon, " "] }), _jsx(Text, { children: a.agent.padEnd(13) }), _jsx(Text, { color: color, children: a.status.padEnd(12) }), _jsx(Text, { children: formatDuration(a.durationSeconds).padStart(8) }), _jsx(Text, { children: formatTokens(a.inputTokens).padStart(8) }), _jsx(Text, { children: formatTokens(a.outputTokens).padStart(8) }), _jsx(Text, { children: formatCost(a.cost).padStart(8) }), _jsx(Text, { children: String(a.callCount ?? 1).padStart(6) })] }, a.agent));
             })), _jsx(Text, { children: " " }), _jsx(Text, { dimColor: true, children: "  q/Esc back" })] }));
 }
-// ── Logs View ────────────────────────────────────────────────────
+// ── Logs View ─────────────────────────────────────────────────────
 function LogsView({ task, rows, tick }) {
     const [logContent, setLogContent] = useState([]);
     useEffect(() => {
-        // Collect all .log files from artifacts (including agent subdirectories)
         const collectLogs = (dir) => {
             const logs = [];
             try {
@@ -451,26 +455,22 @@ function LogsView({ task, rows, tick }) {
                             logs.push(full);
                         }
                     }
-                    catch { /* skip unreadable entries */ }
+                    catch { /* skip */ }
                 }
             }
-            catch { /* directory doesn't exist */ }
+            catch { /* dir missing */ }
             return logs;
         };
-        // 1. Try artifacts directory (with recursive agent subdirs)
         let logs = collectLogs(join(task.dir, "artifacts"));
-        // 2. Fallback: pipeline logs matching run timestamp from events.jsonl
         if (logs.length === 0) {
             try {
                 const eventsFile = join(task.dir, "events.jsonl");
                 if (existsSync(eventsFile)) {
                     const events = readFileSync(eventsFile, "utf-8").trim().split("\n");
-                    // Find run_started event to get the timestamp prefix
                     for (const line of events) {
                         try {
                             const ev = JSON.parse(line);
                             if (ev.type === "run_started" && ev.timestamp) {
-                                // Convert ISO timestamp to pipeline log prefix: 20260324_191052
                                 const d = new Date(ev.timestamp);
                                 const pad = (n) => String(n).padStart(2, "0");
                                 const prefix = `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}_${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}`;
@@ -483,14 +483,13 @@ function LogsView({ task, rows, tick }) {
                                 break;
                             }
                         }
-                        catch { /* skip malformed event lines */ }
+                        catch { /* skip */ }
                     }
                 }
             }
             catch { /* no pipeline logs */ }
         }
         if (logs.length > 0) {
-            // Pick the most recently modified log
             logs.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
             const content = readFileSync(logs[0], "utf-8");
             setLogContent(content.split("\n").slice(-(rows - 8)));
@@ -501,29 +500,24 @@ function LogsView({ task, rows, tick }) {
     }, [task.dir, rows, tick]);
     return (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Text, { bold: true, children: ["  Logs: ", task.title] }), _jsx(Text, { children: " " }), logContent.map((line, i) => (_jsxs(Text, { dimColor: true, children: ["  ", line] }, i))), _jsx(Text, { children: " " }), _jsx(Text, { dimColor: true, children: "  q/Esc back  (auto-refresh 3s)" })] }));
 }
-// ── Detail View ──────────────────────────────────────────────────
+// ── Detail View ───────────────────────────────────────────────────
 function DetailView({ task, rows, tab, tick, setMsg, }) {
     const [stateData, setStateData] = useState(null);
     const [loopCount, setLoopCount] = useState(0);
     const [summaryContent, setSummaryContent] = useState([]);
     const [taskContent, setTaskContent] = useState([]);
     const [handoffContent, setHandoffContent] = useState([]);
-    // Determine tabs based on task status
-    // Completed/failed tasks show summary first
-    // Active tasks show state first
     const isFinished = task.status === "completed" || task.status === "failed";
     const defaultFirstTab = isFinished ? "summary" : "state";
     const availableTabs = isFinished
         ? ["summary", "task", "handoff"]
         : ["state", "task", "handoff"];
-    // Load state.json on every tick (auto-refresh)
     useEffect(() => {
         try {
             const statePath = join(task.dir, "state.json");
             if (existsSync(statePath)) {
                 const data = JSON.parse(readFileSync(statePath, "utf-8"));
                 setStateData(data);
-                // Count loopbacks from events.jsonl
                 const eventsPath = join(task.dir, "events.jsonl");
                 if (existsSync(eventsPath)) {
                     const events = readFileSync(eventsPath, "utf-8");
@@ -539,78 +533,51 @@ function DetailView({ task, rows, tab, tick, setMsg, }) {
             setStateData(null);
         }
     }, [task.dir, tick]);
-    // Load summary.md lazily
     useEffect(() => {
         if (tab !== "summary")
             return;
         try {
             const path = join(task.dir, "summary.md");
-            if (existsSync(path)) {
-                const lines = readFileSync(path, "utf-8")
-                    .split("\n")
-                    .slice(0, rows - 12);
-                setSummaryContent(lines);
-            }
-            else {
-                setSummaryContent(["No summary.md found", "", "Summary is generated after task completion."]);
-            }
+            setSummaryContent(existsSync(path)
+                ? readFileSync(path, "utf-8").split("\n").slice(0, rows - 12)
+                : ["No summary.md found", "", "Summary is generated after task completion."]);
         }
         catch (e) {
             setSummaryContent([`Error: ${e.message}`]);
         }
     }, [task.dir, tab, rows]);
-    // Load task.md lazily
     useEffect(() => {
         if (tab !== "task")
             return;
         try {
             const path = join(task.dir, "task.md");
-            if (existsSync(path)) {
-                const lines = readFileSync(path, "utf-8")
-                    .split("\n")
-                    .filter((l) => !l.startsWith("<!-- priority:"))
-                    .slice(0, rows - 10);
-                setTaskContent(lines);
-            }
-            else {
-                setTaskContent(["No task.md found"]);
-            }
+            setSummaryContent([]);
+            setTaskContent(existsSync(path)
+                ? readFileSync(path, "utf-8").split("\n").filter((l) => !l.startsWith("<!-- priority:")).slice(0, rows - 10)
+                : ["No task.md found"]);
         }
         catch (e) {
             setTaskContent([`Error: ${e.message}`]);
         }
     }, [task.dir, tab, rows]);
-    // Load handoff.md lazily
     useEffect(() => {
         if (tab !== "handoff")
             return;
         try {
             const path = join(task.dir, "handoff.md");
-            if (existsSync(path)) {
-                const lines = readFileSync(path, "utf-8").split("\n").slice(0, rows - 10);
-                setHandoffContent(lines);
-            }
-            else {
-                setHandoffContent(["No handoff.md found"]);
-            }
+            setHandoffContent(existsSync(path)
+                ? readFileSync(path, "utf-8").split("\n").slice(0, rows - 10)
+                : ["No handoff.md found"]);
         }
         catch (e) {
             setHandoffContent([`Error: ${e.message}`]);
         }
     }, [task.dir, tab, rows]);
-    // Copy slug
     const copySlug = () => {
         const slug = basename(task.dir);
-        if (copyToClipboard(slug)) {
-            setMsg(`Copied: ${slug}`);
-        }
-        else {
-            setMsg(`Copy failed`);
-        }
+        setMsg(copyToClipboard(slug) ? `Copied: ${slug}` : `Copy failed`);
     };
-    // Spinner for in_progress
     const spinner = SPINNER_FRAMES[tick % 10];
-    // Format time ago
     const timeAgo = (ts) => {
         if (!ts)
             return "";
@@ -621,31 +588,19 @@ function DetailView({ task, rows, tab, tick, setMsg, }) {
             return `${Math.floor(diff / 60)}m ago`;
         return `${Math.floor(diff / 3600)}h ago`;
     };
-    // Tab labels
-    const tabLabels = {
-        summary: "Summary",
-        state: "State",
-        task: "Task",
-        handoff: "Handoff",
-    };
-    // Check if current tab is valid for this task
+    const tabLabels = { summary: "Summary", state: "State", task: "Task", handoff: "Handoff" };
     const activeTab = availableTabs.includes(tab) ? tab : defaultFirstTab;
-    return (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, children: "  Detail: " }), _jsx(Text, { color: "cyan", children: task.title.slice(0, 50) }), task.status === "in_progress" && _jsxs(Text, { color: "yellow", children: [" ", spinner] }), loopCount > 0 && _jsxs(Text, { color: "yellow", children: [" \u21BB", loopCount] })] }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: "  " }), availableTabs.map((t) => (_jsx(Text, { bold: activeTab === t, inverse: activeTab === t, color: activeTab === t ? "cyan" : undefined, dimColor: activeTab !== t, children: ` ${tabLabels[t]} ` }, t)))] }), _jsx(Text, { dimColor: true, children: "  " + "─".repeat(40) }), activeTab === "summary" && (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { dimColor: true, children: "  Status: " }), _jsx(Text, { bold: true, color: task.status === "completed" ? "green" :
-                                    task.status === "failed" ? "red" : undefined, children: task.status }), task.updatedAt && _jsxs(Text, { dimColor: true, children: [" ", timeAgo(task.updatedAt)] })] }), task.agents && task.agents.length > 0 && (_jsxs(Box, { children: [_jsx(Text, { dimColor: true, children: "  Duration: " }), _jsx(Text, { children: formatDuration(task.agents.reduce((sum, a) => sum + (a.durationSeconds || 0), 0)) })] })), _jsx(Text, { children: " " }), _jsx(Text, { bold: true, children: "  Summary" }), _jsx(Text, { dimColor: true, children: "  " + "─".repeat(40) }), summaryContent.map((line, i) => (_jsxs(Text, { children: ["  ", line] }, i)))] })), activeTab === "state" && (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { dimColor: true, children: "  Status: " }), _jsx(Text, { bold: true, color: task.status === "completed" ? "green" :
+    return (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, children: "  Detail: " }), _jsx(Text, { color: "cyan", children: task.title.slice(0, 50) }), task.status === "in_progress" && _jsxs(Text, { color: "yellow", children: [" ", spinner] }), loopCount > 0 && _jsxs(Text, { color: "yellow", children: [" \u21BB", loopCount] })] }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: "  " }), availableTabs.map((t) => (_jsx(Text, { bold: activeTab === t, inverse: activeTab === t, color: activeTab === t ? "cyan" : undefined, dimColor: activeTab !== t, children: ` ${tabLabels[t]} ` }, t)))] }), _jsx(Text, { dimColor: true, children: "  " + "─".repeat(40) }), activeTab === "summary" && (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { dimColor: true, children: "  Status: " }), _jsx(Text, { bold: true, color: task.status === "completed" ? "green" : task.status === "failed" ? "red" : undefined, children: task.status }), task.updatedAt && _jsxs(Text, { dimColor: true, children: [" ", timeAgo(task.updatedAt)] })] }), task.agents && task.agents.length > 0 && (_jsxs(Box, { children: [_jsx(Text, { dimColor: true, children: "  Duration: " }), _jsx(Text, { children: formatDuration(task.agents.reduce((sum, a) => sum + (a.durationSeconds || 0), 0)) })] })), _jsx(Text, { children: " " }), _jsx(Text, { bold: true, children: "  Summary" }), _jsx(Text, { dimColor: true, children: "  " + "─".repeat(40) }), summaryContent.map((line, i) => _jsxs(Text, { children: ["  ", line] }, i))] })), activeTab === "state" && (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { dimColor: true, children: "  Status: " }), _jsx(Text, { bold: true, color: task.status === "completed" ? "green" :
                                     task.status === "failed" ? "red" :
                                         task.status === "in_progress" ? "yellow" :
-                                            task.status === "suspended" ? "magenta" : undefined, children: task.status }), task.currentStep && _jsxs(Text, { dimColor: true, children: [" [", task.currentStep, "]"] }), task.updatedAt && _jsxs(Text, { dimColor: true, children: [" ", timeAgo(task.updatedAt)] })] }), stateData?.branch && (_jsxs(Box, { children: [_jsx(Text, { dimColor: true, children: "  Branch: " }), _jsx(Text, { children: stateData.branch })] })), task.workerId && (_jsxs(Box, { children: [_jsx(Text, { dimColor: true, children: "  Worker: " }), _jsx(Text, { children: task.workerId })] })), _jsx(Text, { children: " " }), _jsx(Text, { bold: true, children: "  Agents" }), _jsx(Text, { dimColor: true, children: "  " + "─".repeat(40) }), task.agents && task.agents.length > 0 ? (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { dimColor: true, children: "  " }), _jsx(Text, { bold: true, children: "Agent".padEnd(14) }), _jsx(Text, { bold: true, children: "Status".padEnd(10) }), _jsx(Text, { bold: true, children: "Time".padStart(8) })] }), task.agents.map((a) => {
+                                            task.status === "suspended" ? "magenta" : undefined, children: task.status }), task.currentStep && _jsxs(Text, { dimColor: true, children: [" [", task.currentStep, "]"] }), task.updatedAt && _jsxs(Text, { dimColor: true, children: [" ", timeAgo(task.updatedAt)] })] }), stateData?.branch && _jsxs(Box, { children: [_jsx(Text, { dimColor: true, children: "  Branch: " }), _jsx(Text, { children: stateData.branch })] }), task.workerId && _jsxs(Box, { children: [_jsx(Text, { dimColor: true, children: "  Worker: " }), _jsx(Text, { children: task.workerId })] }), _jsx(Text, { children: " " }), _jsx(Text, { bold: true, children: "  Agents" }), _jsx(Text, { dimColor: true, children: "  " + "─".repeat(40) }), task.agents && task.agents.length > 0 ? (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { dimColor: true, children: "  " }), _jsx(Text, { bold: true, children: "Agent".padEnd(14) }), _jsx(Text, { bold: true, children: "Status".padEnd(10) }), _jsx(Text, { bold: true, children: "Time".padStart(8) })] }), task.agents.map((a) => {
                                 const isRunning = a.status === "in_progress" || a.status === "running";
-                                const icon = isRunning ? spinner :
-                                    a.status === "done" || a.status === "completed" ? "✓" :
-                                        a.status === "failed" || a.status === "error" ? "✗" : "○";
-                                const color = isRunning ? "cyan" :
-                                    a.status === "done" || a.status === "completed" ? "green" :
-                                        a.status === "failed" || a.status === "error" ? "red" : undefined;
+                                const icon = isRunning ? spinner : a.status === "done" || a.status === "completed" ? "✓" : a.status === "failed" || a.status === "error" ? "✗" : "○";
+                                const color = isRunning ? "cyan" : a.status === "done" || a.status === "completed" ? "green" : a.status === "failed" || a.status === "error" ? "red" : undefined;
                                 return (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsxs(Text, { color: color, children: [icon, " "] }), _jsx(Text, { children: a.agent.padEnd(12) }), _jsx(Text, { color: color, children: (a.status || "pending").padEnd(10) }), _jsx(Text, { children: formatDuration(a.durationSeconds || 0).padStart(7) })] }, a.agent));
-                            })] })) : (_jsx(Text, { dimColor: true, children: "  No agents yet" })), loopCount > 0 && (_jsxs(Box, { children: [_jsx(Text, { children: " " }), _jsxs(Text, { color: "yellow", children: ["  \u26A0 Task retried ", loopCount, " time", loopCount > 1 ? "s" : ""] })] }))] })), activeTab === "task" && (_jsx(Box, { flexDirection: "column", children: taskContent.map((line, i) => (_jsxs(Text, { children: ["  ", line] }, i))) })), activeTab === "handoff" && (_jsx(Box, { flexDirection: "column", children: handoffContent.map((line, i) => (_jsxs(Text, { children: ["  ", line] }, i))) })), _jsx(Text, { children: " " })] }));
+                            })] })) : (_jsx(Text, { dimColor: true, children: "  No agents yet" })), loopCount > 0 && (_jsxs(Box, { children: [_jsx(Text, { children: " " }), _jsxs(Text, { color: "yellow", children: ["  \u26A0 Task retried ", loopCount, " time", loopCount > 1 ? "s" : ""] })] }))] })), activeTab === "task" && (_jsx(Box, { flexDirection: "column", children: taskContent.map((line, i) => _jsxs(Text, { children: ["  ", line] }, i)) })), activeTab === "handoff" && (_jsx(Box, { flexDirection: "column", children: handoffContent.map((line, i) => _jsxs(Text, { children: ["  ", line] }, i)) })), _jsx(Text, { children: " " })] }));
 }
-// ── Commands Tab ─────────────────────────────────────────────────
+// ── Commands Tab ──────────────────────────────────────────────────
 const CMD_SECTIONS = [
     { section: "foundry", label: "Foundry", color: "cyan" },
     { section: "ultraworks", label: "Ultraworks", color: "magenta" },

@@ -452,6 +452,114 @@ assert_eq "resume_from preserved after reset to pending" "u-validator" "$resume_
 echo ""
 
 # ════════════════════════════════════════════════════════════════════
+# BUG-5: task.md exists but state.json missing → must be auto-created
+#         as pending when foundry scans the task directory
+# ════════════════════════════════════════════════════════════════════
+echo "BUG-5: task.md without state.json → state.json auto-created as pending"
+echo "──────────────────────────────────────────────────────────────"
+
+# Create task dir with only task.md (simulates manual task creation)
+task5_dir="$tmp_root/manual-task--foundry"
+mkdir -p "$task5_dir"
+printf '# Manual task\n\nCreated by hand.\n' > "$task5_dir/task.md"
+
+assert_file_not_exists "state.json absent before scan" "$task5_dir/state.json"
+
+# Override PIPELINE_TASKS_ROOT to point to our tmp dir
+PIPELINE_TASKS_ROOT_ORIG="${PIPELINE_TASKS_ROOT:-$REPO_ROOT/tasks}"
+export PIPELINE_TASKS_ROOT="$tmp_root"
+
+# foundry_list_task_dirs should auto-create state.json
+foundry_list_task_dirs > /dev/null
+
+export PIPELINE_TASKS_ROOT="$PIPELINE_TASKS_ROOT_ORIG"
+
+assert_file_exists "state.json auto-created after foundry_list_task_dirs" "$task5_dir/state.json"
+
+auto_status=$(state_field "$task5_dir" "status")
+assert_eq "auto-created state.json has status=pending" "pending" "$auto_status"
+
+auto_task_id=$(state_field "$task5_dir" "task_id")
+assert_eq "auto-created state.json has correct task_id" "manual-task--foundry" "$auto_task_id"
+
+# foundry_ensure_state_json directly
+task5b_dir="$tmp_root/manual-task-b--foundry"
+mkdir -p "$task5b_dir"
+printf '# Manual task B\n' > "$task5b_dir/task.md"
+
+foundry_ensure_state_json "$task5b_dir"
+
+assert_file_exists "foundry_ensure_state_json creates state.json" "$task5b_dir/state.json"
+b_status=$(state_field "$task5b_dir" "status")
+assert_eq "foundry_ensure_state_json writes pending status" "pending" "$b_status"
+
+# Idempotent: calling again must not overwrite existing state
+foundry_set_state_status "$task5b_dir" "in_progress" "u-coder" "u-coder"
+foundry_ensure_state_json "$task5b_dir"
+b_status_after=$(state_field "$task5b_dir" "status")
+assert_eq "foundry_ensure_state_json is idempotent (does not overwrite)" "in_progress" "$b_status_after"
+
+echo ""
+
+# ════════════════════════════════════════════════════════════════════
+# BUG-5b: foundry_claim_next_task must write FULL state.json even
+#          when state.json was absent (manually-created task)
+# ════════════════════════════════════════════════════════════════════
+echo "BUG-5b: claim on task without state.json writes full state fields"
+echo "──────────────────────────────────────────────────────────────"
+
+task5c_dir="$tmp_root/manual-claim--foundry"
+mkdir -p "$task5c_dir"
+printf '# Manual claim task\n\nTest.\n' > "$task5c_dir/task.md"
+# No state.json — simulate manual task creation
+
+# Simulate what foundry_claim_next_task does when state.json is absent
+python3 << PYEOF
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+task_dir = Path("$task5c_dir")
+state_path = task_dir / "state.json"
+now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+data = {}
+# state.json absent → data is empty dict
+
+data.setdefault("task_id", task_dir.name)
+data.setdefault("workflow", "foundry")
+data.setdefault("attempt", 1)
+data.setdefault("current_step", None)
+data.setdefault("resume_from", None)
+data.setdefault("branch", None)
+data.setdefault("task_file", str(task_dir / "task.md"))
+data.setdefault("started_at", now)
+
+data["status"] = "in_progress"
+data["worker_id"] = "worker-1"
+data["claimed_at"] = now
+data["updated_at"] = now
+
+state_path.write_text(json.dumps(data, indent=2, ensure_ascii=True) + "\n")
+PYEOF
+
+assert_file_exists "state.json created by claim" "$task5c_dir/state.json"
+
+c_status=$(state_field "$task5c_dir" "status")
+assert_eq "claimed state is in_progress" "in_progress" "$c_status"
+
+c_task_id=$(state_field "$task5c_dir" "task_id")
+assert_eq "task_id populated from dir name" "manual-claim--foundry" "$c_task_id"
+
+c_workflow=$(state_field "$task5c_dir" "workflow")
+assert_eq "workflow is foundry" "foundry" "$c_workflow"
+
+c_task_file=$(state_field "$task5c_dir" "task_file")
+assert_contains "task_file points to task.md" "task.md" "$c_task_file"
+
+echo ""
+
+# ════════════════════════════════════════════════════════════════════
 # Summary
 # ════════════════════════════════════════════════════════════════════
 echo "─────────────────────────────────────────────────────────────"

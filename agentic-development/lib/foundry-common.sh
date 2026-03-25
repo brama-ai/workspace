@@ -610,6 +610,17 @@ for _, task_dir in candidates:
         if data.get("status", "pending") != "pending":
             continue  # Already claimed between check and lock
 
+        # Ensure all required fields exist — covers tasks created manually
+        # (task.md placed in tasks/ without going through foundry_create_task_dir)
+        data.setdefault("task_id", task_dir.name)
+        data.setdefault("workflow", "foundry")
+        data.setdefault("attempt", 1)
+        data.setdefault("current_step", None)
+        data.setdefault("resume_from", None)
+        data.setdefault("branch", None)
+        data.setdefault("task_file", str(task_dir / "task.md"))
+        data.setdefault("started_at", now)
+
         data["status"] = "in_progress"
         data["worker_id"] = worker_id
         data["claimed_at"] = now
@@ -661,12 +672,19 @@ foundry_create_worktree() {
 
   mkdir -p "$WORKTREE_BASE"
 
-  # Create worktree from HEAD with detached HEAD (no branch conflicts between workers)
+  # Determine main branch
+  local main_branch
+  main_branch=$(git -C "$REPO_ROOT" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@refs/remotes/origin/@@' || echo "main")
+
+  # Create worktree from origin/main (not HEAD) to ensure all workers start from main
   local wt_branch="pipeline-worker-${worker_id}"
   git -C "$REPO_ROOT" branch -D "$wt_branch" 2>/dev/null || true
-  git -C "$REPO_ROOT" worktree add -b "$wt_branch" "$wt_path" HEAD 2>/dev/null || {
-    # Fallback: detached HEAD
-    git -C "$REPO_ROOT" worktree add --detach "$wt_path" HEAD 2>/dev/null || return 1
+  git -C "$REPO_ROOT" worktree add -b "$wt_branch" "$wt_path" "origin/$main_branch" 2>/dev/null || {
+    # Fallback: try local main branch
+    git -C "$REPO_ROOT" worktree add -b "$wt_branch" "$wt_path" "$main_branch" 2>/dev/null || {
+      # Last resort: detached HEAD from origin/main
+      git -C "$REPO_ROOT" worktree add --detach "$wt_path" "origin/$main_branch" 2>/dev/null || return 1
+    }
   }
 
   echo "$wt_path"
@@ -808,9 +826,25 @@ EOF
   echo "$task_dir"
 }
 
+# Ensure state.json exists for a task directory.
+# If task.md exists but state.json does not, creates state.json with status=pending.
+# This covers tasks created manually (by copying task.md into tasks/) without going
+# through foundry_create_task_dir(), which is the only other place state.json is written.
+foundry_ensure_state_json() {
+  local task_dir="$1"
+  local state_path="$task_dir/state.json"
+  [[ -f "$state_path" ]] && return 0
+  [[ -f "$task_dir/task.md" ]] || return 0
+  foundry_write_state "$task_dir" "pending" "" "" "$task_dir/task.md"
+}
+
 foundry_list_task_dirs() {
   ensure_pipeline_tasks_root
-  find "$PIPELINE_TASKS_ROOT" -maxdepth 1 -type d -name '*--foundry*' | sort
+  local dir
+  while IFS= read -r dir; do
+    foundry_ensure_state_json "$dir"
+    echo "$dir"
+  done < <(find "$PIPELINE_TASKS_ROOT" -maxdepth 1 -type d -name '*--foundry*' | sort)
 }
 
 foundry_find_tasks_by_status() {
@@ -818,14 +852,35 @@ foundry_find_tasks_by_status() {
   python3 - "$PIPELINE_TASKS_ROOT" "$wanted" <<'PYEOF'
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 root = Path(sys.argv[1])
 wanted = set(sys.argv[2].split(","))
+now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
 for task_dir in sorted(root.glob("*--foundry*")):
     if not task_dir.is_dir():
         continue
     state_path = task_dir / "state.json"
+    # Auto-create state.json for manually-placed task.md files
+    if not state_path.exists() and (task_dir / "task.md").exists():
+        payload = {
+            "task_id": task_dir.name,
+            "workflow": "foundry",
+            "started_at": now,
+            "attempt": 1,
+            "status": "pending",
+            "current_step": None,
+            "resume_from": None,
+            "updated_at": now,
+            "task_file": str(task_dir / "task.md"),
+            "branch": None,
+        }
+        try:
+            state_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n")
+        except OSError:
+            pass
     status = "pending"
     if state_path.exists():
         try:
@@ -842,15 +897,36 @@ foundry_task_counts() {
 import json
 import sys
 from collections import Counter
+from datetime import datetime, timezone
 from pathlib import Path
 
 root = Path(sys.argv[1])
 counts = Counter()
+now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
 for task_dir in root.glob("*--foundry*"):
     if not task_dir.is_dir():
         continue
-    status = "pending"
     state_path = task_dir / "state.json"
+    # Auto-create state.json for manually-placed task.md files
+    if not state_path.exists() and (task_dir / "task.md").exists():
+        payload = {
+            "task_id": task_dir.name,
+            "workflow": "foundry",
+            "started_at": now,
+            "attempt": 1,
+            "status": "pending",
+            "current_step": None,
+            "resume_from": None,
+            "updated_at": now,
+            "task_file": str(task_dir / "task.md"),
+            "branch": None,
+        }
+        try:
+            state_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n")
+        except OSError:
+            pass
+    status = "pending"
     if state_path.exists():
         try:
             status = json.loads(state_path.read_text(encoding="utf-8")).get("status", "pending")
