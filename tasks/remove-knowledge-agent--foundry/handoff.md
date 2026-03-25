@@ -149,3 +149,4 @@ DELETE FROM agent_registry WHERE name = 'knowledge-agent';
 
 - **Commit (coder)**: c1b2799
 - **Commit (validator)**: d7d1036
+- **Commit (summarizer)**: 844fc38
