@@ -269,11 +269,30 @@ export function App({ tasksRoot }: Props) {
     if (input === "s" || input === "S") { handleCmd(startWorkers(repoRoot)); return; }
     if (input === "k" || input === "K") { handleCmd(stopWorkers(repoRoot)); return; }
     if (input === "f" || input === "F") { handleCmd(retryFailed(repoRoot)); return; }
+    if (input === "z" || input === "Z") { handleCmd(cleanZombies(repoRoot)); return; }
     if (input === "t") { handleCmd(runAutotest(repoRoot, false)); return; }
     if (input === "T") { handleCmd(runAutotest(repoRoot, true)); return; }
     if (input === "r" || input === "R") {
       setData(readAllTasks(root));
       setMsg("Refreshed");
+      return;
+    }
+
+    // Process panel navigation (Tab key or p/P)
+    if (input === "p") {
+      const allProcs = [...procStatus.workers, ...procStatus.zombies];
+      setProcIdx((i) => Math.max(0, i - 1));
+      const newIdx = Math.max(0, procIdx - 1);
+      const proc = allProcs[newIdx];
+      if (proc?.log) setProcLogLines(tailLog(proc.log, 20));
+      return;
+    }
+    if (input === "P") {
+      const allProcs = [...procStatus.workers, ...procStatus.zombies];
+      const newIdx = Math.min(allProcs.length - 1, procIdx + 1);
+      setProcIdx(newIdx);
+      const proc = allProcs[newIdx];
+      if (proc?.log) setProcLogLines(tailLog(proc.log, 20));
       return;
     }
   });
