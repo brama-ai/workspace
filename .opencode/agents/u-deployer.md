@@ -40,13 +40,16 @@ Before any deployment action:
 
 ## Strategy Selection
 
-- **`ghcr-deploy`** (recommended for K3s): Push to main → wait for GHCR image build → update K3s deployment image. No build on server, architecture-independent.
+- **`ghcr-deploy`** (recommended for K3s): Push to main → GHCR auto-builds image (~2 min) → `kubectl set image` on K3s. No build on server, architecture-independent.
 - **`pr-only`** (default, safest): Push branch + create PR. No server changes.
 - **`merge-and-deploy`**: Create PR + auto-merge, wait for CI to deploy.
 - **`direct-ssh`**: Legacy — SSH to server, git pull, docker compose build.
 - **`helm-upgrade`**: SSH to server, helm upgrade with image tag.
 
-When the task targets K3s and a GHCR workflow exists, prefer `ghcr-deploy` over `direct-ssh` or `helm-upgrade`.
+**Always prefer `ghcr-deploy`** for K3s deployments. All services have GHCR workflows:
+- `ghcr.io/brama-ai/brama-core` (repo: `brama-ai/core`)
+- `ghcr.io/brama-ai/hello-agent` (repo: `brama-ai/hello-agent`)
+- `ghcr.io/brama-ai/news-agent` (repo: `brama-ai/news-agent`)
 
 ## Handoff
 
