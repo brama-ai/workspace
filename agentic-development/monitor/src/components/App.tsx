@@ -445,6 +445,21 @@ function TaskLine({ task, cursor }: { task: TaskInfo; cursor: boolean }) {
   const wfBadge = task.workflow === "ultraworks" ? "U" : "F";
   const wfColor = task.workflow === "ultraworks" ? "magenta" : "blue";
 
+  // Stale/warning indicators
+  const warnings: string[] = [];
+  if (task.hasStaleLock) warnings.push("⚠ stale lock");
+  if (task.lastEventAge && task.lastEventAge > 300 && task.status === "in_progress") {
+    warnings.push(`⚠ no update for ${Math.floor(task.lastEventAge / 60)}m`);
+  }
+  if (task.status === "in_progress" && task.branchName && !task.branchExists) {
+    warnings.push("⚠ no branch");
+  }
+  // Find failed agent
+  const failedAgent = (task.agents ?? []).find(a => a.status === "failed" || a.status === "error");
+  if (failedAgent) {
+    warnings.push(`✗ ${failedAgent.agent}`);
+  }
+
   let suffix = "";
   if (task.status === "in_progress") {
     if (task.currentStep) suffix += ` [${task.currentStep}]`;
@@ -458,6 +473,11 @@ function TaskLine({ task, cursor }: { task: TaskInfo; cursor: boolean }) {
   if (task.status === "pending" && task.priority > 1) {
     suffix = ` #${task.priority}`;
   }
+  if (task.attempt && task.attempt > 1) {
+    suffix += ` attempt#${task.attempt}`;
+  }
+
+  const warningText = warnings.length > 0 ? ` ${warnings.join(" ")}` : "";
 
   return (
     <Box>
@@ -466,6 +486,7 @@ function TaskLine({ task, cursor }: { task: TaskInfo; cursor: boolean }) {
       <Text color={color as any}> {icon}</Text>
       <Text> {task.title}</Text>
       <Text dimColor>{suffix}</Text>
+      {warnings.length > 0 && <Text color="red">{warningText}</Text>}
     </Box>
   );
 }

@@ -1,5 +1,6 @@
-import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { execSync } from "node:child_process";
 
 export interface AgentInfo {
   agent: string;
@@ -26,6 +27,12 @@ export interface TaskInfo {
   sessionName?: string;
   worktreePath?: string;
   branchName?: string;
+  // Stale/diagnostic info
+  hasStaleLock?: boolean;
+  lastEventTime?: string;
+  lastEventAge?: number; // seconds
+  branchExists?: boolean;
+  attempt?: number;
 }
 
 export interface TaskCounts {
@@ -92,6 +99,52 @@ function parseAgents(raw: any[]): AgentInfo[] {
   }));
 }
 
+// Check for stale .claim.lock (lock without active worker)
+function checkStaleLock(taskDir: string, status: string): boolean {
+  if (status !== "in_progress") return false;
+  const lockPath = join(taskDir, ".claim.lock");
+  if (!existsSync(lockPath)) return false;
+  // Lock exists but task is in_progress - check if lock is recent
+  try {
+    const stat = statSync(lockPath);
+    const ageSec = (Date.now() - stat.mtimeMs) / 1000;
+    // If lock is older than 5 minutes, it's stale
+    return ageSec > 300;
+  } catch {
+    return false;
+  }
+}
+
+// Get last event time from events.jsonl
+function getLastEvent(taskDir: string): { time: string; age: number } | null {
+  const eventsPath = join(taskDir, "events.jsonl");
+  if (!existsSync(eventsPath)) return null;
+  try {
+    const content = readFileSync(eventsPath, "utf-8");
+    const lines = content.trim().split("\n");
+    if (lines.length === 0) return null;
+    const lastLine = lines[lines.length - 1];
+    const event = JSON.parse(lastLine);
+    const time = event.timestamp || "";
+    if (!time) return null;
+    const age = Math.floor((Date.now() - new Date(time).getTime()) / 1000);
+    return { time, age };
+  } catch {
+    return null;
+  }
+}
+
+// Check if git branch exists
+function checkBranchExists(branch: string | undefined): boolean {
+  if (!branch) return false;
+  try {
+    execSync(`git rev-parse --verify "${branch}" 2>/dev/null`, { stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function readAllTasks(root: string): ReadResult {
   const counts: TaskCounts = {
     pending: 0,
@@ -148,6 +201,10 @@ export function readAllTasks(root: string): ReadResult {
       }
     }
 
+    // Diagnostic info for stale detection
+    const branch = state?.branch;
+    const lastEvent = getLastEvent(taskDir);
+
     tasks.push({
       dir: taskDir,
       workflow,
@@ -161,7 +218,13 @@ export function readAllTasks(root: string): ReadResult {
       agents,
       sessionName,
       worktreePath,
-      branchName,
+      branchName: branch,
+      attempt: state?.attempt,
+      // Diagnostic fields
+      hasStaleLock: checkStaleLock(taskDir, status),
+      lastEventTime: lastEvent?.time,
+      lastEventAge: lastEvent?.age,
+      branchExists: checkBranchExists(branch),
     });
   }
 

@@ -22,6 +22,11 @@ export interface TaskInfo {
     sessionName?: string;
     worktreePath?: string;
     branchName?: string;
+    hasStaleLock?: boolean;
+    lastEventTime?: string;
+    lastEventAge?: number;
+    branchExists?: boolean;
+    attempt?: number;
 }
 export interface TaskCounts {
     pending: number;
