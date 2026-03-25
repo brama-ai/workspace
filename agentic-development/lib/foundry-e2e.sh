@@ -140,6 +140,20 @@ failures = data.get("failures")
 if not isinstance(failures, list):
     failures = []
 
+INFRA_PATTERNS = [
+    "ERR_NAME_NOT_RESOLVED",
+    "ENOTFOUND",
+    "ECONNREFUSED",
+    "net::ERR_CONNECTION_REFUSED",
+    "net::ERR_CONNECTION_RESET",
+    "net::ERR_NETWORK_CHANGED",
+    "getaddrinfo",
+]
+
+def is_infra_failure(message):
+    msg = message.lower()
+    return any(p.lower() in msg for p in INFRA_PATTERNS)
+
 def normalize_failure(entry):
     title = entry.get("fullTitle") or entry.get("title") or "Unnamed E2E failure"
     file_path = entry.get("file") or ""
@@ -155,16 +169,23 @@ def normalize_failure(entry):
 
 seen = set()
 count = 0
+skipped_infra = 0
 for raw in failures:
     if count >= limit:
         break
     item = normalize_failure(raw)
+    if is_infra_failure(item["message"]):
+        skipped_infra += 1
+        continue
     key = (item["title"], item["file"], item["message"])
     if key in seen:
         continue
     seen.add(key)
     print(json.dumps(item, ensure_ascii=True))
     count += 1
+
+if skipped_infra:
+    print(json.dumps({"_infra_skipped": skipped_infra}), file=sys.stderr)
 PYEOF
 }
 

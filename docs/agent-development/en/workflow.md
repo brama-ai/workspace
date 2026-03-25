@@ -52,7 +52,7 @@ graph TB
         PLAN_JSON["pipeline-plan.json"]
     end
 
-    subgraph "Pipeline Agents (s-* subagents)"
+    subgraph "Pipeline Agents (u-* subagents)"
         ARCH["Architect<br/>claude-opus-4-6"]
         CODER["Coder<br/>claude-sonnet-4-6"]
         REVIEWER["Reviewer<br/>minimax"]
@@ -62,6 +62,16 @@ graph TB
         DOC["Documenter<br/>gpt-5.4"]
         SUM["Summarizer<br/>gpt-5.4"]
         INV["Investigator<br/>claude-opus-4-6"]
+    end
+
+    subgraph "Phase 8 — Deployment & Ops (opt-in)"
+        DEPLOY["Deployer<br/>claude-sonnet-4-6"]
+        OPS["Ops Agent<br/>claude-sonnet-4-6"]
+    end
+
+    subgraph "Server (46.62.135.86)"
+        K3S["K3s Cluster<br/>namespace: brama"]
+        CF["Cloudflare Tunnel<br/>brama.dev"]
     end
 
     subgraph "Artifacts"
@@ -89,11 +99,17 @@ graph TB
     TEST --> DOC & SUM
     AUDITOR --> CODER
 
+    SUM -->|deploy: true| DEPLOY
+    DEPLOY -->|SSH + helm| K3S
+    OPS -->|SSH + kubectl| K3S
+    K3S --> CF
+
     ARCH -.->|write| TASKDIR
     CODER -.->|write| TASKDIR
     VAL -.->|write| TASKDIR
     TEST -.->|write| TASKDIR
     SUM -.->|read all| TASKDIR
+    DEPLOY -.->|write| TASKDIR
 ```
 
 ---
@@ -141,6 +157,17 @@ sequenceDiagram
     end
 
     S-->>U: Summary artifact
+
+    opt deploy: true in task metadata
+        S->>S: Verify all stages passed
+        Note over S: Phase 8 — opt-in only
+        create participant DEP as Deployer
+        S->>DEP: Deploy to K3s
+        DEP->>DEP: Build on server (nerdctl)
+        DEP->>DEP: helm upgrade + rollout
+        DEP->>DEP: Health check
+        DEP-->>U: Deployment result + PR URL
+    end
 ```
 
 ---
@@ -277,11 +304,20 @@ flowchart TD
     AGENT -->|No| CMPLX[complex<br/>coder - validator - tester - summarizer]
     AGENT -->|Yes| CMPLX_A[complex+agent<br/>coder - auditor - validator<br/>- tester - summarizer]
 
+    SCOPE -->|Deploy needed| DEPLOY_Q{Deploy after?}
+    DEPLOY_Q -->|Yes| STD_DEP[standard+deploy<br/>coder - validator - tester<br/>- deployer - summarizer]
+    DEPLOY_Q -->|No| STD
+
+    START --> IS_OPS{Server ops?<br/>logs / DB / restart}
+    IS_OPS -->|Yes| OPS_PROF[ops<br/>ops-agent]
+
     style BUGFIX fill:#f9d71c,stroke:#333
     style BUGFIX_SPEC fill:#f9d71c,stroke:#333
     style QF fill:#90EE90,stroke:#333
     style STD fill:#87CEEB,stroke:#333
     style CMPLX fill:#DDA0DD,stroke:#333
+    style STD_DEP fill:#FF8C00,stroke:#333
+    style OPS_PROF fill:#FF6347,stroke:#333
 ```
 
 ---
@@ -302,7 +338,10 @@ All agents communicate via the task directory, with **`handoff.md`** as the huma
 | Documenter | Docs created/updated | -- |
 | **Summarizer** | **Final summary** | **Reads ALL** |
 | **Deployer** | **Deployment result, PR URL, health check** | **Reads ALL (verify stages passed)** |
+| **Ops Agent** | **Server state, logs, DB query results** | **On-demand (no pipeline context)** |
 
 > **CONTEXT-CONTRACT**: Agents receive context via prompt `CONTEXT`, **not** by reading handoff.md directly (exception: Planner, Summarizer, Deployer).
 
 > **Deployer** is Phase 8 — opt-in only. Runs after Summarizer when `deploy: true` is in task metadata and all previous stages passed. See [deployer-agent.md](../../pipeline/en/deployer-agent.md).
+
+> **Ops Agent** is standalone — not part of the pipeline. Use the `ops` profile to query live server state: logs, DB, pod status, image builds. See [deploy-to-kube.md](../../deploy-to-kube.md).

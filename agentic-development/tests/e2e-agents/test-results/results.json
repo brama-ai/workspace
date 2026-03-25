@@ -1,0 +1,1571 @@
+{
+  "config": {
+    "configFile": "/workspaces/brama/agentic-development/tests/e2e-agents/playwright.config.ts",
+    "rootDir": "/workspaces/brama/agentic-development/tests/e2e-agents/specs",
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": "/workspaces/brama/agentic-development/tests/e2e-agents/utils/global-setup.ts",
+    "globalTeardown": "/workspaces/brama/agentic-development/tests/e2e-agents/utils/global-teardown.ts",
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/workspaces/brama/agentic-development/tests/e2e-agents/test-results/artifacts",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "foundry-agents",
+        "name": "foundry-agents",
+        "testDir": "/workspaces/brama/agentic-development/tests/e2e-agents/specs",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.spec.ts"
+        ],
+        "timeout": 300000
+      },
+      {
+        "outputDir": "/workspaces/brama/agentic-development/tests/e2e-agents/test-results/artifacts",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "smoke",
+        "name": "smoke",
+        "testDir": "/workspaces/brama/agentic-development/tests/e2e-agents/specs",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.spec.ts"
+        ],
+        "timeout": 300000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "html",
+        {
+          "outputFolder": "test-results/html"
+        }
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/results.json"
+        }
+      ],
+      [
+        "list",
+        null
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "runAgents": "none",
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.58.2",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "foundry-cli.spec.ts",
+      "file": "foundry-cli.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Foundry CLI Commands @smoke",
+          "file": "foundry-cli.spec.ts",
+          "line": 19,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should create task using foundry_create_task_dir",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 36,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:44.394Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fe892730be572bfd2478-3a50118ee070d4ab0ae0",
+              "file": "foundry-cli.spec.ts",
+              "line": 24,
+              "column": 3
+            },
+            {
+              "title": "should create multiple tasks and track them",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 60,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:44.446Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fe892730be572bfd2478-4a54b89e0d81bb6987ef",
+              "file": "foundry-cli.spec.ts",
+              "line": 67,
+              "column": 3
+            },
+            {
+              "title": "should get Foundry status with task counts",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 110,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:44.518Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fe892730be572bfd2478-7fb551822131f6f3c5e2",
+              "file": "foundry-cli.spec.ts",
+              "line": 84,
+              "column": 3
+            },
+            {
+              "title": "should use foundry.sh status command",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 113,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:44.638Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fe892730be572bfd2478-a02df2e23ad7bd37e20a",
+              "file": "foundry-cli.spec.ts",
+              "line": 100,
+              "column": 3
+            },
+            {
+              "title": "should create task with auto-generated slug",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 52,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:44.759Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fe892730be572bfd2478-cc1045aaea2fc8c51eea",
+              "file": "foundry-cli.spec.ts",
+              "line": 117,
+              "column": 3
+            },
+            {
+              "title": "should validate task directory structure created by CLI",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 29,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:44.828Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fe892730be572bfd2478-6dc052f4e1d0ec69d370",
+              "file": "foundry-cli.spec.ts",
+              "line": 135,
+              "column": 3
+            },
+            {
+              "title": "should create task using foundry_create_task_dir",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "smoke",
+                  "projectName": "smoke",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 50,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:48.670Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fe892730be572bfd2478-27126dca07bcce433d51",
+              "file": "foundry-cli.spec.ts",
+              "line": 24,
+              "column": 3
+            },
+            {
+              "title": "should create multiple tasks and track them",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "smoke",
+                  "projectName": "smoke",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 69,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:48.734Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fe892730be572bfd2478-697f771fe933a774846c",
+              "file": "foundry-cli.spec.ts",
+              "line": 67,
+              "column": 3
+            },
+            {
+              "title": "should get Foundry status with task counts",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "smoke",
+                  "projectName": "smoke",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 157,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:48.817Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fe892730be572bfd2478-fbd210e0375fde76613b",
+              "file": "foundry-cli.spec.ts",
+              "line": 84,
+              "column": 3
+            },
+            {
+              "title": "should use foundry.sh status command",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "smoke",
+                  "projectName": "smoke",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 116,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:48.987Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fe892730be572bfd2478-3777dce4018600509804",
+              "file": "foundry-cli.spec.ts",
+              "line": 100,
+              "column": 3
+            },
+            {
+              "title": "should create task with auto-generated slug",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "smoke",
+                  "projectName": "smoke",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 42,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:49.111Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fe892730be572bfd2478-d81a1970ebc5fa7ec865",
+              "file": "foundry-cli.spec.ts",
+              "line": 117,
+              "column": 3
+            },
+            {
+              "title": "should validate task directory structure created by CLI",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "smoke",
+                  "projectName": "smoke",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 28,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:49.168Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fe892730be572bfd2478-de1777cae28afeecfcab",
+              "file": "foundry-cli.spec.ts",
+              "line": 135,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Foundry Task Execution Flow",
+          "file": "foundry-cli.spec.ts",
+          "line": 153,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should track task lifecycle from creation to pending",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 96,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:44.868Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fe892730be572bfd2478-d998433d0e8ab3c98e56",
+              "file": "foundry-cli.spec.ts",
+              "line": 158,
+              "column": 3
+            },
+            {
+              "title": "should create task with priority metadata",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 26,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:44.969Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fe892730be572bfd2478-66b782e4259aaabc5bb4",
+              "file": "foundry-cli.spec.ts",
+              "line": 173,
+              "column": 3
+            },
+            {
+              "title": "should handle task with markdown formatting",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 28,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:45.001Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fe892730be572bfd2478-565aa99b02f9025f17e6",
+              "file": "foundry-cli.spec.ts",
+              "line": 190,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Foundry CLI Error Handling",
+          "file": "foundry-cli.spec.ts",
+          "line": 214,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should handle empty task content gracefully",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 25,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:45.036Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fe892730be572bfd2478-8c10fd8e2838508ba78a",
+              "file": "foundry-cli.spec.ts",
+              "line": 219,
+              "column": 3
+            },
+            {
+              "title": "should create tasks with quotes in content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 23,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:45.067Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "fe892730be572bfd2478-45f7abae897db26a5799",
+              "file": "foundry-cli.spec.ts",
+              "line": 229,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "git-workflow.spec.ts",
+      "file": "git-workflow.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Git Workflow Safety @smoke",
+          "file": "git-workflow.spec.ts",
+          "line": 19,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should prevent creating task branch from non-main branch",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 951,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:45.106Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2006d862f49d45e108a-f41a3dc870642e7031ba",
+              "file": "git-workflow.spec.ts",
+              "line": 41,
+              "column": 3
+            },
+            {
+              "title": "should allow creating task branch from main branch",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 909,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "⚠️  Skipping branch creation (not on main, currently on e2e-test/feature-1774465425115)\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:46.066Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2006d862f49d45e108a-393f43f9b6aeed946112",
+              "file": "git-workflow.spec.ts",
+              "line": 69,
+              "column": 3
+            },
+            {
+              "title": "should detect current branch correctly",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 69,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:46.985Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2006d862f49d45e108a-dc498ce9af28848dbd01",
+              "file": "git-workflow.spec.ts",
+              "line": 118,
+              "column": 3
+            },
+            {
+              "title": "should check git state before running",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 75,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "ℹ️  Current git state has 7 changes (this is OK for E2E tests)\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:47.062Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2006d862f49d45e108a-c10ab40b87e4ee1888a4",
+              "file": "git-workflow.spec.ts",
+              "line": 127,
+              "column": 3
+            },
+            {
+              "title": "should use correct branch naming convention",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 64,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:47.143Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2006d862f49d45e108a-d4a99b7c6c287f647c1e",
+              "file": "git-workflow.spec.ts",
+              "line": 149,
+              "column": 3
+            },
+            {
+              "title": "should prevent creating task branch from non-main branch",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "smoke",
+                  "projectName": "smoke",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 839,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:49.218Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2006d862f49d45e108a-d8990d1378e277ce5981",
+              "file": "git-workflow.spec.ts",
+              "line": 41,
+              "column": 3
+            },
+            {
+              "title": "should allow creating task branch from main branch",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "smoke",
+                  "projectName": "smoke",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 949,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "⚠️  Skipping branch creation (not on main, currently on e2e-test/feature-1774465429225)\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:50.068Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2006d862f49d45e108a-95bb22f38051d1c923bc",
+              "file": "git-workflow.spec.ts",
+              "line": 69,
+              "column": 3
+            },
+            {
+              "title": "should detect current branch correctly",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "smoke",
+                  "projectName": "smoke",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 62,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:51.024Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2006d862f49d45e108a-289b20fd2c501ca012ac",
+              "file": "git-workflow.spec.ts",
+              "line": 118,
+              "column": 3
+            },
+            {
+              "title": "should check git state before running",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "smoke",
+                  "projectName": "smoke",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 92,
+                      "errors": [],
+                      "stdout": [
+                        {
+                          "text": "ℹ️  Current git state has 7 changes (this is OK for E2E tests)\n"
+                        }
+                      ],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:51.099Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2006d862f49d45e108a-f85b69265c5f614ee13d",
+              "file": "git-workflow.spec.ts",
+              "line": 127,
+              "column": 3
+            },
+            {
+              "title": "should use correct branch naming convention",
+              "ok": true,
+              "tags": [
+                "smoke"
+              ],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "smoke",
+                  "projectName": "smoke",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 73,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:51.208Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2006d862f49d45e108a-5ca9697b66eff79555a0",
+              "file": "git-workflow.spec.ts",
+              "line": 149,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Git Branch Management",
+          "file": "git-workflow.spec.ts",
+          "line": 162,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should verify git installation",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 4,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:47.212Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2006d862f49d45e108a-7a32a01390c9a4b627fd",
+              "file": "git-workflow.spec.ts",
+              "line": 167,
+              "column": 3
+            },
+            {
+              "title": "should detect main branch name",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:47.221Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2006d862f49d45e108a-7532417ba29a1ec207f4",
+              "file": "git-workflow.spec.ts",
+              "line": 176,
+              "column": 3
+            },
+            {
+              "title": "should list existing branches",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 15,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:47.232Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "f2006d862f49d45e108a-119ad5ed2a4f04682494",
+              "file": "git-workflow.spec.ts",
+              "line": 186,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "task-lifecycle.spec.ts",
+      "file": "task-lifecycle.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Task Lifecycle",
+          "file": "task-lifecycle.spec.ts",
+          "line": 19,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should create task with correct initial structure",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:47.275Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "887aecd40d478ea26708-bde6d8408f8f2a73666d",
+              "file": "task-lifecycle.spec.ts",
+              "line": 24,
+              "column": 3
+            },
+            {
+              "title": "should find pending tasks via filesystem",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 9,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:47.289Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "887aecd40d478ea26708-f70cec8033c41576bf14",
+              "file": "task-lifecycle.spec.ts",
+              "line": 47,
+              "column": 3
+            },
+            {
+              "title": "should list tasks by filesystem directory scan",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 14,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:47.315Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "887aecd40d478ea26708-7801ac2137f5f2cc445b",
+              "file": "task-lifecycle.spec.ts",
+              "line": 68,
+              "column": 3
+            },
+            {
+              "title": "should validate task file format",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:47.348Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "887aecd40d478ea26708-aa39080a867411979ea9",
+              "file": "task-lifecycle.spec.ts",
+              "line": 89,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Task State Management",
+          "file": "task-lifecycle.spec.ts",
+          "line": 117,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should create state.json when task is claimed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 18,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:47.365Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "887aecd40d478ea26708-1dc89ebba939b070c29b",
+              "file": "task-lifecycle.spec.ts",
+              "line": 122,
+              "column": 3
+            },
+            {
+              "title": "should track state transitions",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 212,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:47.407Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "887aecd40d478ea26708-7f9da3ac7401bf2a5b00",
+              "file": "task-lifecycle.spec.ts",
+              "line": 152,
+              "column": 3
+            },
+            {
+              "title": "should validate state.json schema",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 51,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:47.641Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "887aecd40d478ea26708-21160dffa44815db1b5a",
+              "file": "task-lifecycle.spec.ts",
+              "line": 202,
+              "column": 3
+            }
+          ]
+        },
+        {
+          "title": "Parallel Tasks",
+          "file": "task-lifecycle.spec.ts",
+          "line": 237,
+          "column": 6,
+          "specs": [
+            {
+              "title": "should handle multiple pending tasks",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 15,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:47.707Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "887aecd40d478ea26708-a1d53f20e2a5d5ac895c",
+              "file": "task-lifecycle.spec.ts",
+              "line": 242,
+              "column": 3
+            },
+            {
+              "title": "should track worker assignment for parallel tasks",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 300000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "foundry-agents",
+                  "projectName": "foundry-agents",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 17,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-03-25T19:03:47.732Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "887aecd40d478ea26708-132c1371bd101cdb4385",
+              "file": "task-lifecycle.spec.ts",
+              "line": 284,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-03-25T19:03:43.341Z",
+    "duration": 8010.386,
+    "expected": 39,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

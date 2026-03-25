@@ -3,6 +3,7 @@ services:
     build:
       context: ..
       dockerfile: .devcontainer/Dockerfile
+    user: vscode
     env_file:
       - path: ../.env.local
         required: false
@@ -26,11 +27,13 @@ services:
       - ${HOME}/.kube:/home/vscode/.kube:cached
       # Docker-in-Docker support
       - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - "langfuse.localhost:host-gateway"
+      - "langfuse.brama.localhost:host-gateway"
+      - "langfuse.dev.internal:host-gateway"
     environment:
-      - CLAUDE_CODE_DANGER_MODE=true
-      - CLAUDE_CODE_AUTO_APPROVE=true
-      - CLAUDE_DANGER_MODE=true
-      - CLAUDE_AUTO_APPROVE_ALL=true
+      - HOME=/home/vscode
+      # Claude Code permissions are managed via project-level settings.json (see post-start.sh)
       - DOCKER_HOST=unix:///var/run/docker.sock
       - KUBECONFIG=/home/vscode/.kube/config.devcontainer
       - HISTSIZE=50000

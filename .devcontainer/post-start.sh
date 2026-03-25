@@ -265,14 +265,34 @@ k8s_snippet='# Kubernetes shell helpers
 command -v kubectl &>/dev/null && { source <(kubectl completion $(basename "$SHELL" 2>/dev/null || echo bash)); alias k=kubectl; }
 command -v helm &>/dev/null && source <(helm completion $(basename "$SHELL" 2>/dev/null || echo bash))'
 
-# Claude Code: always run in dangerously-skip-permissions mode inside devcontainer.
-claude_alias='alias claude="claude --dangerously-skip-permissions"'
+# Claude Code: auto-approve all tools inside devcontainer via project-level settings.
+# This replaces --dangerously-skip-permissions so the VSCode extension shows full UI.
+_claude_project_dir="/home/vscode/.claude/projects/-workspaces-brama"
+ensure_dir "$_claude_project_dir"
+cat > "${_claude_project_dir}/settings.json" <<'CLAUDE_EOF'
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "Agent(*)",
+      "NotebookEdit(*)"
+    ]
+  }
+}
+CLAUDE_EOF
+chown vscode:vscode "${_claude_project_dir}/settings.json" 2>/dev/null || true
+unset _claude_project_dir
+
 for rc_file in /home/vscode/.bashrc /home/vscode/.zshrc; do
   if [ -f "$rc_file" ] && ! grep -Fq 'agent.env' "$rc_file"; then
     printf '\n%s\n' "$ssh_snippet" >> "$rc_file"
-  fi
-  if [ -f "$rc_file" ] && ! grep -Fq 'dangerously-skip-permissions' "$rc_file"; then
-    printf '\n# Claude Code: bypass permissions in devcontainer\n%s\n' "$claude_alias" >> "$rc_file"
   fi
   if [ -f "$rc_file" ] && ! grep -Fq 'kubectl completion' "$rc_file"; then
     printf '\n%s\n' "$k8s_snippet" >> "$rc_file"

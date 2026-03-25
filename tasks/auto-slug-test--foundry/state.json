@@ -1,0 +1,36 @@
+{
+  "task_id": "auto-slug-test--foundry",
+  "workflow": "foundry",
+  "started_at": "2026-03-25T18:58:14.916550Z",
+  "attempt": 1,
+  "status": "in_progress",
+  "current_step": "u-coder",
+  "resume_from": "u-coder",
+  "updated_at": "2026-03-25T20:43:25.262577Z",
+  "task_file": "/workspaces/brama/tasks/auto-slug-test--foundry/task.md",
+  "branch": "pipeline/auto-slug-test",
+  "agents": [
+    {
+      "agent": "u-planner",
+      "status": "done",
+      "model": "anthropic/claude-opus-4-6",
+      "duration_seconds": 64,
+      "input_tokens": 10,
+      "output_tokens": 1739,
+      "cost": 0.3646,
+      "call_count": 1,
+      "updated_at": "2026-03-25T20:43:21.041010Z"
+    },
+    {
+      "agent": "u-coder",
+      "status": "done",
+      "model": "anthropic/claude-opus-4-6",
+      "duration_seconds": 0,
+      "input_tokens": 47,
+      "output_tokens": 9842,
+      "cost": 3.0428,
+      "call_count": 1,
+      "updated_at": "2026-03-25T20:43:25.262564Z"
+    }
+  ]
+}

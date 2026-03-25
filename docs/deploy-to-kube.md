@@ -42,6 +42,110 @@ brama-core/deploy/charts/brama/
 
 ---
 
+## Domain Configuration (Cloudflare Tunnel)
+
+The cluster is exposed to the internet via **Cloudflare Tunnel** (no open ports required). Traffic flows:
+
+```
+Internet → Cloudflare Tunnel (cloudflared) → Traefik :80 → K3s Services
+```
+
+### Step D1 — Configure Cloudflare Tunnel routes
+
+In **Cloudflare Zero Trust → Networks → Tunnels → brama → Public Hostnames**, add:
+
+| Subdomain | Domain | Service | Notes |
+|-----------|--------|---------|-------|
+| (empty) | `brama.dev` | `http://localhost:80` | Core platform |
+| `hello` | `brama.dev` | `http://localhost:80` | Hello agent |
+
+> All routes point to `localhost:80` — Traefik routes internally by `Host` header.
+
+### Step D2 — Update Helm ingress hosts
+
+The ingress `hosts.core` value must match the public domain. Create an override file:
+
+```bash
+# On server
+cat > /tmp/values-domain.yaml << 'EOF'
+ingress:
+  enabled: true
+  className: traefik
+  hosts:
+    core: brama.dev
+  tls:
+    enabled: false
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+EOF
+```
+
+Then apply with Helm upgrade:
+
+```bash
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
+helm upgrade brama /tmp/brama-deploy/brama \
+  --namespace brama \
+  -f /tmp/brama-deploy/brama/values-k3s-dev.yaml \
+  -f /tmp/values-domain.yaml \
+  --timeout 3m
+```
+
+Verify the ingress picked up the new host:
+
+```bash
+kubectl get ingress -n brama
+# Expected: HOSTS = brama.dev, ADDRESS = 46.62.135.86
+```
+
+### Step D3 — Add agent ingress routes
+
+By default only `core` has an ingress rule. To expose agents, add rules manually or extend `ingress.yaml`. Quick manual approach:
+
+```bash
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
+kubectl apply -f - << 'EOF'
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: brama-agents
+  namespace: brama
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: hello.brama.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: brama-agent-hello
+                port:
+                  number: 80
+EOF
+```
+
+### Step D4 — Verify end-to-end
+
+```bash
+# Core platform
+curl -sf https://brama.dev/health
+# Expected: {"status":"ok",...}
+
+# Hello agent
+curl -sf https://hello.brama.dev/health
+# Expected: {"status":"ok","service":"hello-agent",...}
+```
+
+> **Note**: Cloudflare Tunnel handles TLS automatically — no cert management needed on the server side.
+
+---
+
 ## Step-by-Step Deployment
 
 ### Step 0 — Pre-deploy check

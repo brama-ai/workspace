@@ -88,8 +88,15 @@ RUN cd /tmp/tests-e2e \
     && npx playwright install --with-deps \
     && rm -rf /tmp/tests-e2e
 
-# Ensure Claude config dir exists with correct ownership (volume mounts as root otherwise)
-RUN mkdir -p /home/vscode/.claude && chown vscode:vscode /home/vscode/.claude \
+# Ensure user-state directories exist with correct ownership before volume mounts.
+# Docker auto-creates intermediate dirs as root when mounting sub-paths (e.g. .local/share/opencode),
+# which prevents the vscode user from creating siblings like .local/state at runtime.
+RUN mkdir -p /home/vscode/.claude \
+    /home/vscode/.local/state \
+    /home/vscode/.local/share \
+    /home/vscode/.config/opencode \
+    /home/vscode/.config/Cursor \
+    && chown -R vscode:vscode /home/vscode/.local /home/vscode/.config /home/vscode/.claude \
     && mkdir -p "${PLAYWRIGHT_BROWSERS_PATH}" \
     && chown -R vscode:vscode "${PLAYWRIGHT_BROWSERS_PATH}"
 
