@@ -2,7 +2,8 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput, useApp, useStdout } from "ink";
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, basename } from "node:path";
+import { execSync } from "node:child_process";
 import { readAllTasks } from "../lib/tasks.js";
 import { formatDuration, formatTokens, formatCost } from "../lib/format.js";
 import { startWorkers, stopWorkers, retryFailed, runAutotest, archiveTask, ultraworksLaunch, ultraworksAttach, ultraworksCleanup, findRepoRoot, } from "../lib/actions.js";
@@ -29,6 +30,27 @@ const COMMANDS = [
     { key: "Esc", label: "Back to task list from any sub-view", section: "nav" },
 ];
 const EXECUTABLE_COMMANDS = COMMANDS.filter((c) => c.action);
+function copyToClipboard(text) {
+    try {
+        if (process.platform === "darwin") {
+            execSync(`echo -n "${text}" | pbcopy`, { encoding: "utf-8" });
+            return true;
+        }
+        else if (process.env.DISPLAY || process.env.WAYLAND_DISPLAY) {
+            if (process.env.WAYLAND_DISPLAY) {
+                execSync(`echo -n "${text}" | wl-copy`, { encoding: "utf-8" });
+            }
+            else {
+                execSync(`echo -n "${text}" | xclip -selection clipboard`, { encoding: "utf-8" });
+            }
+            return true;
+        }
+        return false;
+    }
+    catch {
+        return false;
+    }
+}
 export function App({ tasksRoot }) {
     const { exit } = useApp();
     const { stdout } = useStdout();
@@ -173,6 +195,19 @@ export function App({ tasksRoot }) {
             }
             return;
         }
+        // Copy task slug to clipboard
+        if (input === "y" || input === "Y") {
+            if (selected) {
+                const slug = basename(selected.dir);
+                if (copyToClipboard(slug)) {
+                    setMsg(`Copied: ${slug}`);
+                }
+                else {
+                    setMsg(`Copy failed (no clipboard tool)`);
+                }
+            }
+            return;
+        }
         // Actions (shortcut keys still work from Tasks tab)
         if (input === "s" || input === "S") {
             handleCmd(startWorkers(repoRoot));
@@ -201,7 +236,7 @@ export function App({ tasksRoot }) {
         }
     });
     const time = new Date().toLocaleTimeString("en-GB", { hour12: false });
-    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time] })] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 })] }), _jsx(Text, { children: " " }), tab === 1 ? (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: cols, rows: rows, tick: tick })) : (_jsx(CommandsTab, { cols: cols, selectedIdx: cmdIdx })), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), tab === 1 && view === "list" ? (_jsx(Text, { dimColor: true, children: "  ↑/↓ select  Enter detail  [a] agents  [l] logs  [d] archive  [s] start  [k] stop  [t] autotest  [q] quit" })) : tab === 1 ? (_jsx(Text, { dimColor: true, children: "  q/Esc back" })) : (_jsx(Text, { dimColor: true, children: "  ↑/↓ select  Enter run  ←/→ tabs  [q] quit" }))] }));
+    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time] })] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 })] }), _jsx(Text, { children: " " }), tab === 1 ? (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: cols, rows: rows, tick: tick })) : (_jsx(CommandsTab, { cols: cols, selectedIdx: cmdIdx })), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), tab === 1 && view === "list" ? (_jsx(Text, { dimColor: true, children: "  ↑/↓ select  Enter detail  [y] copy  [a] agents  [l] logs  [d] archive  [s] start  [k] stop  [t] autotest  [q] quit" })) : tab === 1 ? (_jsx(Text, { dimColor: true, children: "  [y] copy slug  [Esc] back  [q] quit" })) : (_jsx(Text, { dimColor: true, children: "  ↑/↓ select  Enter run  ←/→ tabs  [q] quit" }))] }));
 }
 function TabLabel({ n, label, active }) {
     return active ? (_jsxs(Text, { bold: true, inverse: true, children: [" ", n, ":", label, " "] })) : (_jsxs(Text, { dimColor: true, children: [" ", n, ":", label, " "] }));
@@ -381,8 +416,8 @@ function DetailView({ task, rows }) {
                 setContent(["No task description found."]);
             }
         }
-        catch {
-            setContent(["Cannot read task details."]);
+        catch (err) {
+            setContent(["Cannot read task details.", `Error: ${err?.message || err}`, `Dir: ${task.dir}`]);
         }
     }, [task.dir, rows]);
     return (_jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { bold: true, children: "  Task Detail" }), _jsx(Text, { children: " " }), content.map((line, i) => (_jsxs(Text, { children: ["  ", line] }, i))), _jsx(Text, { children: " " }), _jsx(Text, { dimColor: true, children: "  q/Esc back" })] }));

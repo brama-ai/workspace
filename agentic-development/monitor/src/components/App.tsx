@@ -22,6 +22,9 @@ const VERSION = "2.0.0";
 const REFRESH_MS = 3000;
 
 type ViewMode = "list" | "detail" | "logs" | "agents";
+type DetailTab = "state" | "task" | "handoff";
+
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 interface Command {
   key: string;
@@ -89,6 +92,7 @@ export function App({ tasksRoot }: Props) {
   const [idx, setIdx] = useState(0);
   const [cmdIdx, setCmdIdx] = useState(0);
   const [view, setView] = useState<ViewMode>("list");
+  const [detailTab, setDetailTab] = useState<DetailTab>("state");
   const [data, setData] = useState<ReadResult>({ tasks: [], counts: { pending: 0, in_progress: 0, completed: 0, failed: 0, suspended: 0, cancelled: 0 }, focusDir: null });
   const [msg, setMsg] = useState("");
   const [lastAttachCmd, setLastAttachCmd] = useState("");
@@ -148,8 +152,26 @@ export function App({ tasksRoot }: Props) {
     // Tabs
     if (input === "1") { setTab(1); setView("list"); return; }
     if (input === "2") { setTab(2); setView("list"); return; }
-    if (key.leftArrow) { setTab(tab === 1 ? 2 : 1); setView("list"); return; }
-    if (key.rightArrow) { setTab(tab === 1 ? 2 : 1); setView("list"); return; }
+
+    // Detail view: tab navigation with left/right arrows
+    if (view === "detail") {
+      if (key.leftArrow) {
+        const tabs: DetailTab[] = ["state", "task", "handoff"];
+        const currentIdx = tabs.indexOf(detailTab);
+        setDetailTab(currentIdx > 0 ? tabs[currentIdx - 1] : tabs[2]);
+        return;
+      }
+      if (key.rightArrow) {
+        const tabs: DetailTab[] = ["state", "task", "handoff"];
+        const currentIdx = tabs.indexOf(detailTab);
+        setDetailTab(currentIdx < 2 ? tabs[currentIdx + 1] : tabs[0]);
+        return;
+      }
+    } else {
+      // List view: left/right for main tabs
+      if (key.leftArrow) { setTab(tab === 1 ? 2 : 1); setView("list"); return; }
+      if (key.rightArrow) { setTab(tab === 1 ? 2 : 1); setView("list"); return; }
+    }
 
     // ── Commands tab: ↑/↓/j/k navigate, Enter execute ──
     if (tab === 2) {
@@ -284,6 +306,8 @@ export function App({ tasksRoot }: Props) {
         <Text dimColor>
           {"  ↑/↓ select  Enter detail  [y] copy  [a] agents  [l] logs  [d] archive  [s] start  [k] stop  [t] autotest  [q] quit"}
         </Text>
+      ) : tab === 1 && view === "detail" ? (
+        <Text dimColor>{"  ←/→ tabs  [y] copy  [Esc] back  [q] quit"}</Text>
       ) : tab === 1 ? (
         <Text dimColor>{"  [y] copy slug  [Esc] back  [q] quit"}</Text>
       ) : (
@@ -315,7 +339,7 @@ function TasksTab({
 }) {
   if (view === "agents" && selected) return <AgentsView task={selected} cols={cols} />;
   if (view === "logs" && selected) return <LogsView task={selected} rows={rows} tick={tick} />;
-  if (view === "detail" && selected) return <DetailView task={selected} rows={rows} />;
+  if (view === "detail" && selected) return <DetailView task={selected} rows={rows} tab={detailTab} tick={tick} setMsg={setMsg} />;
 
   const { tasks, counts } = data;
   const total = counts.pending + counts.in_progress + counts.completed + counts.failed + counts.suspended;
@@ -547,45 +571,227 @@ function LogsView({ task, rows, tick }: { task: TaskInfo; rows: number; tick: nu
 }
 
 // ── Detail View ──────────────────────────────────────────────────
-function DetailView({ task, rows }: { task: TaskInfo; rows: number }) {
-  const [content, setContent] = useState<string[]>([]);
+function DetailView({
+  task,
+  rows,
+  tab,
+  tick,
+  setMsg,
+}: {
+  task: TaskInfo;
+  rows: number;
+  tab: DetailTab;
+  tick: number;
+  setMsg: (m: string) => void;
+}) {
+  const [stateData, setStateData] = useState<any>(null);
+  const [loopCount, setLoopCount] = useState(0);
+  const [taskContent, setTaskContent] = useState<string[]>([]);
+  const [handoffContent, setHandoffContent] = useState<string[]>([]);
 
+  // Load state.json on every tick (auto-refresh)
   useEffect(() => {
     try {
-      // Try task.md first, then fall back to summary.md or handoff.md
-      const candidates = ["task.md", "summary.md", "handoff.md"];
-      let md = "";
-      for (const name of candidates) {
-        const path = join(task.dir, name);
-        if (existsSync(path)) {
-          md = readFileSync(path, "utf-8");
-          break;
+      const statePath = join(task.dir, "state.json");
+      if (existsSync(statePath)) {
+        const data = JSON.parse(readFileSync(statePath, "utf-8"));
+        setStateData(data);
+
+        // Count loopbacks from events.jsonl
+        const eventsPath = join(task.dir, "events.jsonl");
+        if (existsSync(eventsPath)) {
+          const events = readFileSync(eventsPath, "utf-8");
+          const starts = (events.match(/"type".*"run_started"/g) || []).length;
+          setLoopCount(Math.max(0, starts - 1));
+        } else {
+          setLoopCount(0);
         }
       }
-      if (md) {
-        setContent(
-          md
-            .split("\n")
-            .filter((l: string) => !l.startsWith("<!-- priority:"))
-            .slice(0, rows - 8)
-        );
-      } else {
-        setContent(["No task description found."]);
-      }
-    } catch (err: any) {
-      setContent(["Cannot read task details.", `Error: ${err?.message || err}`, `Dir: ${task.dir}`]);
+    } catch {
+      setStateData(null);
     }
-  }, [task.dir, rows]);
+  }, [task.dir, tick]);
+
+  // Load task.md lazily
+  useEffect(() => {
+    if (tab !== "task") return;
+    try {
+      const path = join(task.dir, "task.md");
+      if (existsSync(path)) {
+        const lines = readFileSync(path, "utf-8")
+          .split("\n")
+          .filter((l: string) => !l.startsWith("<!-- priority:"))
+          .slice(0, rows - 10);
+        setTaskContent(lines);
+      } else {
+        setTaskContent(["No task.md found"]);
+      }
+    } catch (e: any) {
+      setTaskContent([`Error: ${e.message}`]);
+    }
+  }, [task.dir, tab, rows]);
+
+  // Load handoff.md lazily
+  useEffect(() => {
+    if (tab !== "handoff") return;
+    try {
+      const path = join(task.dir, "handoff.md");
+      if (existsSync(path)) {
+        const lines = readFileSync(path, "utf-8").split("\n").slice(0, rows - 10);
+        setHandoffContent(lines);
+      } else {
+        setHandoffContent(["No handoff.md found"]);
+      }
+    } catch (e: any) {
+      setHandoffContent([`Error: ${e.message}`]);
+    }
+  }, [task.dir, tab, rows]);
+
+  // Copy slug
+  const copySlug = () => {
+    const slug = basename(task.dir);
+    if (copyToClipboard(slug)) {
+      setMsg(`Copied: ${slug}`);
+    } else {
+      setMsg(`Copy failed`);
+    }
+  };
+
+  // Tab bar
+  const tabs: DetailTab[] = ["state", "task", "handoff"];
+  const tabLabels = { state: "State", task: "Task", handoff: "Handoff" };
+
+  // Spinner for in_progress
+  const spinner = SPINNER_FRAMES[tick % 10];
+
+  // Format time ago
+  const timeAgo = (ts: string) => {
+    if (!ts) return "";
+    const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+    if (diff < 60) return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    return `${Math.floor(diff / 3600)}h ago`;
+  };
 
   return (
     <Box flexDirection="column">
-      <Text bold>  Task Detail</Text>
+      {/* Header */}
+      <Box>
+        <Text bold>  Detail: </Text>
+        <Text color="cyan">{task.title.slice(0, 50)}</Text>
+        {task.status === "in_progress" && <Text color="yellow"> {spinner}</Text>}
+        {loopCount > 0 && <Text color="yellow"> ↻{loopCount}</Text>}
+      </Box>
+
+      {/* Tab bar */}
+      <Box gap={1}>
+        <Text>  </Text>
+        {tabs.map((t) => (
+          <Text
+            key={t}
+            bold={tab === t}
+            inverse={tab === t}
+            color={tab === t ? "cyan" : undefined}
+            dimColor={tab !== t}
+          >{` ${tabLabels[t]} `}</Text>
+        ))}
+      </Box>
+      <Text dimColor>{"  " + "─".repeat(40)}</Text>
+
+      {/* Content based on tab */}
+      {tab === "state" && (
+        <Box flexDirection="column">
+          {/* Status */}
+          <Box>
+            <Text dimColor>  Status: </Text>
+            <Text bold color={
+              task.status === "completed" ? "green" :
+              task.status === "failed" ? "red" :
+              task.status === "in_progress" ? "yellow" :
+              task.status === "suspended" ? "magenta" : undefined
+            }>
+              {task.status}
+            </Text>
+            {task.currentStep && <Text dimColor> [{task.currentStep}]</Text>}
+            {task.updatedAt && <Text dimColor> {timeAgo(task.updatedAt)}</Text>}
+          </Box>
+
+          {/* Branch & worker */}
+          {stateData?.branch && (
+            <Box>
+              <Text dimColor>  Branch: </Text>
+              <Text>{stateData.branch}</Text>
+            </Box>
+          )}
+          {task.workerId && (
+            <Box>
+              <Text dimColor>  Worker: </Text>
+              <Text>{task.workerId}</Text>
+            </Box>
+          )}
+
+          {/* Agents table */}
+          <Text> </Text>
+          <Text bold>  Agents</Text>
+          <Text dimColor>{"  " + "─".repeat(40)}</Text>
+          {task.agents && task.agents.length > 0 ? (
+            <Box flexDirection="column">
+              <Box>
+                <Text dimColor>  </Text>
+                <Text bold>{"Agent".padEnd(14)}</Text>
+                <Text bold>{"Status".padEnd(10)}</Text>
+                <Text bold>{"Time".padStart(8)}</Text>
+              </Box>
+              {task.agents.map((a) => {
+                const isRunning = a.status === "in_progress" || a.status === "running";
+                const icon = isRunning ? spinner :
+                  a.status === "done" || a.status === "completed" ? "✓" :
+                  a.status === "failed" || a.status === "error" ? "✗" : "○";
+                const color = isRunning ? "cyan" :
+                  a.status === "done" || a.status === "completed" ? "green" :
+                  a.status === "failed" || a.status === "error" ? "red" : undefined;
+                return (
+                  <Box key={a.agent}>
+                    <Text>  </Text>
+                    <Text color={color as any}>{icon} </Text>
+                    <Text>{a.agent.padEnd(12)}</Text>
+                    <Text color={color as any}>{(a.status || "pending").padEnd(10)}</Text>
+                    <Text>{formatDuration(a.durationSeconds || 0).padStart(7)}</Text>
+                  </Box>
+                );
+              })}
+            </Box>
+          ) : (
+            <Text dimColor>  No agents yet</Text>
+          )}
+
+          {/* Loopback info */}
+          {loopCount > 0 && (
+            <Box>
+              <Text> </Text>
+              <Text color="yellow">  ⚠ Task retried {loopCount} time{loopCount > 1 ? "s" : ""}</Text>
+            </Box>
+          )}
+        </Box>
+      )}
+
+      {tab === "task" && (
+        <Box flexDirection="column">
+          {taskContent.map((line, i) => (
+            <Text key={i}>  {line}</Text>
+          ))}
+        </Box>
+      )}
+
+      {tab === "handoff" && (
+        <Box flexDirection="column">
+          {handoffContent.map((line, i) => (
+            <Text key={i}>  {line}</Text>
+          ))}
+        </Box>
+      )}
+
       <Text> </Text>
-      {content.map((line, i) => (
-        <Text key={i}>  {line}</Text>
-      ))}
-      <Text> </Text>
-      <Text dimColor>  q/Esc back</Text>
     </Box>
   );
 }
