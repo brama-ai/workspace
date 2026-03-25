@@ -3,10 +3,10 @@
   "workflow": "foundry",
   "started_at": "2026-03-25T13:53:17.124439Z",
   "attempt": 1,
-  "status": "in_progress",
-  "current_step": "u-summarizer",
-  "resume_from": "u-summarizer",
-  "updated_at": "2026-03-25T13:53:47.223675Z",
+  "status": "completed",
+  "current_step": null,
+  "resume_from": null,
+  "updated_at": "2026-03-25T13:53:54.066857Z",
   "task_file": "/workspaces/brama/tasks/remove-dev-reporter-agent--foundry/task.md",
   "branch": "pipeline/remove-dev-reporter-agent",
   "agents": [
@@ -58,12 +58,12 @@
       "agent": "u-summarizer",
       "status": "done",
       "model": "opencode-go/glm-5",
-      "duration_seconds": 0,
+      "duration_seconds": 4,
       "input_tokens": 115704,
       "output_tokens": 4865,
       "cost": 0.1662,
       "call_count": 1,
-      "updated_at": "2026-03-25T13:53:47.223661Z"
+      "updated_at": "2026-03-25T13:53:47.506747Z"
     }
   ]
 }
