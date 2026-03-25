@@ -3,67 +3,12 @@
   "workflow": "foundry",
   "started_at": "2026-03-25T17:42:35.366911Z",
   "attempt": 1,
-  "status": "completed",
+  "status": "in_progress",
   "current_step": null,
   "resume_from": null,
-  "updated_at": "2026-03-25T17:42:56.339247Z",
+  "updated_at": "2026-03-25T17:51:18.584303Z",
   "task_file": "/workspaces/brama/tasks/add-cloudflare-turnstile-captcha-to-edge-auth--foundry/task.md",
   "branch": "pipeline/add-cloudflare-turnstile-captcha-to-edge-auth",
-  "agents": [
-    {
-      "agent": "u-planner",
-      "status": "done",
-      "model": "anthropic/claude-sonnet-4-6",
-      "duration_seconds": 0,
-      "input_tokens": 177,
-      "output_tokens": 36104,
-      "cost": 4.0132,
-      "call_count": 1,
-      "updated_at": "2026-03-25T17:42:38.065301Z"
-    },
-    {
-      "agent": "coder",
-      "status": "done",
-      "model": "anthropic/claude-sonnet-4-6",
-      "duration_seconds": 3,
-      "input_tokens": 177,
-      "output_tokens": 36104,
-      "cost": 4.0132,
-      "call_count": 1,
-      "updated_at": "2026-03-25T17:42:41.622040Z"
-    },
-    {
-      "agent": "validator",
-      "status": "done",
-      "model": "anthropic/claude-sonnet-4-6",
-      "duration_seconds": 4,
-      "input_tokens": 177,
-      "output_tokens": 36104,
-      "cost": 4.0132,
-      "call_count": 1,
-      "updated_at": "2026-03-25T17:42:45.241437Z"
-    },
-    {
-      "agent": "summarizer",
-      "status": "done",
-      "model": "anthropic/claude-sonnet-4-6",
-      "duration_seconds": 3,
-      "input_tokens": 177,
-      "output_tokens": 36104,
-      "cost": 4.0132,
-      "call_count": 1,
-      "updated_at": "2026-03-25T17:42:48.594003Z"
-    },
-    {
-      "agent": "u-summarizer",
-      "status": "done",
-      "model": "anthropic/claude-sonnet-4-6",
-      "duration_seconds": 3,
-      "input_tokens": 177,
-      "output_tokens": 36104,
-      "cost": 4.0132,
-      "call_count": 1,
-      "updated_at": "2026-03-25T17:42:51.422887Z"
-    }
-  ]
+  "worker_id": "worker-1",
+  "claimed_at": "2026-03-25T17:51:18.584303Z"
 }

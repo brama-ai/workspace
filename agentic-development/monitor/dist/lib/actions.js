@@ -162,3 +162,34 @@ export function ultraworksAttach(repoRoot) {
 export function ultraworksCleanup(repoRoot) {
     return runQuick(`"${ultraworksPath(repoRoot)}" cleanup`, repoRoot);
 }
+/** Read live process status via foundry_process_status() shell helper */
+export function getProcessStatus(repoRoot) {
+    const empty = { workers: [], zombies: [], lock: null };
+    try {
+        const commonSh = join(repoRoot, "agentic-development", "lib", "foundry-common.sh");
+        const out = execSync(`bash -c 'REPO_ROOT="${repoRoot}" source "${commonSh}" && foundry_process_status'`, { encoding: "utf-8", timeout: 5000, stdio: ["pipe", "pipe", "pipe"] }).trim();
+        return JSON.parse(out);
+    }
+    catch {
+        return empty;
+    }
+}
+/** Clean zombie processes and stale batch lock */
+export function cleanZombies(repoRoot) {
+    const commonSh = join(repoRoot, "agentic-development", "lib", "foundry-common.sh");
+    return runQuick(`bash -c 'REPO_ROOT="${repoRoot}" source "${commonSh}" && n=$(foundry_cleanup_zombies) && echo "Cleaned: $n zombie(s)/stale lock(s)"'`, repoRoot);
+}
+/** Tail last N lines of a log file */
+export function tailLog(logPath, lines = 40) {
+    try {
+        const out = execSync(`tail -n ${lines} "${logPath}"`, {
+            encoding: "utf-8",
+            timeout: 3000,
+            stdio: ["pipe", "pipe", "pipe"],
+        });
+        return out.split("\n");
+    }
+    catch {
+        return ["(log not available)"];
+    }
+}

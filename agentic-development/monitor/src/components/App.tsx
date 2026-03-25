@@ -339,6 +339,9 @@ export function App({ tasksRoot }: Props) {
           tick={tick}
           detailTab={detailTab}
           setMsg={setMsg}
+          procStatus={procStatus}
+          procIdx={procIdx}
+          procLogLines={procLogLines}
         />
       ) : (
         <CommandsTab cols={cols} selectedIdx={cmdIdx} />
@@ -360,7 +363,7 @@ export function App({ tasksRoot }: Props) {
       <Text dimColor>{"─".repeat(cols)}</Text>
       {tab === 1 && view === "list" ? (
         <Text dimColor>
-          {"  ↑/↓ select  Enter detail  [y] copy  [a] agents  [l] logs  [d] archive  [s] start  [k] stop  [t] autotest  [q] quit"}
+          {"  ↑/↓ select  Enter detail  [a] agents  [l] logs  [d] archive  [s] start  [k] stop  [z] clean zombies  [p/P] proc  [q] quit"}
         </Text>
       ) : tab === 1 && view === "detail" ? (
         <Text dimColor>{"  ←/→ tabs  [y] copy  [Esc] back  [q] quit"}</Text>
@@ -384,6 +387,7 @@ function TabLabel({ n, label, active }: { n: number; label: string; active: bool
 // ── Tasks Tab ──────────────────────────────────────────────────────
 function TasksTab({
   data, idx, view, selected, cols, rows, tick, detailTab, setMsg,
+  procStatus, procIdx, procLogLines,
 }: {
   data: ReadResult;
   idx: number;
@@ -394,6 +398,9 @@ function TasksTab({
   tick: number;
   detailTab: DetailTab;
   setMsg: (m: string) => void;
+  procStatus: ProcessStatus;
+  procIdx: number;
+  procLogLines: string[];
 }) {
   if (view === "agents" && selected) return <AgentsView task={selected} cols={cols} />;
   if (view === "logs" && selected) return <LogsView task={selected} rows={rows} tick={tick} />;
@@ -402,6 +409,10 @@ function TasksTab({
   const { tasks, counts } = data;
   const total = counts.pending + counts.in_progress + counts.completed + counts.failed + counts.suspended;
   const done = counts.completed + counts.failed;
+
+  // Reserve ~8 lines for ProcessPanel at bottom
+  const PROC_PANEL_HEIGHT = 8;
+  const taskListRows = Math.max(4, rows - 16 - PROC_PANEL_HEIGHT);
 
   return (
     <Box flexDirection="column">
@@ -421,7 +432,107 @@ function TasksTab({
       <Text> </Text>
 
       {/* Task list */}
-      <TaskList tasks={tasks} selectedIdx={idx} maxLines={rows - 16} />
+      <TaskList tasks={tasks} selectedIdx={idx} maxLines={taskListRows} />
+
+      {/* Process panel — always visible at bottom */}
+      <ProcessPanel
+        procStatus={procStatus}
+        selectedIdx={procIdx}
+        logLines={procLogLines}
+        cols={cols}
+        maxLogLines={PROC_PANEL_HEIGHT - 3}
+      />
+    </Box>
+  );
+}
+
+// ── Process Panel ─────────────────────────────────────────────────
+function ProcessPanel({
+  procStatus, selectedIdx, logLines, cols, maxLogLines,
+}: {
+  procStatus: ProcessStatus;
+  selectedIdx: number;
+  logLines: string[];
+  cols: number;
+  maxLogLines: number;
+}) {
+  const allProcs: ProcessEntry[] = [...procStatus.workers, ...procStatus.zombies];
+  const hasZombies = procStatus.zombies.length > 0;
+  const lockInfo = procStatus.lock;
+
+  // Split layout: left = process list (~40%), right = log tail (~60%)
+  const leftW = Math.floor(cols * 0.38);
+  const rightW = cols - leftW - 3;
+
+  return (
+    <Box flexDirection="column">
+      <Text dimColor>{"─".repeat(cols)}</Text>
+      <Box>
+        <Text bold color={hasZombies ? "red" : "cyan"}>  Processes</Text>
+        {hasZombies && (
+          <Text color="red" bold>  ⚠ {procStatus.zombies.length} zombie{procStatus.zombies.length > 1 ? "s" : ""}  [z] clean</Text>
+        )}
+        {lockInfo && (
+          <Text dimColor>  lock:{lockInfo.pid}</Text>
+        )}
+        {lockInfo?.zombie && (
+          <Text color="red" bold>  ⚠ stale lock</Text>
+        )}
+        {allProcs.length === 0 && (
+          <Text dimColor>  (no foundry processes running)</Text>
+        )}
+        <Text dimColor>  [p/P] navigate</Text>
+      </Box>
+
+      {allProcs.length > 0 && (
+        <Box>
+          {/* Left: process list */}
+          <Box flexDirection="column" width={leftW}>
+            {allProcs.slice(0, maxLogLines).map((proc, i) => {
+              const cursor = i === selectedIdx;
+              const isZombie = proc.zombie;
+              const color = isZombie ? "red" : "green";
+              const icon = isZombie ? "☠" : "▸";
+              // Shorten args: show last meaningful part
+              const shortArgs = proc.args.replace(/.*\/(foundry|opencode|ultraworks)/, "$1").slice(0, leftW - 14);
+              return (
+                <Box key={proc.pid}>
+                  <Text color="cyan">{cursor ? " ▶ " : "   "}</Text>
+                  <Text color={color}>{icon} </Text>
+                  <Text bold={cursor} color={isZombie ? "red" : undefined}>
+                    {String(proc.pid).padEnd(6)}
+                  </Text>
+                  <Text dimColor color={isZombie ? "red" : undefined}>
+                    {isZombie ? "ZOMBIE " : proc.etime.padEnd(7)}
+                  </Text>
+                  <Text dimColor>{shortArgs}</Text>
+                </Box>
+              );
+            })}
+          </Box>
+
+          {/* Divider */}
+          <Box flexDirection="column">
+            <Text dimColor>{"│"}</Text>
+            {logLines.slice(0, maxLogLines).map((_, i) => (
+              <Text key={i} dimColor>{"│"}</Text>
+            ))}
+          </Box>
+
+          {/* Right: log tail for selected process */}
+          <Box flexDirection="column" width={rightW}>
+            {logLines.length > 0 ? (
+              logLines.slice(0, maxLogLines).map((line, i) => (
+                <Text key={i} dimColor>
+                  {" " + line.slice(0, rightW - 2)}
+                </Text>
+              ))
+            ) : (
+              <Text dimColor>  (no log)</Text>
+            )}
+          </Box>
+        </Box>
+      )}
     </Box>
   );
 }

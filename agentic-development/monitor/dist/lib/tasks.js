@@ -154,8 +154,11 @@ export function readAllTasks(root) {
                 branchName = meta.branch_name;
             }
         }
+        else {
+            // Foundry: branch from state.json
+            branchName = state?.branch;
+        }
         // Diagnostic info for stale detection
-        const branch = state?.branch;
         const lastEvent = getLastEvent(taskDir);
         tasks.push({
             dir: taskDir,
@@ -170,13 +173,13 @@ export function readAllTasks(root) {
             agents,
             sessionName,
             worktreePath,
-            branchName: branch,
+            branchName,
             attempt: state?.attempt,
             // Diagnostic fields
             hasStaleLock: checkStaleLock(taskDir, status),
             lastEventTime: lastEvent?.time,
             lastEventAge: lastEvent?.age,
-            branchExists: checkBranchExists(branch),
+            branchExists: checkBranchExists(branchName),
         });
     }
     tasks.sort((a, b) => {

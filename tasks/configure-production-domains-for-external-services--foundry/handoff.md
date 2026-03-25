@@ -227,9 +227,9 @@ Create `docs/production-domains-setup.md` with:
 3. Login flow works correctly with cookie propagation
 4. Documentation exists for future deployments
 5. No security vulnerabilities (webhooks work, login works, but unauthorized access blocked)
-- **Started**: 2026-03-25 17:42:58
+- **Started**: 2026-03-25 17:51:38
 - **Branch**: pipeline/configure-production-domains-for-external-services
-- **Pipeline ID**: 20260325_174256
+- **Pipeline ID**: 20260325_175136
 
 ---
 
@@ -280,6 +280,3 @@ Create `docs/production-domains-setup.md` with:
 
 ---
 
-- **Commit (coder)**: 0175ac1
-- **Commit (validator)**: 1a379bc
-- **Commit (summarizer)**: 3bf3f5d

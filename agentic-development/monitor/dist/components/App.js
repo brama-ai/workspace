@@ -6,8 +6,8 @@ import { join, basename } from "node:path";
 import { execSync } from "node:child_process";
 import { readAllTasks } from "../lib/tasks.js";
 import { formatDuration, formatTokens, formatCost } from "../lib/format.js";
-import { startWorkers, stopWorkers, retryFailed, runAutotest, archiveTask, ultraworksLaunch, ultraworksAttach, ultraworksCleanup, findRepoRoot, } from "../lib/actions.js";
-const VERSION = "2.0.0";
+import { startWorkers, stopWorkers, retryFailed, runAutotest, archiveTask, ultraworksLaunch, ultraworksAttach, ultraworksCleanup, findRepoRoot, cleanZombies, getProcessStatus, tailLog, } from "../lib/actions.js";
+const VERSION = "2.1.0";
 const REFRESH_MS = 3000;
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const COMMANDS = [
@@ -15,6 +15,7 @@ const COMMANDS = [
     { key: "s", label: "Start Foundry headless workers", section: "foundry", action: (r) => startWorkers(r) },
     { key: "k", label: "Kill / stop Foundry workers", section: "foundry", action: (r) => stopWorkers(r) },
     { key: "f", label: "Retry all failed tasks", section: "foundry", action: (r) => retryFailed(r) },
+    { key: "z", label: "Clean zombie processes & stale lock", section: "foundry", action: (r) => cleanZombies(r) },
     // Ultraworks
     { key: "u", label: "Launch Ultraworks (tmux)", section: "ultraworks", action: (r) => ultraworksLaunch(r) },
     { key: "U", label: "Attach to Ultraworks session", section: "ultraworks", action: (r) => ultraworksAttach(r) },
@@ -68,9 +69,16 @@ export function App({ tasksRoot }) {
     const [msg, setMsg] = useState("");
     const [lastAttachCmd, setLastAttachCmd] = useState("");
     const [tick, setTick] = useState(0);
+    const [procStatus, setProcStatus] = useState({ workers: [], zombies: [], lock: null });
+    const [procIdx, setProcIdx] = useState(0);
+    const [procLogLines, setProcLogLines] = useState([]);
     // Refresh data periodically
     useEffect(() => {
-        const refresh = () => setData(readAllTasks(root));
+        const refresh = () => {
+            setData(readAllTasks(root));
+            const ps = getProcessStatus(repoRoot);
+            setProcStatus(ps);
+        };
         refresh();
         const id = setInterval(() => {
             refresh();
@@ -85,6 +93,17 @@ export function App({ tasksRoot }) {
         const id = setTimeout(() => setMsg(""), 5000);
         return () => clearTimeout(id);
     }, [msg]);
+    // Refresh proc log when selection or tick changes
+    useEffect(() => {
+        const allProcs = [...procStatus.workers, ...procStatus.zombies];
+        const proc = allProcs[procIdx];
+        if (proc?.log) {
+            setProcLogLines(tailLog(proc.log, 20));
+        }
+        else {
+            setProcLogLines([]);
+        }
+    }, [procIdx, tick, procStatus]);
     // Handle CmdResult from actions
     const handleCmd = (result) => {
         setMsg(result.message);
@@ -249,6 +268,10 @@ export function App({ tasksRoot }) {
             handleCmd(retryFailed(repoRoot));
             return;
         }
+        if (input === "z" || input === "Z") {
+            handleCmd(cleanZombies(repoRoot));
+            return;
+        }
         if (input === "t") {
             handleCmd(runAutotest(repoRoot, false));
             return;
@@ -262,15 +285,34 @@ export function App({ tasksRoot }) {
             setMsg("Refreshed");
             return;
         }
+        // Process panel navigation (Tab key or p/P)
+        if (input === "p") {
+            const allProcs = [...procStatus.workers, ...procStatus.zombies];
+            setProcIdx((i) => Math.max(0, i - 1));
+            const newIdx = Math.max(0, procIdx - 1);
+            const proc = allProcs[newIdx];
+            if (proc?.log)
+                setProcLogLines(tailLog(proc.log, 20));
+            return;
+        }
+        if (input === "P") {
+            const allProcs = [...procStatus.workers, ...procStatus.zombies];
+            const newIdx = Math.min(allProcs.length - 1, procIdx + 1);
+            setProcIdx(newIdx);
+            const proc = allProcs[newIdx];
+            if (proc?.log)
+                setProcLogLines(tailLog(proc.log, 20));
+            return;
+        }
     });
     const time = new Date().toLocaleTimeString("en-GB", { hour12: false });
-    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time] })] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 })] }), _jsx(Text, { children: " " }), tab === 1 ? (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: cols, rows: rows, tick: tick, detailTab: detailTab, setMsg: setMsg })) : (_jsx(CommandsTab, { cols: cols, selectedIdx: cmdIdx })), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), tab === 1 && view === "list" ? (_jsx(Text, { dimColor: true, children: "  ↑/↓ select  Enter detail  [y] copy  [a] agents  [l] logs  [d] archive  [s] start  [k] stop  [t] autotest  [q] quit" })) : tab === 1 && view === "detail" ? (_jsx(Text, { dimColor: true, children: "  ←/→ tabs  [y] copy  [Esc] back  [q] quit" })) : tab === 1 ? (_jsx(Text, { dimColor: true, children: "  [y] copy slug  [Esc] back  [q] quit" })) : (_jsx(Text, { dimColor: true, children: "  ↑/↓ select  Enter run  ←/→ tabs  [q] quit" }))] }));
+    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time] })] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 })] }), _jsx(Text, { children: " " }), tab === 1 ? (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: cols, rows: rows, tick: tick, detailTab: detailTab, setMsg: setMsg, procStatus: procStatus, procIdx: procIdx, procLogLines: procLogLines })) : (_jsx(CommandsTab, { cols: cols, selectedIdx: cmdIdx })), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), tab === 1 && view === "list" ? (_jsx(Text, { dimColor: true, children: "  ↑/↓ select  Enter detail  [a] agents  [l] logs  [d] archive  [s] start  [k] stop  [z] clean zombies  [p/P] proc  [q] quit" })) : tab === 1 && view === "detail" ? (_jsx(Text, { dimColor: true, children: "  ←/→ tabs  [y] copy  [Esc] back  [q] quit" })) : tab === 1 ? (_jsx(Text, { dimColor: true, children: "  [y] copy slug  [Esc] back  [q] quit" })) : (_jsx(Text, { dimColor: true, children: "  ↑/↓ select  Enter run  ←/→ tabs  [q] quit" }))] }));
 }
 function TabLabel({ n, label, active }) {
     return active ? (_jsxs(Text, { bold: true, inverse: true, children: [" ", n, ":", label, " "] })) : (_jsxs(Text, { dimColor: true, children: [" ", n, ":", label, " "] }));
 }
 // ── Tasks Tab ──────────────────────────────────────────────────────
-function TasksTab({ data, idx, view, selected, cols, rows, tick, detailTab, setMsg, }) {
+function TasksTab({ data, idx, view, selected, cols, rows, tick, detailTab, setMsg, procStatus, procIdx, procLogLines, }) {
     if (view === "agents" && selected)
         return _jsx(AgentsView, { task: selected, cols: cols });
     if (view === "logs" && selected)
@@ -280,7 +322,28 @@ function TasksTab({ data, idx, view, selected, cols, rows, tick, detailTab, setM
     const { tasks, counts } = data;
     const total = counts.pending + counts.in_progress + counts.completed + counts.failed + counts.suspended;
     const done = counts.completed + counts.failed;
-    return (_jsxs(Box, { flexDirection: "column", children: [_jsx(ProgressBar, { done: done, total: total, width: cols - 10 }), _jsx(Text, { children: " " }), _jsxs(Box, { gap: 2, children: [_jsx(Text, { children: "  " }), _jsxs(Text, { color: "blue", bold: true, children: ["Pending: ", counts.pending] }), _jsxs(Text, { color: "yellow", bold: true, children: ["Running: ", counts.in_progress] }), _jsxs(Text, { color: "green", bold: true, children: ["Done: ", counts.completed] }), _jsxs(Text, { color: "red", bold: true, children: ["Failed: ", counts.failed] }), counts.suspended > 0 && _jsxs(Text, { color: "magenta", bold: true, children: ["Suspended: ", counts.suspended] })] }), _jsx(Text, { children: " " }), _jsx(TaskList, { tasks: tasks, selectedIdx: idx, maxLines: rows - 16 })] }));
+    // Reserve ~8 lines for ProcessPanel at bottom
+    const PROC_PANEL_HEIGHT = 8;
+    const taskListRows = Math.max(4, rows - 16 - PROC_PANEL_HEIGHT);
+    return (_jsxs(Box, { flexDirection: "column", children: [_jsx(ProgressBar, { done: done, total: total, width: cols - 10 }), _jsx(Text, { children: " " }), _jsxs(Box, { gap: 2, children: [_jsx(Text, { children: "  " }), _jsxs(Text, { color: "blue", bold: true, children: ["Pending: ", counts.pending] }), _jsxs(Text, { color: "yellow", bold: true, children: ["Running: ", counts.in_progress] }), _jsxs(Text, { color: "green", bold: true, children: ["Done: ", counts.completed] }), _jsxs(Text, { color: "red", bold: true, children: ["Failed: ", counts.failed] }), counts.suspended > 0 && _jsxs(Text, { color: "magenta", bold: true, children: ["Suspended: ", counts.suspended] })] }), _jsx(Text, { children: " " }), _jsx(TaskList, { tasks: tasks, selectedIdx: idx, maxLines: taskListRows }), _jsx(ProcessPanel, { procStatus: procStatus, selectedIdx: procIdx, logLines: procLogLines, cols: cols, maxLogLines: PROC_PANEL_HEIGHT - 3 })] }));
+}
+// ── Process Panel ─────────────────────────────────────────────────
+function ProcessPanel({ procStatus, selectedIdx, logLines, cols, maxLogLines, }) {
+    const allProcs = [...procStatus.workers, ...procStatus.zombies];
+    const hasZombies = procStatus.zombies.length > 0;
+    const lockInfo = procStatus.lock;
+    // Split layout: left = process list (~40%), right = log tail (~60%)
+    const leftW = Math.floor(cols * 0.38);
+    const rightW = cols - leftW - 3;
+    return (_jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { children: [_jsx(Text, { bold: true, color: hasZombies ? "red" : "cyan", children: "  Processes" }), hasZombies && (_jsxs(Text, { color: "red", bold: true, children: ["  \u26A0 ", procStatus.zombies.length, " zombie", procStatus.zombies.length > 1 ? "s" : "", "  [z] clean"] })), lockInfo && (_jsxs(Text, { dimColor: true, children: ["  lock:", lockInfo.pid] })), lockInfo?.zombie && (_jsx(Text, { color: "red", bold: true, children: "  \u26A0 stale lock" })), allProcs.length === 0 && (_jsx(Text, { dimColor: true, children: "  (no foundry processes running)" })), _jsx(Text, { dimColor: true, children: "  [p/P] navigate" })] }), allProcs.length > 0 && (_jsxs(Box, { children: [_jsx(Box, { flexDirection: "column", width: leftW, children: allProcs.slice(0, maxLogLines).map((proc, i) => {
+                            const cursor = i === selectedIdx;
+                            const isZombie = proc.zombie;
+                            const color = isZombie ? "red" : "green";
+                            const icon = isZombie ? "☠" : "▸";
+                            // Shorten args: show last meaningful part
+                            const shortArgs = proc.args.replace(/.*\/(foundry|opencode|ultraworks)/, "$1").slice(0, leftW - 14);
+                            return (_jsxs(Box, { children: [_jsx(Text, { color: "cyan", children: cursor ? " ▶ " : "   " }), _jsxs(Text, { color: color, children: [icon, " "] }), _jsx(Text, { bold: cursor, color: isZombie ? "red" : undefined, children: String(proc.pid).padEnd(6) }), _jsx(Text, { dimColor: true, color: isZombie ? "red" : undefined, children: isZombie ? "ZOMBIE " : proc.etime.padEnd(7) }), _jsx(Text, { dimColor: true, children: shortArgs })] }, proc.pid));
+                        }) }), _jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { dimColor: true, children: "│" }), logLines.slice(0, maxLogLines).map((_, i) => (_jsx(Text, { dimColor: true, children: "│" }, i)))] }), _jsx(Box, { flexDirection: "column", width: rightW, children: logLines.length > 0 ? (logLines.slice(0, maxLogLines).map((line, i) => (_jsx(Text, { dimColor: true, children: " " + line.slice(0, rightW - 2) }, i)))) : (_jsx(Text, { dimColor: true, children: "  (no log)" })) })] }))] }));
 }
 function ProgressBar({ done, total, width }) {
     const w = Math.max(10, width);

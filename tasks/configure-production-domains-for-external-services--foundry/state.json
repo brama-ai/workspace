@@ -4,66 +4,33 @@
   "started_at": "2026-03-25T17:42:58.325844Z",
   "attempt": 1,
   "status": "in_progress",
-  "current_step": "u-summarizer",
-  "resume_from": "u-summarizer",
-  "updated_at": "2026-03-25T17:45:46.118474Z",
+  "current_step": "u-coder",
+  "resume_from": "u-coder",
+  "updated_at": "2026-03-25T17:53:54.553803Z",
   "task_file": "/workspaces/brama/tasks/configure-production-domains-for-external-services--foundry/task.md",
   "branch": "pipeline/configure-production-domains-for-external-services",
   "agents": [
     {
       "agent": "u-planner",
       "status": "done",
-      "model": "anthropic/claude-sonnet-4-6",
-      "duration_seconds": 151,
-      "input_tokens": 195,
-      "output_tokens": 42111,
-      "cost": 4.8437,
+      "model": "anthropic/claude-opus-4-6",
+      "duration_seconds": 130,
+      "input_tokens": 20,
+      "output_tokens": 4667,
+      "cost": 1.5361,
       "call_count": 1,
-      "updated_at": "2026-03-25T17:45:32.115985Z"
+      "updated_at": "2026-03-25T17:53:51.588866Z"
     },
     {
-      "agent": "coder",
-      "status": "done",
-      "model": "anthropic/claude-sonnet-4-6",
-      "duration_seconds": 3,
-      "input_tokens": 195,
-      "output_tokens": 42111,
-      "cost": 4.8437,
-      "call_count": 1,
-      "updated_at": "2026-03-25T17:45:35.675921Z"
-    },
-    {
-      "agent": "validator",
-      "status": "done",
-      "model": "anthropic/claude-sonnet-4-6",
-      "duration_seconds": 4,
-      "input_tokens": 195,
-      "output_tokens": 42111,
-      "cost": 4.8437,
-      "call_count": 1,
-      "updated_at": "2026-03-25T17:45:39.402578Z"
-    },
-    {
-      "agent": "summarizer",
-      "status": "done",
-      "model": "anthropic/claude-sonnet-4-6",
-      "duration_seconds": 4,
-      "input_tokens": 196,
-      "output_tokens": 42942,
-      "cost": 4.9067,
-      "call_count": 1,
-      "updated_at": "2026-03-25T17:45:43.292329Z"
-    },
-    {
-      "agent": "u-summarizer",
+      "agent": "u-coder",
       "status": "done",
       "model": "anthropic/claude-sonnet-4-6",
       "duration_seconds": 0,
-      "input_tokens": 197,
-      "output_tokens": 43290,
-      "cost": 4.9624,
+      "input_tokens": 240,
+      "output_tokens": 61305,
+      "cost": 7.5275,
       "call_count": 1,
-      "updated_at": "2026-03-25T17:45:46.118463Z"
+      "updated_at": "2026-03-25T17:53:54.553745Z"
     }
   ]
 }
