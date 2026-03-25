@@ -6,7 +6,7 @@
   "status": "in_progress",
   "current_step": "u-coder",
   "resume_from": "u-coder",
-  "updated_at": "2026-03-25T20:43:25.262577Z",
+  "updated_at": "2026-03-25T21:04:53.980829Z",
   "task_file": "/workspaces/brama/tasks/auto-slug-test--foundry/task.md",
   "branch": "pipeline/auto-slug-test",
   "agents": [
@@ -31,6 +31,17 @@
       "cost": 3.0428,
       "call_count": 1,
       "updated_at": "2026-03-25T20:43:25.262564Z"
+    },
+    {
+      "agent": "u-validator",
+      "status": "done",
+      "model": "opencode-go/kimi-k2.5",
+      "duration_seconds": 65,
+      "input_tokens": 41337,
+      "output_tokens": 1477,
+      "cost": 0.0285,
+      "call_count": 1,
+      "updated_at": "2026-03-25T21:04:53.980816Z"
     }
   ]
 }
