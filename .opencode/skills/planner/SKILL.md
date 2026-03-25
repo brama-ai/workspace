@@ -17,6 +17,9 @@ description: "Planner role: task analysis, profile selection, pipeline-plan.json
 | complex+agent | coder, auditor, validator, tester, summarizer | Creates/modifies an agent |
 | bugfix | investigator, coder, validator, tester, summarizer | Bug with investigation, no spec change |
 | bugfix+spec | investigator, architect, coder, validator, tester, summarizer | Bug that changes spec behavior |
+| merge | merger, summarizer | Merge main into feature, verify readiness |
+| merge+test | merger, tester, summarizer | Merge + fill test gaps |
+| merge+deploy | merger, tester, deployer, summarizer | Full merge-to-deploy pipeline |
 
 ## Timeout Reference
 
@@ -46,6 +49,13 @@ description: "Planner role: task analysis, profile selection, pipeline-plan.json
 11. Trivial bug (typo, null check, obvious config error) → `quick-fix` (no investigator needed)
 12. **When in doubt between `quick-fix` and `bugfix`** → choose `bugfix` (investigation is cheap, missed root cause is expensive)
 
+### Merge-Specific Rules
+
+13. Include `merger` as **first agent** when the task is a merge, rebase, sync, or release request
+14. If merger reports `needs-tests` in handoff, chain `tester` after merger
+15. If merger reports `ready` and task includes deploy intent, chain `deployer` after tester
+16. Merge tasks **skip** architect, coder, investigator, auditor, validator — merger handles the full merge lifecycle
+
 ## Quick Patterns
 
 | Signal | Profile |
@@ -58,6 +68,9 @@ description: "Planner role: task analysis, profile selection, pipeline-plan.json
 | "bug", "broken", "error", "crash", "regression", "не працює" | bugfix |
 | Bug + "wrong behavior in spec" / "spec is incorrect" | bugfix+spec |
 | Obvious typo, missing null check, config value | quick-fix (no investigator) |
+| "merge", "sync with main", "update from main", "rebase" | merge |
+| "merge and test", "prepare for merge", "PR ready" | merge+test |
+| "merge and deploy", "ship it", "release", "deploy branch" | merge+deploy |
 
 ## Analysis Steps
 

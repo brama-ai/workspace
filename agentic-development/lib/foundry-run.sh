@@ -73,6 +73,7 @@ PIPELINE_TIMEOUT_TESTER="${PIPELINE_TIMEOUT_TESTER:-1800}"         # 30 min
 PIPELINE_TIMEOUT_DOCUMENTER="${PIPELINE_TIMEOUT_DOCUMENTER:-900}"  # 15 min
 PIPELINE_TIMEOUT_AUDITOR="${PIPELINE_TIMEOUT_AUDITOR:-1200}"       # 20 min
 PIPELINE_TIMEOUT_E2E="${PIPELINE_TIMEOUT_E2E:-600}"               # 10 min
+PIPELINE_TIMEOUT_MERGER="${PIPELINE_TIMEOUT_MERGER:-1200}"         # 20 min
 PIPELINE_TIMEOUT_SUMMARIZER="${PIPELINE_TIMEOUT_SUMMARIZER:-900}"  # 15 min
 
 # Retry config
@@ -105,6 +106,7 @@ FALLBACK_TESTER="${PIPELINE_FALLBACK_TESTER:-openai/gpt-5.3-codex,minimax/MiniMa
 FALLBACK_DOCUMENTER="${PIPELINE_FALLBACK_DOCUMENTER:-anthropic/claude-sonnet-4-6,google/gemini-3-flash-preview,minimax/MiniMax-M2.5,opencode-go/kimi-k2.5,opencode/big-pickle,openrouter/free}"
 FALLBACK_AUDITOR="${PIPELINE_FALLBACK_AUDITOR:-openai/gpt-5.4,opencode-go/glm-5,minimax/MiniMax-M2.7,opencode/big-pickle,google/gemini-3.1-pro-preview,openrouter/free}"
 FALLBACK_E2E="${PIPELINE_FALLBACK_E2E:-opencode-go/glm-5,openai/gpt-5.4,minimax/minimax-m2.7,google/gemini-2.5-flash,openrouter/qwen/qwen3-coder:free}"
+FALLBACK_MERGER="${PIPELINE_FALLBACK_MERGER:-openai/gpt-5.4,minimax/MiniMax-M2.7,opencode-go/glm-5,google/gemini-3.1-pro-preview,opencode/big-pickle,openrouter/free}"
 FALLBACK_SUMMARIZER="${PIPELINE_FALLBACK_SUMMARIZER:-anthropic/claude-opus-4-6,google/gemini-3.1-pro-preview,minimax/MiniMax-M2.7,opencode-go/glm-5,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528:free}"
 
 # ── Help ──────────────────────────────────────────────────────────────
@@ -131,7 +133,7 @@ Options:
   --skip-env-check    Skip environment prerequisites check
   -h, --help          Show this help
 
-Agents: u-planner, u-investigator, u-architect, u-coder, u-auditor, u-validator, u-tester, e2e, u-documenter, u-translater, u-summarizer
+Agents: u-planner, u-investigator, u-architect, u-coder, u-auditor, u-validator, u-tester, e2e, u-merger, u-documenter, u-translater, u-summarizer
 
 Profiles:
   quick-fix    — u-coder + u-validator + u-summarizer
@@ -139,6 +141,9 @@ Profiles:
   complex      — standard + u-auditor + extended timeouts
   bugfix       — u-investigator + u-coder + u-validator + u-tester + u-summarizer
   bugfix+spec  — u-investigator + u-architect + u-coder + u-validator + u-tester + u-summarizer
+  merge        — u-merger + u-summarizer
+  merge+test   — u-merger + u-tester + u-summarizer
+  merge+deploy — u-merger + u-tester + u-deployer + u-summarizer
 
 Timeouts (override via env):
   PIPELINE_TIMEOUT_PLANNER=300     (5 min)
@@ -147,6 +152,7 @@ Timeouts (override via env):
   PIPELINE_TIMEOUT_CODER=3600     (60 min)
   PIPELINE_TIMEOUT_VALIDATOR=1200 (20 min)
   PIPELINE_TIMEOUT_TESTER=1800   (30 min)
+  PIPELINE_TIMEOUT_MERGER=1200   (20 min)
   PIPELINE_TIMEOUT_DOCUMENTER=900 (15 min)
   PIPELINE_TIMEOUT_SUMMARIZER=900 (15 min)
   PIPELINE_MAX_RETRIES=2
@@ -1752,6 +1758,9 @@ Analyze the task and output a JSON pipeline configuration. Do NOT write any code
 - **quick-fix**: Typos, config tweaks, minor fixes, single-file edits, slide updates. 1-3 files affected.
 - **standard**: Normal features, moderate changes. Multiple files, single app. May need OpenSpec.
 - **complex**: Multi-service changes, DB migrations, API changes, new agents. Cross-app impact.
+- **merge**: Merge main into feature branch, verify test coverage and docs. Use for merge/sync/rebase requests.
+- **merge+test**: Merge + fill test gaps. Use when merge may reveal coverage issues.
+- **merge+deploy**: Full merge-to-deploy. Use when the goal is to ship a completed feature (merge, test, deploy).
 
 ## Output
 
@@ -1776,10 +1785,11 @@ Write ONLY a JSON file to \`pipeline-plan.json\` (in the repo root) with this ex
 **Fields**:
 - \`is_agent_task\`: set to \`true\` when the task creates, modifies, or significantly changes an agent (any app in \`apps/\` with \`-agent\` suffix, or agent configs in \`.opencode/agents/\`). When true, the pipeline auto-injects an auditor step after the coder to verify agent compliance.
 
-Agent options: u-planner, u-architect, u-coder, u-auditor, u-validator, u-tester, e2e, u-documenter, u-translater, u-summarizer.
+Agent options: u-planner, u-architect, u-coder, u-auditor, u-validator, u-tester, e2e, u-merger, u-documenter, u-translater, u-summarizer.
 For quick-fix: typically ["u-coder", "u-validator", "u-summarizer"].
 For standard: typically ["u-architect", "u-coder", "u-validator", "u-tester", "u-summarizer"].
 For complex: add "u-auditor" and increase timeouts.
+For merge: typically ["u-merger", "u-summarizer"]. For merge+test: add "u-tester". For merge+deploy: add "u-tester" and "u-deployer".
 Note: documenter is NOT needed by default — u-coder handles docs via tasks.md "Documentation" section. Only add documenter if documentation is the primary task.
 Always keep "u-summarizer" as the final agent unless this is an explicit single-agent run.
 
@@ -2045,6 +2055,79 @@ After writing docs, verify:
 Update \`.opencode/pipeline/handoff.md\` — Documenter section:
 - Docs created/updated (file paths)
 - Final status: PIPELINE COMPLETE
+PROMPT
+      ;;
+    u-merger)
+      cat << PROMPT
+Task: ${TASK_MESSAGE}
+
+Read \`.opencode/pipeline/handoff.md\` for context from previous pipeline stages (if any).
+
+## Instructions
+
+1. Verify working tree is clean: \`git status --porcelain\`
+   - If non-empty → STOP: "Cannot merge: working tree has uncommitted changes"
+2. Verify you are NOT on main/master: \`git branch --show-current\`
+   - If on main → STOP: "Refusing to merge: already on main branch"
+3. Fetch latest main: \`git fetch origin main\`
+4. Check if merge is needed: \`git merge-base --is-ancestor origin/main HEAD\`
+   - If already up-to-date (exit 0) → skip to step 6
+5. Attempt merge: \`git merge origin/main --no-edit\`
+   - If clean → proceed to step 6
+   - If conflicts:
+     a. List conflicted files: \`git diff --name-only --diff-filter=U\`
+     b. Classify each conflict:
+        - Lock files (composer.lock, package-lock.json) → accept theirs, regenerate
+        - Whitespace-only → accept main
+        - Import ordering → merge both, sort alphabetically
+        - Auto-generated files → accept theirs
+        - Code logic → resolve ONLY if intent is clearly non-overlapping
+        - Architecture/config conflicts → STOP, \`git merge --abort\`, set status: blocked
+     c. After resolving all: \`git add\` each file and commit
+     d. If any unresolvable: \`git merge --abort\`, report details in handoff
+6. Run smoke tests for changed apps:
+
+| App | Test Command |
+|-----|-------------|
+| apps/brama-core/ | make test |
+| apps/knowledge-agent/ | make knowledge-test |
+| apps/hello-agent/ | make hello-test |
+| apps/dev-reporter-agent/ | make dev-reporter-test |
+| apps/news-maker-agent/ | make news-test |
+| apps/wiki-agent/ | make wiki-test |
+
+   - Map changed files (\`git diff origin/main...HEAD --name-only\`) to apps
+   - Run ONLY for apps with changes
+   - If tests fail: report but do NOT fix (tester handles that)
+7. Coverage analysis:
+   a. List changed source files (exclude tests): \`git diff origin/main...HEAD --name-only | grep -E '\\.(php|py|js|ts|tsx)\$' | grep -v -E '(tests/|test_|\\.test\\.|\\.spec\\.|Test\\.php|Cest\\.php)'\`
+   b. For each, check if a corresponding test file exists
+   c. Calculate ratio: covered/total
+   d. Warn if < 0.7, block if < 0.3
+8. Documentation check:
+   a. Check if changed features have docs in \`docs/\`
+   b. Check if skill files are current
+   c. Advisory only — report gaps but do not block
+
+## Safety Rules
+
+- NEVER use \`git push --force\` or \`--force-with-lease\`
+- NEVER merge directly into main — merge main INTO feature branch
+- NEVER use \`git rebase\` — use merge for traceability
+- If tests fail, do NOT attempt fixes — report for tester
+
+## Handoff
+
+Update \`.opencode/pipeline/handoff.md\` — Merger section:
+- **Status**: ready | needs-tests | needs-docs | blocked | failed
+- **Merge result**: clean | conflicts-resolved | conflicts-unresolvable | already-up-to-date
+- **Conflicts resolved**: [list with strategy]
+- **Conflicts unresolved**: [list with both sides]
+- **Smoke tests**: pass | fail (per app)
+- **Coverage**: X/Y files covered (ratio)
+- **Uncovered files**: [list]
+- **Documentation gaps**: [list or "none"]
+- **Recommendation**: proceed to deploy | chain tester | chain documenter | manual intervention needed
 PROMPT
       ;;
     u-auditor)
