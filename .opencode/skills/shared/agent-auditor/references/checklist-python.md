@@ -11,7 +11,7 @@ Checks for agents built with Python + FastAPI.
 | S-03 | `app/main.py` exists | Glob | Exists | — | Missing |
 | S-04 | Dockerfile exists | Glob `docker/<agent>/Dockerfile` | Exists | — | Missing |
 | S-05 | Dockerfile uses slim Python base | Read Dockerfile FROM line | `python:3.x-slim` | Non-slim image | No Dockerfile |
-| S-06 | Compose service defined | Grep docker/compose.yaml for service name | Found | — | Missing |
+| S-06 | Compose service defined | Grep compose.yaml for service name | Found | — | Missing |
 | S-07 | `requirements.txt` exists | Glob `apps/<agent>/requirements.txt` | Exists | — | Missing |
 | S-08 | Dependencies pinned (`==`) | Read requirements.txt, check for `==` | All pinned | Some unpinned | No pins |
 | S-09 | `__init__.py` in app/ | Glob `apps/<agent>/app/__init__.py` | Exists | — | Missing |
@@ -38,7 +38,7 @@ Checks for agents built with Python + FastAPI.
 | C-05 | Agent Card has `capabilities` | Check for `capabilities` object `{streaming, pushNotifications}` | Present | — | Missing |
 | C-06 | Agent Card has `provider` | Check for `provider` object `{organization, url}` | Present | — | Missing |
 | C-07 | Agent Card has I/O modes | Check for `defaultInputModes`, `defaultOutputModes` arrays | Both present | One only | Neither |
-| C-08 | Compose label `ai.platform.agent=true` | Grep docker/compose.yaml | Found | — | Missing |
+| C-08 | Compose label `ai.platform.agent=true` | Grep compose.yaml | Found | — | Missing |
 | C-09 | Config module exists | Glob `apps/<agent>/app/config.py` | Exists | — | Missing |
 | C-10 | Pydantic settings for config | Grep for `BaseSettings` or `pydantic-settings` | Found | — | Not found |
 
@@ -57,7 +57,7 @@ Checks for agents built with Python + FastAPI.
 | O-01 | Health endpoint exists | Grep for `"/health"` route | Found | — | Missing |
 | O-02 | Logging configured | Grep for `logging` or `logger` imports | Found | — | Not found |
 | O-03 | Langfuse / observability | Grep for `langfuse` or `opentelemetry` | Found | — | Not found |
-| O-04 | Compose env has observability vars | Grep docker/compose.yaml for LANGFUSE_ vars | Present | — | Missing |
+| O-04 | Compose env has observability vars | Grep compose.yaml for LANGFUSE_ vars | Present | — | Missing |
 | O-05 | Log messages include `trace_id` | Grep app/ for `trace_id` in logger calls; every route handler receiving trace_id must pass it to log context | All pass trace_id | Some missing | No trace_id usage |
 | O-06 | Log messages include `request_id` | Grep app/ for `request_id` in logger calls | All pass request_id | Some missing | No request_id usage |
 | O-07 | Error/warning paths include context | Grep app/ for `logger.warning` and `logger.error` calls; check they include relevant identifiers not just a bare string | All have context | Some bare | Majority bare |
@@ -72,7 +72,7 @@ Checks for agents built with Python + FastAPI.
 |----|-------|---------------|------|------|------|
 | D-01 | Agent PRD exists | Glob `docs/agents/en/*<slug>*` | Exists | — | Missing |
 | D-02 | PRD in both languages | Both ua/ and en/ | Both | One only | Neither |
-| D-03 | Listed in INDEX.md | Grep INDEX.md (project root) | Found | — | Missing |
+| D-03 | Listed in index.md | Grep index.md | Found | — | Missing |
 | D-04 | OpenAPI / API documentation | Grep for `/docs` or `/openapi.json` endpoint | Found | — | Missing |
 
 ## M: Database & Migrations
@@ -82,7 +82,7 @@ Checks for agents built with Python + FastAPI.
 | M-01 | `alembic/` directory exists | Glob `apps/<agent>/alembic/` | Exists | — | Missing (if has DB) |
 | M-02 | `alembic.ini` exists | Glob | Exists | — | Missing (if has DB) |
 | M-03 | Migration files exist | Glob `apps/<agent>/alembic/versions/*.py` | >= 1 | 0 files | No versions dir |
-| M-04 | Compose env has DATABASE_URL | Grep docker/compose.yaml | Present | — | Missing (if has DB) |
+| M-04 | Compose env has DATABASE_URL | Grep compose.yaml | Present | — | Missing (if has DB) |
 | M-05 | Makefile has migrate target | Grep Makefile | Found | — | Missing (if has DB) |
 
 ## Q: Standards

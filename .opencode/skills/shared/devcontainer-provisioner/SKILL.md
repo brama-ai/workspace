@@ -145,7 +145,7 @@ This devcontainer runs **Ubuntu (noble)** with these runtimes pre-installed:
 | Composer | 2.x | `composer` |
 | Bun | 1.x | `bun` |
 
-Infrastructure services are defined in `docker/compose.yaml` and shared with the
+Infrastructure services are defined in the root `compose.yaml` and shared with the
 devcontainer via merged Docker Compose project (not duplicated):
 
 | Service | Host | Port | Image |
@@ -341,7 +341,7 @@ the appropriate file:
 | npm project deps | App's `package.json` (already persisted) |
 | PHP extensions | `.devcontainer/Dockerfile` (in `apt-get install php8.5-*` block) |
 | composer deps | `composer.json` (already persisted) |
-| Infrastructure services | `docker/compose.yaml` (already persisted) |
+| Infrastructure services | `compose.yaml` (already persisted) |
 | Database init scripts | `docker/postgres/init/` SQL files (already persisted) |
 
 ## Common Scenarios

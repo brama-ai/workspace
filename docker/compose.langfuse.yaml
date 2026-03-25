@@ -47,7 +47,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=brama_dev-edge
-      - traefik.http.routers.langfuse.rule=Host(`langfuse.brama.localhost`) || Host(`langfuse.localhost`)
+      - traefik.http.routers.langfuse.rule=Host(`langfuse.brama.localhost`) || Host(`langfuse.localhost`) || Host(`langfuse.dev.internal`)
       - traefik.http.routers.langfuse.entrypoints=web
       - traefik.http.routers.langfuse.middlewares=edge-auth@docker
       - traefik.http.routers.langfuse.service=langfuse

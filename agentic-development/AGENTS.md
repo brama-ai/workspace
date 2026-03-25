@@ -35,7 +35,8 @@ Task → u-Planner → Preflight → Env-Check → u-Architect → u-Coder → u
 | **u-tester** | Запускає тести, пише нові, виправляє failures | OpenCode Go | kimi-k2.5 |
 | **documenter** | Пише білінгвальну документацію (UA+EN) | OpenAI | gpt-5.4 |
 | **u-summarizer** | Створює фінальний звіт про виконану роботу | OpenAI | gpt-5.4 |
-| **deployer** | Phase 8 (opt-in): деплоїть завершені зміни до цільового середовища | Anthropic | claude-sonnet-4-6 |
+| **u-deployer** | Phase 8 (opt-in): деплоїть завершені зміни до цільового середовища | Anthropic | claude-sonnet-4-6 |
+| **u-ops-agent** | Операційний агент: логи, БД, kubectl, image builds на сервері | Anthropic | claude-sonnet-4-6 |
 
 ## Політика неймінгу агентів
 

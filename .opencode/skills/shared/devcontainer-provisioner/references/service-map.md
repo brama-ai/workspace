@@ -1,6 +1,6 @@
 # Service Map
 
-Infrastructure services are defined in `docker/compose.yaml` and shared with the
+Infrastructure services are defined in the root `compose.yaml` and shared with the
 devcontainer via a merged Docker Compose project. The devcontainer joins the same
 `dev-edge` and `agents-internal` networks, so services are reachable by hostname.
 

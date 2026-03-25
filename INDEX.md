@@ -49,6 +49,11 @@ Agent-facing index of all project documentation. Load this file first to underst
 - [Oh My OpenCode (OmO) integration](brama-core/docs/guides/oh-my-opencode/en/oh-my-opencode.md)
 - [Oh My OpenCode — Quick Start](brama-core/docs/guides/oh-my-opencode/en/quickstart.md)
 
+### Deployment & Operations
+
+- [Deploying to Kubernetes (K3s)](docs/deploy-to-kube.md) — Build, deploy, domain config (Cloudflare Tunnel), rollback
+- [Deployer agent](docs/pipeline/en/deployer-agent.md) — Pipeline Phase 8: automated deployment
+
 ---
 
 ## Workspace Setup (`docs/workspace-setup/`)

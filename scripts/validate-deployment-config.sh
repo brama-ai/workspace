@@ -17,10 +17,10 @@ else
     exit 1
 fi
 
-if [ -f "brama-core/docs/deployment-configuration.md" ]; then
-    echo "✅ docs/deployment-configuration.md exists"
+if [ -f "brama-core/docs/guides/deployment/en/deployment-configuration.md" ]; then
+    echo "✅ docs/guides/deployment/en/deployment-configuration.md exists"
 else
-    echo "❌ docs/deployment-configuration.md is missing"
+    echo "❌ docs/guides/deployment/en/deployment-configuration.md is missing"
     exit 1
 fi
 

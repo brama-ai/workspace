@@ -2,53 +2,77 @@
 
 Manage bilingual project documentation following the folder-based language convention.
 
-## Documentation Roots
+## Workspace vs Project Docs
 
-The project uses **two documentation roots** with different scopes:
+This skill is **project-scoped**, even when you are operating from a multi-project workspace.
 
-| Root | Scope |
-|------|-------|
-| `brama-core/docs/` | Platform, core, agents (how to build agents, specs, PRDs) |
-| `./docs/` | Developer workflow in devcontainer (Foundry, Ultraworks, setup) |
+- Resolve `docs/` relative to the target project, not automatically relative to the workspace root.
+- For the core platform, `docs/` means `brama-core/docs/`.
+- Workspace-root docs are reserved for shared runtime/developer workflow material only: workspace setup, shared tooling, orchestration, deployment shell procedures, and cross-project operator routines.
+- Project docs should contain product behavior, feature docs, contracts, local-dev guides, deployment/run commands for that project, cron/scheduler operations, and project-specific admin/runtime procedures.
 
-A single `INDEX.md` at the **project root** indexes both trees.
+If the request is about how the workspace is organized, the workspace shell, or cross-project operations, update workspace docs/instructions. If the request is about a specific product or agent, update that project's `docs/`.
 
-**Decision rule:** If the doc is about the platform product, agent code, or specs — it goes in `brama-core/docs/`. If it's about the development environment, tooling, CI, or agent pipelines — it goes in `./docs/`.
+## Root Entry Docs
+
+Human-facing onboarding and install entrypoints MAY live in the repository root as short navigation documents.
+
+- Treat root `.md` files as entrypoints, not as the canonical long-form documentation.
+- Keep detailed guides under the target project's `docs/` tree.
+- Use stable, conventional names for onboarding/install flows.
+- Prefer links from root entry docs into canonical docs instead of duplicating long sections.
+
+Recommended root filenames:
+
+- Workspace root: `INSTALL.md` — OSS/public installation entrypoint for the whole workspace/runtime shell.
+- Project root: `QUICKSTART.md` — fastest supported path to get the product running.
+- Project root: `DEVELOPMENT.md` — local development setup and daily workflow.
+- Project root: `KUBERNETES.md` — Kubernetes or k3s deployment and operations.
+
+For `brama-core`, these root files are allowed even though the detailed source content belongs in `brama-core/docs/`.
 
 ## Directory Structure Rule
 
 ```
-<root>/<domain>/<theme>/<chapter>/<lang>/<file>.md
+docs/<domain>/<theme>/<chapter>/<lang>/<file>.md
 ```
 
 **Key constraint: no .md files in intermediate directories.** If a directory has subdirectories, it MUST NOT contain .md files directly. Documentation files live ONLY in leaf directories.
 
 Examples:
-- `brama-core/docs/agents/ua/hello-agent.md` — correct (leaf, platform scope)
-- `docs/agent-development/en/foundry.md` — correct (leaf, dev workflow scope)
-- `brama-core/docs/agents/hello-agent.md` — WRONG (agents/ has ua/ and en/ subdirs)
+- `docs/agents/ua/hello-agent.md` — correct (leaf)
+- `docs/agents/hello-agent.md` — WRONG (agents/ has ua/ and en/ subdirs)
 - `docs/plans/mvp-plan.md` — correct (plans/ is a leaf, English-only)
 
-The only exception is `./INDEX.md` at the project root — see below.
+The only exception is `INDEX.md` (project root) — see below.
 
 ## INDEX.md — Documentation Memory Index
 
-A single `INDEX.md` lives at the **project root** and indexes both `brama-core/docs/` and `./docs/` trees. It is:
+`INDEX.md` (project root docs root) is the **agent-facing index** of all documentation. It is:
 
 - **English-only** — intended for AI agents, not humans
-- **Always at project root** — `./INDEX.md`
+- **Always in the root** of `docs/` — the sole allowed .md file in `docs/` (besides no other)
 - **Compact** — flat list of relative paths with one-line descriptions
-- **Mandatory to update** — every Create, Delete, or Move operation MUST update `INDEX.md`
-- **Links to `en/` versions** — for bilingual sections, INDEX always references the `en/` path
+- **Mandatory to update** — every Create, Delete, or Move operation MUST update `INDEX.md` (project root)
+- **Links to `en/` versions** — for bilingual sections, INDEX.md always references the `en/` path (e.g., `docs/agents/en/hello-agent.md`), because `ua/` exists only for quick human browsing
 
-Agents should load `INDEX.md` first to understand the documentation landscape before reading specific files.
+Agents should load `INDEX.md` from the target project's docs root first to understand the documentation landscape before reading specific files.
+
+## ROADMAP.md — Documentation Change Ledger
+
+`ROADMAP.md` in the target project root is the human-facing progress ledger for notable documentation and product direction changes.
+
+- For the core platform, use `brama-core/ROADMAP.md` as the canonical roadmap file.
+- Every substantive documentation update MUST include a check whether `ROADMAP.md` should also be updated.
+- Update `ROADMAP.md` when docs change product direction, onboarding flow, supported deployment paths, major setup steps, or contributor-facing workflow expectations.
+- If a documentation change is purely editorial and does not affect direction or expected workflows, explicitly verify that no roadmap update is needed.
+- Documentation work should stay consistent with `ROADMAP.md`; if the roadmap and docs disagree, resolve the mismatch instead of leaving both states in place.
 
 ## Path Schema
 
 | Level | Meaning | Example |
 |-------|---------|---------|
-| root | Documentation root | `brama-core/docs/`, `./docs/` |
-| domain | Top-level subject area | `agents`, `specs`, `agent-development` |
+| domain | Top-level subject area | `agents`, `specs`, `plans` |
 | theme | Grouping within domain (optional) | `prd`, `architecture` |
 | chapter | Specific topic (optional) | `auth`, `core-agent` |
 | lang | Language folder (`ua/`, `en/`) | For bilingual sections only |
@@ -62,32 +86,22 @@ For English-only sections, files go directly in the deepest topic folder without
 - Developer-facing technical docs (code contracts, runbooks) stay English-only — no `ua/en` split
 - Both `ua/` and `en/` files MUST have identical structure and headings; only language differs
 - Templates and reusable boilerplate go in `docs/templates/` (English-only)
-- Reference: `brama-core/openspec/project.md` → Documentation Language
+- Reference: `openspec/project.md` → Documentation Language
 
 ## Domains
 
-### Platform docs (`brama-core/docs/`)
-
 | Domain | Path | Bilingual | Description |
 |--------|------|-----------|-------------|
-| agents | `brama-core/docs/agents/` | yes | Agent PRDs and feature docs |
-| specs | `brama-core/docs/specs/` | yes | Interface specifications |
-| plans | `brama-core/docs/plans/` | no (English) | Development plans |
-| agent-requirements | `brama-core/docs/agent-requirements/` | no (English) | Agent contracts & conventions |
-| neuron-ai | `brama-core/docs/neuron-ai/` | no (English) | AI framework reference |
-| decisions | `brama-core/docs/decisions/` | no (English) | Architecture Decision Records |
-| product | `brama-core/docs/product/` | yes | Product vision, PRDs, brainstorms |
-| templates | `brama-core/docs/templates/` | no (English) | Reusable doc templates |
-| features | `brama-core/docs/features/` | yes | Feature documentation |
-| fetched | `brama-core/docs/fetched/` | per-source | External docs fetched by `web-to-docs` skill |
-
-### Developer workflow docs (`./docs/`)
-
-| Domain | Path | Bilingual | Description |
-|--------|------|-----------|-------------|
-| agent-development | `docs/agent-development/` | yes | Foundry, Ultraworks, pipeline workflows |
-| setup | `docs/setup/` | no (English) | Devcontainer, provider setup, quickstart |
-| guides | `docs/guides/` | no (English) | Env checker, pipeline models, tooling |
+| agents | `docs/agents/` | yes | Agent PRDs and feature docs |
+| specs | `docs/specs/` | yes | Interface specifications |
+| plans | `docs/plans/` | no (English) | Development plans |
+| agent-requirements | `docs/agent-requirements/` | no (English) | Agent contracts & conventions |
+| neuron-ai | `docs/neuron-ai/` | no (English) | AI framework reference |
+| decisions | `docs/decisions/` | no (English) | Architecture Decision Records |
+| product | `docs/product/` | yes | Product vision, PRDs, brainstorms |
+| templates | `docs/templates/` | no (English) | Reusable doc templates |
+| features | `docs/features/` | yes | Feature documentation |
+| fetched | `docs/fetched/` | per-source | External docs fetched by `web-to-docs` skill |
 
 ## Operations
 
@@ -103,8 +117,9 @@ Create a new documentation file.
 3. For bilingual: write `docs/<domain>/ua/<filename>.md` and `docs/<domain>/en/<filename>.md`
 4. For English-only: write `docs/<domain>/<filename>.md`
 5. Use the appropriate template (see Templates below)
-6. **Update `INDEX.md`**: add the new file entry to the appropriate section
-7. **Validate**: no .md files in intermediate directories after creation
+6. **Update `INDEX.md` (project root)**: add the new file entry to the appropriate section
+7. **Review `ROADMAP.md`**: add or adjust an entry if the new doc changes roadmap-facing direction, setup, deployment, or contributor workflow
+8. **Validate**: no .md files in intermediate directories after creation
 
 ### Update
 
@@ -117,6 +132,7 @@ Update an existing documentation file.
 2. If only legacy format exists, migrate to folder structure first
 3. Apply changes to both files, keeping structure and headings in sync
 4. Verify both files have the same sections after update
+5. **Review `ROADMAP.md`**: update it whenever the documentation change affects roadmap-visible setup, deployment, direction, or workflow expectations
 
 ### Delete
 
@@ -128,8 +144,9 @@ Remove a documentation file pair.
 1. Remove `docs/<domain>/ua/<filename>.md`
 2. Remove `docs/<domain>/en/<filename>.md`
 3. If `ua/` or `en/` folder is now empty, remove it
-4. **Update `INDEX.md`**: remove the deleted file entry
+4. **Update `INDEX.md` (project root)**: remove the deleted file entry
 5. Check for references to the deleted doc in other files and flag them
+6. **Review `ROADMAP.md`**: remove or reword roadmap references that point to deleted or superseded documentation
 
 ### Migrate
 
@@ -142,8 +159,9 @@ Convert legacy files to proper structure.
 2. Determine correct leaf destination based on content and domain
 3. Move files to the correct leaf directory
 4. Update any cross-references in other docs
-5. **Update `INDEX.md`**: fix paths for all moved files
-6. **Validate**: no .md files remain in intermediate directories
+5. **Update `INDEX.md` (project root)**: fix paths for all moved files
+6. **Review `ROADMAP.md`**: update links or wording if the migration changes onboarding or contributor entrypoints
+7. **Validate**: no .md files remain in intermediate directories
 
 ## Validation
 
@@ -151,10 +169,15 @@ Run this check after any operation:
 
 ```
 1. For each directory in docs/:
-     IF directory has subdirectories AND contains .md files (except ./INDEX.md):
+     IF directory has subdirectories AND contains .md files (except docs/INDEX.md):
        → VIOLATION — move .md files to appropriate leaf directory
 
-2. Every .md file under brama-core/docs/ or docs/ MUST have a corresponding entry in ./INDEX.md
+2. Every .md file under docs/ (except INDEX.md) MUST have a corresponding entry in docs/INDEX.md
+
+3. If the documentation change affects setup, deployment, onboarding, contributor workflow, or project direction:
+     `ROADMAP.md` MUST be reviewed and updated if needed
+
+4. Root entry docs (`INSTALL.md`, `QUICKSTART.md`, `DEVELOPMENT.md`, `KUBERNETES.md`) MUST stay short and point to canonical docs instead of duplicating full guides
 ```
 
 ## Templates

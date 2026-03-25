@@ -1,0 +1,36 @@
+{
+  "task_id": "remove-dev-agent--foundry",
+  "workflow": "foundry",
+  "started_at": "2026-03-25T13:41:38.417873Z",
+  "attempt": 1,
+  "status": "in_progress",
+  "current_step": "u-coder",
+  "resume_from": "u-coder",
+  "updated_at": "2026-03-25T13:42:48.543493Z",
+  "task_file": "/workspaces/brama/tasks/remove-dev-agent--foundry/task.md",
+  "branch": "pipeline/remove-dev-agent",
+  "agents": [
+    {
+      "agent": "u-planner",
+      "status": "done",
+      "model": "anthropic/claude-opus-4-6",
+      "duration_seconds": 62,
+      "input_tokens": 11,
+      "output_tokens": 2194,
+      "cost": 0.4484,
+      "call_count": 1,
+      "updated_at": "2026-03-25T13:42:44.978241Z"
+    },
+    {
+      "agent": "u-coder",
+      "status": "done",
+      "model": "anthropic/claude-opus-4-6",
+      "duration_seconds": 0,
+      "input_tokens": 11,
+      "output_tokens": 2194,
+      "cost": 0.4484,
+      "call_count": 1,
+      "updated_at": "2026-03-25T13:42:48.543479Z"
+    }
+  ]
+}

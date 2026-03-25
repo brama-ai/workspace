@@ -6,10 +6,10 @@ Quick reference for the devcontainer provisioner skill.
 
 ```
 devcontainer.json:
-  "dockerComposeFile": ["../docker/compose.yaml", "docker-compose.yml"]
+  "dockerComposeFile": ["../compose.yaml", "docker-compose.yml"]
 ```
 
-- `docker/compose.yaml` — infrastructure (postgres, redis, opensearch, rabbitmq, traefik, litellm)
+- `compose.yaml` — infrastructure (postgres, redis, opensearch, rabbitmq, traefik, litellm)
 - `.devcontainer/docker-compose.yml` — devcontainer + codex only (NO infra)
 - Result: one merged Docker Compose project
 
@@ -65,7 +65,7 @@ docker compose down -v && docker compose up -d
 ## Path Resolution
 
 When compose files are merged, all relative paths resolve from the **project root**
-(where `docker/compose.yaml` lives), NOT from `.devcontainer/`.
+(where `compose.yaml` lives), NOT from `.devcontainer/`.
 
 ```yaml
 # .devcontainer/docker-compose.yml

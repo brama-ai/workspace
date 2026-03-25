@@ -4,6 +4,10 @@ AGENTS_DIR := brama-agents
 TEST_ROOT := $(CORE_ROOT)/tests
 
 DOCKER_DIR := docker
+DEVCONTAINER_DIR := .devcontainer
+DEVCONTAINER_COMPOSE_FILES := -f $(DOCKER_DIR)/compose.yaml -f $(DOCKER_DIR)/compose.core.yaml -f $(DEVCONTAINER_DIR)/docker-compose.yml
+DEVCONTAINER_COMPOSE ?= docker compose $(DEVCONTAINER_COMPOSE_FILES)
+DEVCONTAINER_SERVICE ?= devcontainer
 
 # docker-outside-of-docker: resolve host project path for bind mounts.
 # Inside devcontainer /workspaces/brama ≠ host path, so we auto-detect it.
@@ -36,7 +40,7 @@ E2E_COMPOSE ?= docker compose $(COMPOSE_FILES) --profile e2e
 E2E_CORE_DB ?= brama_test
 E2E_BASE_URL ?= http://localhost:18080
 # Devcontainer detection: run commands locally when inside a devcontainer
-IS_DEVCONTAINER := $(or $(REMOTE_CONTAINERS),$(CODESPACES))
+IS_DEVCONTAINER := $(or $(REMOTE_CONTAINERS),$(CODESPACES),$(RUNNING_IN_DEVCONTAINER))
 # Load devcontainer-specific E2E URLs when running inside devcontainer
 E2E_ENV_FILE := $(if $(IS_DEVCONTAINER),$(wildcard .env.e2e.devcontainer),)
 E2E_ENV_EXPORT := $(if $(E2E_ENV_FILE),set -a && . $(CURDIR)/$(E2E_ENV_FILE) && set +a &&,)
@@ -47,6 +51,7 @@ endef
 
 .PHONY: help bootstrap setup infra-setup core-setup knowledge-setup news-setup hello-setup dev-reporter-setup wiki-setup dev-agent-setup claw-setup \
 	openclaw-frontdesk-sync \
+	devcontainer-up devcontainer-shell e2e-in-devcontainer e2e-smoke-in-devcontainer e2e-inner e2e-smoke-inner \
         up up-observability down ps logs logs-traefik logs-core logs-litellm logs-openclaw logs-langfuse \
         agent-up agent-down \
         litellm-db-init e2e-db-init e2e-rabbitmq-init e2e-register-agents e2e-prepare e2e-env-check e2e-cleanup \
@@ -68,6 +73,8 @@ help:
 	@printf '%s\n' \
 		'make bootstrap             Configure secrets from .env.local (run once before setup)' \
 		'make setup                Pull/build the current local stack dependencies (core + agents + claw + infra)' \
+		'make devcontainer-up      Start the shared devcontainer service used for host-driven E2E runs' \
+		'make devcontainer-shell   Open a shell in the shared devcontainer service' \
 		'make openclaw-frontdesk-sync  Sync frontdesk policy files into .local/openclaw/state/workspace' \
 		'make install              Install PHP dependencies via Composer inside the core container' \
 		'make knowledge-install    Install PHP dependencies inside the knowledge-agent container' \
@@ -91,6 +98,8 @@ help:
 		'make e2e-env-check        Verify E2E endpoints are healthy before running Codecept/Playwright' \
 		'make e2e-register-agents  Register and enable agents in core-e2e (called by e2e-prepare)' \
 		'make e2e-cleanup          Stop all E2E containers' \
+		'make e2e-in-devcontainer  Run the full E2E suite inside the shared devcontainer' \
+		'make e2e-smoke-in-devcontainer  Run smoke E2E inside the shared devcontainer' \
 		'make test                 Run Codeception unit + functional suites for core (stack must be up)' \
 		'make knowledge-test       Run Codeception suites for knowledge-agent (stack must be up)' \
 		'make hello-install         Install PHP dependencies inside the hello-agent container' \
@@ -309,7 +318,7 @@ e2e-register-agents:
 	@echo "E2E agents registered and enabled."
 
 e2e-prepare: e2e-db-init e2e-rabbitmq-init
-	$(E2E_COMPOSE) up -d --build traefik core-e2e core-scheduler-e2e knowledge-agent-e2e knowledge-worker-e2e news-maker-agent-e2e hello-agent-e2e dev-reporter-agent-e2e openclaw-gateway-e2e
+	$(E2E_COMPOSE) up -d --build traefik core-e2e core-scheduler-e2e knowledge-agent-e2e knowledge-worker-e2e news-maker-agent-e2e hello-agent-e2e dev-reporter-agent-e2e openclaw-gateway-e2e langfuse-postgres langfuse-clickhouse langfuse-redis langfuse-minio langfuse-minio-init langfuse-web langfuse-worker
 	$(E2E_COMPOSE) exec -T core-e2e php bin/console doctrine:migrations:migrate --no-interaction
 	$(E2E_COMPOSE) exec -T knowledge-agent-e2e php bin/console doctrine:migrations:migrate --no-interaction
 	$(E2E_COMPOSE) exec -T dev-reporter-agent-e2e php bin/console doctrine:migrations:migrate --no-interaction
@@ -318,7 +327,7 @@ e2e-prepare: e2e-db-init e2e-rabbitmq-init
 	$(E2E_COMPOSE) exec -T core-e2e php bin/console app:agent-health-poll
 
 e2e-cleanup:
-	$(E2E_COMPOSE) stop traefik core-e2e core-scheduler-e2e knowledge-agent-e2e knowledge-worker-e2e news-maker-agent-e2e hello-agent-e2e dev-reporter-agent-e2e openclaw-gateway-e2e 2>/dev/null || true
+	$(E2E_COMPOSE) stop traefik core-e2e core-scheduler-e2e knowledge-agent-e2e knowledge-worker-e2e news-maker-agent-e2e hello-agent-e2e dev-reporter-agent-e2e openclaw-gateway-e2e langfuse-postgres langfuse-clickhouse langfuse-redis langfuse-minio langfuse-minio-init langfuse-web langfuse-worker 2>/dev/null || true
 
 e2e-env-check:
 	$(E2E_ENV_EXPORT) \
@@ -436,7 +445,19 @@ logs-cleanup:
 conventions-test:
 	cd $(TEST_ROOT)/agent-conventions && npm install && AGENT_URL=$(AGENT_URL) npx codeceptjs run --steps
 
-e2e: e2e-prepare e2e-env-check
+devcontainer-up:
+	$(DEVCONTAINER_COMPOSE) up -d $(DEVCONTAINER_SERVICE)
+
+devcontainer-shell: devcontainer-up
+	$(DEVCONTAINER_COMPOSE) exec $(DEVCONTAINER_SERVICE) bash
+
+e2e-in-devcontainer: devcontainer-up
+	$(DEVCONTAINER_COMPOSE) exec -T $(DEVCONTAINER_SERVICE) bash -lc 'cd /workspaces/brama && RUNNING_IN_DEVCONTAINER=1 $(MAKE) e2e-inner'
+
+e2e-smoke-in-devcontainer: devcontainer-up
+	$(DEVCONTAINER_COMPOSE) exec -T $(DEVCONTAINER_SERVICE) bash -lc 'cd /workspaces/brama && RUNNING_IN_DEVCONTAINER=1 $(MAKE) e2e-smoke-inner'
+
+e2e-inner: e2e-prepare e2e-env-check
 	cd $(TEST_ROOT)/e2e && npm install && npx playwright install chromium --with-deps && \
 		$(E2E_ENV_EXPORT) \
 		BASE_URL=$${BASE_URL:-$(E2E_BASE_URL)} \
@@ -447,7 +468,7 @@ e2e: e2e-prepare e2e-env-check
 		OPENCLAW_URL=$${OPENCLAW_URL:-http://localhost:28789} \
 		npx codeceptjs run --steps
 
-e2e-smoke: e2e-prepare e2e-env-check
+e2e-smoke-inner: e2e-prepare e2e-env-check
 	cd $(TEST_ROOT)/e2e && npm install && \
 		$(E2E_ENV_EXPORT) \
 		BASE_URL=$${BASE_URL:-$(E2E_BASE_URL)} \
@@ -457,6 +478,20 @@ e2e-smoke: e2e-prepare e2e-env-check
 		HELLO_URL=$${HELLO_URL:-http://localhost:18085} \
 		OPENCLAW_URL=$${OPENCLAW_URL:-http://localhost:28789} \
 		npx codeceptjs run --steps --grep @smoke
+
+e2e:
+ifeq ($(IS_DEVCONTAINER),)
+	@$(MAKE) e2e-in-devcontainer
+else
+	@$(MAKE) e2e-inner
+endif
+
+e2e-smoke:
+ifeq ($(IS_DEVCONTAINER),)
+	@$(MAKE) e2e-smoke-in-devcontainer
+else
+	@$(MAKE) e2e-smoke-inner
+endif
 
 verify-local-smoke:
 	./scripts/verify-local.sh

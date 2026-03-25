@@ -144,7 +144,7 @@ services:
       # Scheduler-specific configuration for async dispatch
       SCHEDULER_CONCURRENCY_LIMIT: ${SCHEDULER_CONCURRENCY_LIMIT:-20}
     volumes:
-      - ../core/src:/var/www/html
+      - ../brama-core/src:/var/www/html
     depends_on:
       - core-e2e
     networks:

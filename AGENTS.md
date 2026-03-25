@@ -41,6 +41,12 @@ This repository root is the `brama-workspace` runtime shell.
 - Product docs and tests live under [`brama-core/docs/`](/Users/nmdimas/work/brama-workspace/brama-core/docs) and [`brama-core/tests/`](/Users/nmdimas/work/brama-workspace/brama-core/tests)
 - Developer workflow docs live in [`docs/`](/Users/nmdimas/work/brama-workspace/docs)
 
+Documentation ownership rule:
+
+- Workspace-level docs in `docs/` are for shared runtime/developer operations: workspace setup, shared tooling, deployment shell workflows, orchestration, and cross-project operator routines.
+- Project-level docs belong inside the target project, for example `brama-core/docs/`, and should contain product behavior, feature docs, contracts, local-dev runbooks, deployment/run commands for that project, cron/scheduler operations, and project-specific admin/runtime procedures.
+- Do not put project feature or product documentation in the workspace root `docs/` just because the workspace is the current repository root.
+
 ## OpenSpec — Per-Project Specs
 
 OpenSpec lives **inside each project**, not at the workspace root. Each project that uses OpenSpec has its own `openspec/` directory:
@@ -116,4 +122,3 @@ When working in this workspace:
 - Treat `core` as the product repository
 - Prefer workspace-level `make` targets for routine runtime actions
 - Prefer product-level docs, tests, and OpenSpec files from target project (e.g., `brama-core/`, `agents/<name>/`)
-
