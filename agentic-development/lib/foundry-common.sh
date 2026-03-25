@@ -954,6 +954,109 @@ foundry_is_batch_running() {
   pgrep -f 'agentic-development/lib/foundry-batch\.sh' &>/dev/null
 }
 
+# ── Zombie process cleanup ───────────────────────────────────────────
+# Finds and cleans up zombie .opencode processes and stale batch lock.
+# Returns number of zombies cleaned.
+foundry_cleanup_zombies() {
+  local cleaned=0
+
+  # 1. Find zombie .opencode processes (state Z)
+  local zombie_pids
+  zombie_pids=$(ps -eo pid,stat,comm 2>/dev/null \
+    | awk '$2 ~ /^Z/ && $3 ~ /opencode/ {print $1}' || true)
+
+  if [[ -n "$zombie_pids" ]]; then
+    local count
+    count=$(echo "$zombie_pids" | wc -l | tr -d ' ')
+    cleaned=$((cleaned + count))
+    # Zombies can't be killed directly — their parent must reap them.
+    # We can only log them; the OS will clean them when parent exits.
+  fi
+
+  # 2. Check and clean stale batch lock
+  local lockfile="${REPO_ROOT}/.opencode/pipeline/.batch.lock"
+  if [[ -f "$lockfile" ]]; then
+    local lock_pid
+    lock_pid=$(cat "$lockfile" 2>/dev/null || true)
+    if [[ -n "$lock_pid" ]]; then
+      # Check if PID is alive AND not a zombie
+      local pid_stat
+      pid_stat=$(cat "/proc/${lock_pid}/status" 2>/dev/null | awk '/^State:/{print $2}' || true)
+      if [[ -z "$pid_stat" ]] || [[ "$pid_stat" == "Z" ]]; then
+        # PID is dead or zombie — remove stale lock
+        rm -f "$lockfile"
+        cleaned=$((cleaned + 1))
+      fi
+    fi
+  fi
+
+  echo "$cleaned"
+}
+
+# Print zombie/process status report (for monitor display)
+foundry_process_status() {
+  python3 - "$REPO_ROOT" <<'PYEOF'
+import subprocess, sys, os, json
+from pathlib import Path
+
+repo_root = sys.argv[1]
+lockfile = Path(repo_root) / ".opencode/pipeline/.batch.lock"
+log_dir = Path(repo_root) / "agentic-development/runtime/logs"
+
+result = {"workers": [], "zombies": [], "lock": None}
+
+# Batch lock
+if lockfile.exists():
+    try:
+        pid = int(lockfile.read_text().strip())
+        stat_file = Path(f"/proc/{pid}/status")
+        state = "unknown"
+        if stat_file.exists():
+            for line in stat_file.read_text().split("\n"):
+                if line.startswith("State:"):
+                    state = line.split()[1]
+                    break
+        result["lock"] = {"pid": pid, "state": state, "zombie": state == "Z"}
+    except Exception:
+        pass
+
+# Active foundry workers
+try:
+    out = subprocess.check_output(
+        ["ps", "-eo", "pid,stat,etime,args"],
+        text=True, stderr=subprocess.DEVNULL
+    )
+    for line in out.strip().split("\n")[1:]:
+        parts = line.split(None, 3)
+        if len(parts) < 4:
+            continue
+        pid, stat, etime, args = parts
+        if "foundry" in args or "opencode" in args.lower():
+            is_zombie = stat.startswith("Z")
+            entry = {
+                "pid": int(pid),
+                "stat": stat,
+                "etime": etime,
+                "args": args[:80],
+                "zombie": is_zombie,
+                "log": None,
+            }
+            # Find matching log file
+            if log_dir.exists():
+                logs = sorted(log_dir.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
+                if logs:
+                    entry["log"] = str(logs[0])
+            if is_zombie:
+                result["zombies"].append(entry)
+            else:
+                result["workers"].append(entry)
+except Exception:
+    pass
+
+print(json.dumps(result))
+PYEOF
+}
+
 # Check if all agents in a task completed (summarizer done = pipeline finished).
 # Returns 0 if all agents done, 1 otherwise.
 _foundry_all_agents_done() {

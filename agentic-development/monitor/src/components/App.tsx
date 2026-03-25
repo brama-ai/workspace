@@ -15,10 +15,15 @@ import {
   ultraworksAttach,
   ultraworksCleanup,
   findRepoRoot,
+  cleanZombies,
+  getProcessStatus,
+  tailLog,
   type CmdResult,
+  type ProcessStatus,
+  type ProcessEntry,
 } from "../lib/actions.js";
 
-const VERSION = "2.0.0";
+const VERSION = "2.1.0";
 const REFRESH_MS = 3000;
 
 type ViewMode = "list" | "detail" | "logs" | "agents";
@@ -41,6 +46,7 @@ const COMMANDS: Command[] = [
   { key: "s", label: "Start Foundry headless workers", section: "foundry", action: (r) => startWorkers(r) },
   { key: "k", label: "Kill / stop Foundry workers", section: "foundry", action: (r) => stopWorkers(r) },
   { key: "f", label: "Retry all failed tasks", section: "foundry", action: (r) => retryFailed(r) },
+  { key: "z", label: "Clean zombie processes & stale lock", section: "foundry", action: (r) => cleanZombies(r) },
   // Ultraworks
   { key: "u", label: "Launch Ultraworks (tmux)", section: "ultraworks", action: (r) => ultraworksLaunch(r) },
   { key: "U", label: "Attach to Ultraworks session", section: "ultraworks", action: (r) => ultraworksAttach(r) },
@@ -100,10 +106,17 @@ export function App({ tasksRoot }: Props) {
   const [msg, setMsg] = useState("");
   const [lastAttachCmd, setLastAttachCmd] = useState("");
   const [tick, setTick] = useState(0);
+  const [procStatus, setProcStatus] = useState<ProcessStatus>({ workers: [], zombies: [], lock: null });
+  const [procIdx, setProcIdx] = useState(0);
+  const [procLogLines, setProcLogLines] = useState<string[]>([]);
 
   // Refresh data periodically
   useEffect(() => {
-    const refresh = () => setData(readAllTasks(root));
+    const refresh = () => {
+      setData(readAllTasks(root));
+      const ps = getProcessStatus(repoRoot);
+      setProcStatus(ps);
+    };
     refresh();
     const id = setInterval(() => {
       refresh();

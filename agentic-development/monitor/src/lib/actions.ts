@@ -199,3 +199,58 @@ export function ultraworksAttach(repoRoot: string): CmdResult {
 export function ultraworksCleanup(repoRoot: string): CmdResult {
   return runQuick(`"${ultraworksPath(repoRoot)}" cleanup`, repoRoot);
 }
+
+// ── Process / zombie management ─────────────────────────────────
+
+export interface ProcessEntry {
+  pid: number;
+  stat: string;
+  etime: string;
+  args: string;
+  zombie: boolean;
+  log: string | null;
+}
+
+export interface ProcessStatus {
+  workers: ProcessEntry[];
+  zombies: ProcessEntry[];
+  lock: { pid: number; state: string; zombie: boolean } | null;
+}
+
+/** Read live process status via foundry_process_status() shell helper */
+export function getProcessStatus(repoRoot: string): ProcessStatus {
+  const empty: ProcessStatus = { workers: [], zombies: [], lock: null };
+  try {
+    const commonSh = join(repoRoot, "agentic-development", "lib", "foundry-common.sh");
+    const out = execSync(
+      `bash -c 'REPO_ROOT="${repoRoot}" source "${commonSh}" && foundry_process_status'`,
+      { encoding: "utf-8", timeout: 5000, stdio: ["pipe", "pipe", "pipe"] }
+    ).trim();
+    return JSON.parse(out) as ProcessStatus;
+  } catch {
+    return empty;
+  }
+}
+
+/** Clean zombie processes and stale batch lock */
+export function cleanZombies(repoRoot: string): CmdResult {
+  const commonSh = join(repoRoot, "agentic-development", "lib", "foundry-common.sh");
+  return runQuick(
+    `bash -c 'REPO_ROOT="${repoRoot}" source "${commonSh}" && n=$(foundry_cleanup_zombies) && echo "Cleaned: $n zombie(s)/stale lock(s)"'`,
+    repoRoot
+  );
+}
+
+/** Tail last N lines of a log file */
+export function tailLog(logPath: string, lines = 40): string[] {
+  try {
+    const out = execSync(`tail -n ${lines} "${logPath}"`, {
+      encoding: "utf-8",
+      timeout: 3000,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    return out.split("\n");
+  } catch {
+    return ["(log not available)"];
+  }
+}

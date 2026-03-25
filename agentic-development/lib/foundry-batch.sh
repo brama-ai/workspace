@@ -51,9 +51,18 @@ acquire_lock() {
   if [[ -f "$LOCKFILE" ]]; then
     local old_pid
     old_pid=$(cat "$LOCKFILE" 2>/dev/null || true)
-    if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
-      echo "Another Foundry batch is already running (PID $old_pid)." >&2
-      exit 1
+    if [[ -n "$old_pid" ]]; then
+      # Check if PID is alive AND not a zombie
+      local pid_stat
+      pid_stat=$(cat "/proc/${old_pid}/status" 2>/dev/null | awk '/^State:/{print $2}' || true)
+      if [[ -n "$pid_stat" ]] && [[ "$pid_stat" != "Z" ]]; then
+        echo "Another Foundry batch is already running (PID $old_pid)." >&2
+        exit 1
+      fi
+      # PID is dead or zombie — clean stale lock
+      if [[ "$pid_stat" == "Z" ]]; then
+        echo "${YELLOW}[cleanup]${NC} Removed stale lock from zombie PID $old_pid" >&2
+      fi
     fi
     rm -f "$LOCKFILE"
   fi
