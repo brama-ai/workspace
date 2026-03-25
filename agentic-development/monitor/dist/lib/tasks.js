@@ -1,5 +1,6 @@
-import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { execSync } from "node:child_process";
 const STATUS_ORDER = {
     in_progress: 0,
     completed: 1,
@@ -48,6 +49,58 @@ function parseAgents(raw) {
         cost: typeof a.cost === "number" ? a.cost : undefined,
         callCount: typeof a.call_count === "number" ? a.call_count : undefined,
     }));
+}
+// Check for stale .claim.lock (lock without active worker)
+function checkStaleLock(taskDir, status) {
+    if (status !== "in_progress")
+        return false;
+    const lockPath = join(taskDir, ".claim.lock");
+    if (!existsSync(lockPath))
+        return false;
+    // Lock exists but task is in_progress - check if lock is recent
+    try {
+        const stat = statSync(lockPath);
+        const ageSec = (Date.now() - stat.mtimeMs) / 1000;
+        // If lock is older than 5 minutes, it's stale
+        return ageSec > 300;
+    }
+    catch {
+        return false;
+    }
+}
+// Get last event time from events.jsonl
+function getLastEvent(taskDir) {
+    const eventsPath = join(taskDir, "events.jsonl");
+    if (!existsSync(eventsPath))
+        return null;
+    try {
+        const content = readFileSync(eventsPath, "utf-8");
+        const lines = content.trim().split("\n");
+        if (lines.length === 0)
+            return null;
+        const lastLine = lines[lines.length - 1];
+        const event = JSON.parse(lastLine);
+        const time = event.timestamp || "";
+        if (!time)
+            return null;
+        const age = Math.floor((Date.now() - new Date(time).getTime()) / 1000);
+        return { time, age };
+    }
+    catch {
+        return null;
+    }
+}
+// Check if git branch exists
+function checkBranchExists(branch) {
+    if (!branch)
+        return false;
+    try {
+        execSync(`git rev-parse --verify "${branch}" 2>/dev/null`, { stdio: "pipe" });
+        return true;
+    }
+    catch {
+        return false;
+    }
 }
 export function readAllTasks(root) {
     const counts = {
@@ -101,6 +154,9 @@ export function readAllTasks(root) {
                 branchName = meta.branch_name;
             }
         }
+        // Diagnostic info for stale detection
+        const branch = state?.branch;
+        const lastEvent = getLastEvent(taskDir);
         tasks.push({
             dir: taskDir,
             workflow,
@@ -114,7 +170,13 @@ export function readAllTasks(root) {
             agents,
             sessionName,
             worktreePath,
-            branchName,
+            branchName: branch,
+            attempt: state?.attempt,
+            // Diagnostic fields
+            hasStaleLock: checkStaleLock(taskDir, status),
+            lastEventTime: lastEvent?.time,
+            lastEventAge: lastEvent?.age,
+            branchExists: checkBranchExists(branch),
         });
     }
     tasks.sort((a, b) => {

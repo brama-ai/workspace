@@ -982,7 +982,9 @@ run_migrations() {
 
 get_fallback_chain() {
   local agent="$1"
-  local var_name="FALLBACK_$(echo "$agent" | tr '[:lower:]' '[:upper:]')"
+  local base_name="${agent#u-}"
+  base_name="${base_name#u_}"
+  local var_name="FALLBACK_$(echo "$base_name" | tr '[:lower:]' '[:upper:]')"
   local chain="${!var_name:-}"
   [[ -n "$chain" ]] || return 0
 
