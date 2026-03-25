@@ -39,87 +39,125 @@ If any check fails → **STOP**, report the failure, mark deployment as `skipped
 
 **When to use:** Primary strategy for brama-core and agents with GHCR CI/CD. Push to main triggers a GitHub Actions build that publishes to `ghcr.io`. Then update the image on the K3s server.
 
-**Registry:** `ghcr.io/brama-ai/brama-core` (tags: `latest`, `main`, short SHA)
+**GHCR Image Registry:**
+
+| Service | Image | GitHub Repo | Build Time |
+|---------|-------|-------------|------------|
+| brama-core | `ghcr.io/brama-ai/brama-core` | `brama-ai/core` | ~2.5 min |
+| hello-agent | `ghcr.io/brama-ai/hello-agent` | `brama-ai/hello-agent` | ~2 min |
+| news-agent | `ghcr.io/brama-ai/news-agent` | `brama-ai/news-agent` | ~2 min |
+
+Tags: `latest` (main branch), short SHA (e.g., `3500f79`)
+
+**K3s Deployment Mapping:**
+
+| Service | K8s Deployment | Container Name | Health Endpoint |
+|---------|---------------|----------------|-----------------|
+| brama-core | `brama-core` | `core` | `/health` |
+| core-scheduler | `brama-core-scheduler` | `scheduler` | — |
+| hello-agent | `brama-agent-hello` | `hello` | `/health` |
+| news-agent | `brama-agent-news` | `news` | `/health` |
+
+**K3s Namespace:** `brama`
 
 **Prerequisites:**
-- GitHub Actions workflow `build-and-push.yml` configured in the target repo
+- GitHub Actions workflow `build-and-push.yml` configured in the target repo (all repos above have it)
 - SSH config in `.devcontainer/.ssh-env`
 - K3s cluster with `kubectl` and `helm` on server
-- GHCR image is public or server has `imagePullSecrets` configured
+- GHCR images are public (no imagePullSecrets needed)
 
 **Workflow:**
 
 1. Verify pre-deployment checklist passes
 2. **Document rollback plan BEFORE executing:**
    ```
-   Rollback: helm rollback brama [revision] -n brama
+   Rollback: kubectl rollout undo deployment/<name> -n brama
    ```
-3. Push changes to main (or merge PR into main):
+3. Determine which service(s) to deploy from handoff context
+4. Push changes to main (or merge PR into main) in the target repo:
    ```bash
-   git push origin main
+   # For core:
+   cd brama-core && git push origin main
+   # For hello-agent:
+   cd brama-agents/hello-agent && git push origin main
+   # For news-agent:
+   cd brama-agents/news-maker-agent && git push origin main
    # If rejected: report conflict, STOP — never force-push
    ```
-4. Wait for GHCR image build to complete:
+5. Wait for GHCR image build to complete:
    ```bash
-   # Poll the Build & Push workflow in the target repo
-   gh run list --workflow=build-and-push.yml -R brama-ai/core --limit 1 --json databaseId,status,conclusion
+   # Determine the repo name from the service
+   REPO="brama-ai/core"  # or brama-ai/hello-agent, brama-ai/news-agent
 
-   # Wait for completion (poll every 30s, max 10 min)
-   RUN_ID=$(gh run list --workflow=build-and-push.yml -R brama-ai/core --limit 1 --json databaseId --jq '.[0].databaseId')
+   # Poll the Build & Push workflow
+   RUN_ID=$(gh run list --workflow=build-and-push.yml -R "$REPO" --limit 1 --json databaseId --jq '.[0].databaseId')
    while true; do
-     STATUS=$(gh run view "$RUN_ID" -R brama-ai/core --json status,conclusion --jq '.status')
+     RESULT=$(gh run view "$RUN_ID" -R "$REPO" --json status,conclusion --jq '{s: .status, c: .conclusion}')
+     STATUS=$(echo "$RESULT" | jq -r '.s')
      if [[ "$STATUS" == "completed" ]]; then
-       CONCLUSION=$(gh run view "$RUN_ID" -R brama-ai/core --json conclusion --jq '.conclusion')
+       CONCLUSION=$(echo "$RESULT" | jq -r '.c')
        if [[ "$CONCLUSION" == "success" ]]; then
          echo "Image built successfully"
          break
        else
-         echo "Build failed"; exit 1
+         echo "Build FAILED"; exit 1
        fi
      fi
      echo "Building... ($STATUS)"
      sleep 30
    done
    ```
-5. Get the image tag (short SHA from the push commit):
-   ```bash
-   IMAGE_TAG=$(git -C brama-core rev-parse --short HEAD)
-   # Or use: latest / main
-   ```
 6. Read SSH config from `.devcontainer/.ssh-env`
-7. SSH to server and update the deployment:
+7. SSH to server and update the deployment(s):
    ```bash
    ssh <SSH_USER>@<SSH_HOST> -p <SSH_PORT> "
      export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
-     # Update image in Helm values and upgrade
-     helm upgrade brama /path/to/chart \
-       --namespace brama \
-       -f /path/to/values-k3s-dev.yaml \
-       --set core.image.repository=ghcr.io/brama-ai/brama-core \
-       --set core.image.tag=${IMAGE_TAG} \
-       --set core.image.pullPolicy=Always \
-       --wait --timeout 5m
-
-     # Or simpler: just restart deployment to pull latest
-     kubectl set image deployment/brama-core \
-       -n brama \
-       core=ghcr.io/brama-ai/brama-core:${IMAGE_TAG}
+     # Update specific service (use IMAGE_TAG=latest or short SHA)
+     kubectl set image deployment/brama-core -n brama \
+       core=ghcr.io/brama-ai/brama-core:latest
      kubectl rollout status deployment/brama-core -n brama --timeout=3m
+
+     # For agents:
+     # kubectl set image deployment/brama-agent-hello -n brama \
+     #   hello=ghcr.io/brama-ai/hello-agent:latest
+     # kubectl set image deployment/brama-agent-news -n brama \
+     #   news=ghcr.io/brama-ai/news-agent:latest
    "
    ```
-8. Verify health:
+8. Verify health (via SSH or public URL):
    ```bash
-   curl -f -s --max-time 60 <HEALTH_ENDPOINT>
-   # Expect: HTTP 200 with {"status": "ok"}
+   # Via public URL (if Cloudflare Tunnel configured):
+   curl -f -s --max-time 30 https://brama.dev/health
+   curl -f -s --max-time 30 https://hello.brama.dev/health
+
+   # Via kubectl (always works):
+   ssh <SSH_USER>@<SSH_HOST> -p <SSH_PORT> "
+     export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+     kubectl exec -n brama deployment/brama-core -- curl -sf http://localhost/health
+     kubectl exec -n brama deployment/brama-agent-hello -- curl -sf http://localhost/health
+   "
    ```
 9. Report result in handoff
 
+**Deploy multiple services at once:**
+```bash
+ssh <SSH_USER>@<SSH_HOST> -p <SSH_PORT> "
+  export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+  kubectl set image deployment/brama-core -n brama core=ghcr.io/brama-ai/brama-core:latest
+  kubectl set image deployment/brama-core-scheduler -n brama scheduler=ghcr.io/brama-ai/brama-core:latest
+  kubectl set image deployment/brama-agent-hello -n brama hello=ghcr.io/brama-ai/hello-agent:latest
+  kubectl set image deployment/brama-agent-news -n brama news=ghcr.io/brama-ai/news-agent:latest
+  kubectl rollout status deployment -n brama --timeout=5m
+"
+```
+
 **Dry-run output:**
 ```
-[DRY-RUN] Would push to main and trigger GHCR build
-[DRY-RUN] Would wait for image: ghcr.io/brama-ai/brama-core:<tag>
-[DRY-RUN] Would SSH to <SSH_HOST> and update deployment image
+[DRY-RUN] Would push to main in <repo> and trigger GHCR build
+[DRY-RUN] Would wait for image: ghcr.io/brama-ai/<service>:<tag>
+[DRY-RUN] Would SSH to <SSH_HOST> and run:
+  kubectl set image deployment/<deployment> -n brama <container>=ghcr.io/brama-ai/<service>:<tag>
 [DRY-RUN] Would verify health at: <health_endpoint>
 [DRY-RUN] No changes executed.
 ```
@@ -128,9 +166,17 @@ If any check fails → **STOP**, report the failure, mark deployment as `skipped
 ```bash
 # SSH to server
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+
+# Quick rollback (undo last update):
+kubectl rollout undo deployment/brama-core -n brama
+kubectl rollout status deployment/brama-core -n brama --timeout=3m
+
+# Or via Helm (rolls back all services):
 helm history brama -n brama
 helm rollback brama <PREVIOUS_REVISION> -n brama
-kubectl rollout status deployment/brama-core -n brama --timeout=3m
+
+# Verify:
+kubectl exec -n brama deployment/brama-core -- curl -sf http://localhost/health
 ```
 
 **Advantages over direct-ssh:**
@@ -139,6 +185,7 @@ kubectl rollout status deployment/brama-core -n brama --timeout=3m
 - Architecture-independent (GHCR builds linux/amd64 on GitHub runners)
 - Image is cached and reusable across environments
 - Build is auditable via GitHub Actions logs
+- Compressed images are ~60-80 MB (Alpine multi-stage)
 
 ---
 
