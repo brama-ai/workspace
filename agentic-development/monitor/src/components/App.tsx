@@ -283,6 +283,8 @@ export function App({ tasksRoot }: Props) {
           cols={cols}
           rows={rows}
           tick={tick}
+          detailTab={detailTab}
+          setMsg={setMsg}
         />
       ) : (
         <CommandsTab cols={cols} selectedIdx={cmdIdx} />
@@ -327,7 +329,7 @@ function TabLabel({ n, label, active }: { n: number; label: string; active: bool
 
 // ── Tasks Tab ──────────────────────────────────────────────────────
 function TasksTab({
-  data, idx, view, selected, cols, rows, tick,
+  data, idx, view, selected, cols, rows, tick, detailTab, setMsg,
 }: {
   data: ReadResult;
   idx: number;
@@ -336,6 +338,8 @@ function TasksTab({
   cols: number;
   rows: number;
   tick: number;
+  detailTab: DetailTab;
+  setMsg: (m: string) => void;
 }) {
   if (view === "agents" && selected) return <AgentsView task={selected} cols={cols} />;
   if (view === "logs" && selected) return <LogsView task={selected} rows={rows} tick={tick} />;
