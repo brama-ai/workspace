@@ -4,9 +4,9 @@
   "started_at": "2026-03-25T13:53:17.124439Z",
   "attempt": 1,
   "status": "in_progress",
-  "current_step": "validator",
-  "resume_from": "validator",
-  "updated_at": "2026-03-25T13:53:38.358585Z",
+  "current_step": "summarizer",
+  "resume_from": "summarizer",
+  "updated_at": "2026-03-25T13:53:42.846549Z",
   "task_file": "/workspaces/brama/tasks/remove-dev-reporter-agent--foundry/task.md",
   "branch": "pipeline/remove-dev-reporter-agent",
   "agents": [
@@ -36,12 +36,23 @@
       "agent": "validator",
       "status": "done",
       "model": "opencode-go/glm-5",
+      "duration_seconds": 5,
+      "input_tokens": 115704,
+      "output_tokens": 4865,
+      "cost": 0.1662,
+      "call_count": 1,
+      "updated_at": "2026-03-25T13:53:38.624167Z"
+    },
+    {
+      "agent": "summarizer",
+      "status": "done",
+      "model": "opencode-go/glm-5",
       "duration_seconds": 1,
       "input_tokens": 115704,
       "output_tokens": 4865,
       "cost": 0.1662,
       "call_count": 1,
-      "updated_at": "2026-03-25T13:53:38.358570Z"
+      "updated_at": "2026-03-25T13:53:42.846537Z"
     }
   ]
 }
