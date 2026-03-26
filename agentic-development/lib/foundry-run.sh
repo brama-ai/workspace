@@ -309,6 +309,29 @@ if [[ -z "$TASK_MESSAGE" ]]; then
   exit 1
 fi
 
+# Generate slug from task message (first # title line only)
+_task_slug() {
+  local text="$1"
+  # Extract first # heading as title
+  local title
+  title=$(echo "$text" | grep -m1 '^# ' | sed 's/^# //')
+  if [[ -z "$title" ]]; then
+    # Fallback: first non-empty line
+    title=$(echo "$text" | grep -m1 '[^ ]')
+  fi
+  local slug
+  slug=$(echo "$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//' | cut -c1-50)
+  # If slug is empty (non-ASCII title), use task file basename
+  if [[ -z "$slug" && -n "$TASK_FILE" ]]; then
+    slug=$(basename "$TASK_FILE" .md)
+  fi
+  # Ultimate fallback
+  if [[ -z "$slug" ]]; then
+    slug="task-$(date +%s)"
+  fi
+  echo "$slug"
+}
+
 # ── Task file lifecycle (Foundry task root integration) ─────────────
 # When --task-file points to tasks/<slug>--foundry/task.md, manage its lifecycle
 # so the Foundry monitor can track progress in real time.
@@ -711,29 +734,6 @@ commit_agent_work() {
 # }
 
 ARTIFACTS_BASE="$FOUNDRY_TASK_ROOT"
-
-# Generate slug from task message (first # title line only)
-_task_slug() {
-  local text="$1"
-  # Extract first # heading as title
-  local title
-  title=$(echo "$text" | grep -m1 '^# ' | sed 's/^# //')
-  if [[ -z "$title" ]]; then
-    # Fallback: first non-empty line
-    title=$(echo "$text" | grep -m1 '[^ ]')
-  fi
-  local slug
-  slug=$(echo "$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//' | cut -c1-50)
-  # If slug is empty (non-ASCII title), use task file basename
-  if [[ -z "$slug" && -n "$TASK_FILE" ]]; then
-    slug=$(basename "$TASK_FILE" .md)
-  fi
-  # Ultimate fallback
-  if [[ -z "$slug" ]]; then
-    slug="task-$(date +%s)"
-  fi
-  echo "$slug"
-}
 
 # Initialize artifacts directory for a task
 init_artifacts() {
