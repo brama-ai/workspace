@@ -1,6 +1,6 @@
 ---
 description: "Documenter: writes bilingual docs (UA+EN)"
-model: openai/gpt-5.4
+model: google/gemini-2.5-flash
 temperature: 0.2
 tools:
   edit: true

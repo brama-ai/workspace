@@ -86,28 +86,31 @@ CHEAP_MODELS="${PIPELINE_CHEAP_MODELS:-openrouter/deepseek-v3.2,openrouter/gemin
 
 # "free" virtual model — expands to a chain of free models
 # Override via: PIPELINE_FREE_MODELS="model1,model2,model3"
-FREE_MODELS="${PIPELINE_FREE_MODELS:-opencode/big-pickle,opencode/gpt-5-nano,opencode/minimax-m2.5-free}"
+FREE_MODELS="${PIPELINE_FREE_MODELS:-opencode/big-pickle,opencode/gpt-5-nano}"
 
 # Fallback model chains (override via env: PIPELINE_FALLBACK_ARCHITECT="model1,model2")
 # Tiers: subscriptions (Claude+Codex) → free (OpenRouter) → cheap (paid per-token)
 # Subscriptions already paid (flat rate), free costs nothing, cheap is last resort
 # Fallback model chains: 5 fallbacks × 5 providers per agent
-# Providers: anthropic, openai, google, minimax, opencode, openrouter
+# Providers: anthropic, openai, google, opencode-go, opencode, openrouter
 # Primary model (from agent .md) excluded; each fallback = different provider
 #
-# "free" expands to: opencode/big-pickle,opencode/gpt-5-nano,opencode/minimax-m2.5-free
+# "free" expands to: opencode/big-pickle,opencode/gpt-5-nano
 # "cheap" expands to: openrouter/deepseek-v3.2,openrouter/gemini-3.1-flash-lite
-# Order: available providers first (openrouter, opencode, minimax), then rate-limited (openai, google, anthropic)
-FALLBACK_INVESTIGATOR="${PIPELINE_FALLBACK_INVESTIGATOR:-openai/gpt-5.4,opencode-go/glm-5,minimax/MiniMax-M2.7,google/gemini-3.1-pro-preview,opencode/big-pickle,openrouter/free}"
-FALLBACK_ARCHITECT="${PIPELINE_FALLBACK_ARCHITECT:-openai/gpt-5.4,opencode-go/glm-5,minimax/MiniMax-M2.7,google/gemini-3.1-pro-preview,opencode/big-pickle,openrouter/free}"
-FALLBACK_CODER="${PIPELINE_FALLBACK_CODER:-minimax/MiniMax-M2.7,openai/gpt-5.3-codex,opencode-go/glm-5,google/gemini-3.1-pro-preview,opencode/big-pickle,openrouter/qwen/qwen3-coder:free}"
-FALLBACK_VALIDATOR="${PIPELINE_FALLBACK_VALIDATOR:-openai/gpt-5.2,opencode-go/kimi-k2.5,opencode/minimax-m2.5-free,google/gemini-3.1-flash-lite-preview,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
-FALLBACK_TESTER="${PIPELINE_FALLBACK_TESTER:-openai/gpt-5.3-codex,minimax/MiniMax-M2.7-highspeed,opencode/big-pickle,google/gemini-3.1-pro-preview,openrouter/qwen/qwen3-coder:free}"
-FALLBACK_DOCUMENTER="${PIPELINE_FALLBACK_DOCUMENTER:-anthropic/claude-sonnet-4-6,google/gemini-3-flash-preview,minimax/MiniMax-M2.5,opencode-go/kimi-k2.5,opencode/big-pickle,openrouter/free}"
-FALLBACK_AUDITOR="${PIPELINE_FALLBACK_AUDITOR:-openai/gpt-5.4,opencode-go/glm-5,minimax/MiniMax-M2.7,opencode/big-pickle,google/gemini-3.1-pro-preview,openrouter/free}"
-FALLBACK_E2E="${PIPELINE_FALLBACK_E2E:-opencode-go/glm-5,openai/gpt-5.4,minimax/minimax-m2.7,google/gemini-2.5-flash,openrouter/qwen/qwen3-coder:free}"
-FALLBACK_MERGER="${PIPELINE_FALLBACK_MERGER:-openai/gpt-5.4,minimax/MiniMax-M2.7,opencode-go/glm-5,google/gemini-3.1-pro-preview,opencode/big-pickle,openrouter/free}"
-FALLBACK_SUMMARIZER="${PIPELINE_FALLBACK_SUMMARIZER:-anthropic/claude-opus-4-6,google/gemini-3.1-pro-preview,minimax/MiniMax-M2.7,opencode-go/glm-5,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528:free}"
+#
+# Measured TTFO (2026-03-26): anthropic 6-7s, google 6s, opencode-go 8s, opencode/free 12-19s
+# Dead: openai/* (until 2026-03-29), minimax/* (subscription issue)
+# Order: fastest responding first → slower free tier last
+FALLBACK_INVESTIGATOR="${PIPELINE_FALLBACK_INVESTIGATOR:-google/gemini-2.5-flash,opencode-go/glm-5,anthropic/claude-sonnet-4-6,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
+FALLBACK_ARCHITECT="${PIPELINE_FALLBACK_ARCHITECT:-google/gemini-2.5-flash,opencode-go/glm-5,anthropic/claude-sonnet-4-6,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
+FALLBACK_CODER="${PIPELINE_FALLBACK_CODER:-anthropic/claude-sonnet-4-6,opencode-go/glm-5,google/gemini-2.5-flash,opencode/big-pickle,openrouter/qwen/qwen3-coder:free}"
+FALLBACK_VALIDATOR="${PIPELINE_FALLBACK_VALIDATOR:-opencode-go/kimi-k2.5,google/gemini-2.5-flash,anthropic/claude-sonnet-4-6,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
+FALLBACK_TESTER="${PIPELINE_FALLBACK_TESTER:-anthropic/claude-sonnet-4-6,opencode-go/glm-5,google/gemini-2.5-flash,opencode/big-pickle,openrouter/qwen/qwen3-coder:free}"
+FALLBACK_DOCUMENTER="${PIPELINE_FALLBACK_DOCUMENTER:-anthropic/claude-sonnet-4-6,google/gemini-2.5-flash,opencode-go/kimi-k2.5,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
+FALLBACK_AUDITOR="${PIPELINE_FALLBACK_AUDITOR:-anthropic/claude-sonnet-4-6,opencode-go/glm-5,google/gemini-2.5-flash,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
+FALLBACK_E2E="${PIPELINE_FALLBACK_E2E:-opencode-go/glm-5,google/gemini-2.5-flash,anthropic/claude-sonnet-4-6,opencode/big-pickle,openrouter/qwen/qwen3-coder:free}"
+FALLBACK_MERGER="${PIPELINE_FALLBACK_MERGER:-anthropic/claude-sonnet-4-6,opencode-go/glm-5,google/gemini-2.5-flash,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
+FALLBACK_SUMMARIZER="${PIPELINE_FALLBACK_SUMMARIZER:-anthropic/claude-opus-4-6,google/gemini-2.5-flash,opencode-go/glm-5,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528:free}"
 
 # ── Help ──────────────────────────────────────────────────────────────
 
@@ -1856,6 +1859,50 @@ run_agent() {
         return 1
       fi
       return 0
+    elif [[ $exit_code -eq 75 ]]; then
+      # HITL: Agent is waiting for human answers
+      local agent_dur=$(( agent_end_epoch - agent_start_epoch ))
+      emit_event "AGENT_DONE" "agent=${agent}|status=waiting_answer|duration=${agent_dur}s"
+
+      echo ""
+      echo -e "${YELLOW}⏸ Agent '${agent}' is waiting for answers (exit 75)${NC}"
+      restore_agent_model "$agent" "$original_model"
+
+      # Update agent status in state.json
+      if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
+        foundry_state_upsert_agent "$TASK_DIR" "$agent" "waiting_answer" "$actual_model_used" \
+          "$agent_dur" "$in_tok" "$out_tok" "$agent_cost" "1"
+      fi
+
+      # Handle waiting_answer: validate qa.json, update state, check continue_on_wait
+      local hitl_result=0
+      if [[ -n "$TASK_DIR" ]]; then
+        foundry_handle_waiting_answer "$agent" "$TASK_DIR" || hitl_result=$?
+      else
+        echo -e "${YELLOW}  No TASK_DIR — cannot handle waiting_answer properly${NC}"
+        hitl_result=75
+      fi
+
+      # Send Telegram notification (if configured)
+      if [[ -f "$REPO_ROOT/agentic-development/lib/foundry-telegram.sh" ]]; then
+        # shellcheck source=/dev/null
+        source "$REPO_ROOT/agentic-development/lib/foundry-telegram.sh"
+        local qa_count
+        qa_count=$(foundry_state_field "$TASK_DIR" "questions_count" 2>/dev/null || echo "?")
+        local task_slug_short="${TASK_SLUG:-task}"
+        send_telegram_hitl_waiting "$agent" "$task_slug_short" "$qa_count"
+      fi
+
+      if [[ $hitl_result -eq 0 ]]; then
+        # continue_on_wait=true — pipeline continues
+        echo -e "${CYAN}  continue_on_wait=true — proceeding to next agent${NC}"
+        return 75  # Special return: caller handles this
+      else
+        # Pipeline paused
+        echo -e "${YELLOW}  Pipeline paused — use: foundry.sh answer ${TASK_SLUG:-<slug>}${NC}"
+        echo -e "${YELLOW}  Then resume with: foundry.sh resume-qa ${TASK_SLUG:-<slug>}${NC}"
+        return 75
+      fi
     elif [[ $exit_code -eq 124 ]]; then
       emit_event "AGENT_DONE" "agent=${agent}|status=timeout|duration=${timeout_min}m"
       echo -e "${RED}✗ Agent '${agent}' timed out after ${timeout_min} min${NC}"
@@ -2667,7 +2714,10 @@ main() {
     # Log file for this agent run
     local agent_log="$LOG_DIR/${TIMESTAMP}_${agent}.log"
 
-    if run_agent "$agent" "$prompt"; then
+    local run_exit=0
+    run_agent "$agent" "$prompt" || run_exit=$?
+
+    if [[ $run_exit -eq 0 ]]; then
       local agent_dur=$(( $(date +%s) - agent_start ))
 
       send_telegram "✅ <b>${agent}</b> completed (${agent_dur}s)
@@ -2716,6 +2766,31 @@ main() {
       fi
 
       echo ""
+    elif [[ $run_exit -eq 75 ]]; then
+      # HITL: Agent is waiting for answers — pipeline paused
+      local agent_dur=$(( $(date +%s) - agent_start ))
+
+      # Auto-commit agent's partial work
+      commit_agent_work "$agent" "$task_slug"
+      local commit_hash
+      commit_hash=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo "")
+
+      local agent_tokens
+      agent_tokens=$(get_agent_tokens "$agent")
+      write_checkpoint "$agent" "waiting_answer" "$agent_dur" "$commit_hash" "$agent_tokens"
+      save_agent_artifact "$agent" "$agent_log"
+
+      emit_event "TASK_WAITING" "agent=${agent}|duration=${agent_dur}s"
+
+      # Move task to waiting_answer state (already done in run_agent, but ensure it)
+      if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
+        foundry_set_state_status "$TASK_DIR" "waiting_answer" "$agent" "$agent"
+      fi
+
+      echo -e "${YELLOW}Pipeline paused at agent: ${agent} (waiting for answers)${NC}"
+      echo -e "${YELLOW}Answer questions: ./agentic-development/foundry.sh answer ${TASK_SLUG:-<slug>}${NC}"
+      echo -e "${YELLOW}Resume pipeline:  ./agentic-development/foundry.sh resume-qa ${TASK_SLUG:-<slug>}${NC}"
+      break
     else
       local agent_dur=$(( $(date +%s) - agent_start ))
 
@@ -2931,7 +3006,16 @@ PYEOF
   fi
 
   # Task file lifecycle: finalize BEFORE push/PR so task never stays in_progress
-  if $failed; then
+  # Check if task is in waiting_answer state (HITL pause)
+  local current_task_status=""
+  if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
+    current_task_status=$(foundry_state_field "$TASK_DIR" status 2>/dev/null || echo "")
+  fi
+
+  if [[ "$current_task_status" == "waiting_answer" ]]; then
+    # Task is paused for HITL — do not mark as failed or completed
+    echo -e "${YELLOW}Task paused in waiting_answer state — not finalizing${NC}"
+  elif $failed; then
     _task_move_to_failed "$branch" "$total_duration"
   else
     _task_move_to_done "$branch" "$total_duration"
@@ -2972,7 +3056,16 @@ PYEOF
   # Final status
   echo ""
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-  if $failed; then
+  if [[ "$current_task_status" == "waiting_answer" ]]; then
+    emit_event "TASK_WAITING" "duration=$(( total_duration / 60 ))m"
+    echo -e "${YELLOW}Pipeline PAUSED — waiting for human answers${NC}"
+    echo -e "${BLUE}Branch:${NC}  ${branch}"
+    echo -e "${BLUE}Report:${NC}  ${report_file}"
+    echo -e "${BLUE}Handoff:${NC} ${HANDOFF_FILE}"
+    echo -e "${YELLOW}Answer:${NC}  ./agentic-development/foundry.sh answer ${TASK_SLUG:-<slug>}"
+    echo -e "${YELLOW}Resume:${NC}  ./agentic-development/foundry.sh resume-qa ${TASK_SLUG:-<slug>}"
+    exit 75
+  elif $failed; then
     emit_event "TASK_FAIL" "agent=${failed_agent}|duration=$(( total_duration / 60 ))m"
     echo -e "${RED}Pipeline FAILED at agent: ${failed_agent}${NC}"
     echo -e "${BLUE}Report:${NC}  ${report_file}"

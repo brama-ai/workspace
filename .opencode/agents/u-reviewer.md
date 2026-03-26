@@ -1,6 +1,6 @@
 ---
 description: "Reviewer: improves code quality after implementation"
-model: minimax/MiniMax-M2.7
+model: opencode-go/glm-5
 temperature: 0
 tools:
   edit: true
