@@ -1,0 +1,6 @@
+# Doctor root cause reports are generated automatically
+# Commit only important/reference reports manually
+root-cause-*.md
+
+# Keep patterns.md if generated
+!patterns.md
