@@ -183,6 +183,21 @@ foundry_status() {
   echo "Suspended: ${suspended}"
   echo "Cancelled: ${cancelled}"
   echo "Desired workers: $(foundry_get_desired_workers)"
+
+  # Show blacklisted models if any
+  local blacklist_file="${REPO_ROOT}/.opencode/pipeline/.model-blacklist.json"
+  if [[ -f "$blacklist_file" ]]; then
+    local now
+    now=$(date +%s)
+    local blacklisted_models
+    blacklisted_models=$(jq -r --argjson now "$now" \
+      'to_entries | map(select(.value > $now) | .key) | join(", ")' \
+      "$blacklist_file" 2>/dev/null || echo "")
+    if [[ -n "$blacklisted_models" ]]; then
+      echo "Blacklisted models: ${blacklisted_models}"
+    fi
+  fi
+
   echo "Log: ${LOG_FILE}"
   runtime_log foundry "status pending=${pending} in_progress=${in_progress} completed=${completed} failed=${failed}"
 }
