@@ -25,6 +25,11 @@ set -euo pipefail
 REPO_ROOT="${PIPELINE_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 # shellcheck source=/dev/null
 source "$REPO_ROOT/agentic-development/lib/foundry-common.sh"
+
+# Debug trap: log where the script exits on error
+if [[ "${FOUNDRY_DEBUG:-}" == "true" ]]; then
+  trap 'debug_log "CRASH" "Script exited unexpectedly" "line=$LINENO" "exit_code=$?" "command=$BASH_COMMAND"' ERR
+fi
 ensure_foundry_task_root
 PIPELINE_DIR="$REPO_ROOT/.opencode/pipeline"
 LOG_DIR="$PIPELINE_DIR/logs"
@@ -1145,6 +1150,7 @@ swap_agent_model() {
   local old_model
   old_model=$(get_current_model "$agent")
 
+  debug_log "model" "MODEL SWAP" "agent=$agent" "from=$old_model" "to=$new_model" "file=$agent_file"
   sed -i.bak "s|^model:.*|model: ${new_model}|" "$agent_file"
   rm -f "${agent_file}.bak"
 
@@ -1518,16 +1524,22 @@ monitor_agent_loop() {
       if [[ "$log_lines" -lt 5 && "$stall_count" -ge 1 ]]; then
         # After just 20s with minimal output, trigger fallback
         local stall_duration=$((20 + (stall_count - 1) * current_interval))
+        debug_log "stall" "STALL DETECTED (minimal output)" "agent=$agent" "duration=${stall_duration}s" "lines=$log_lines" "pid=$agent_pid"
         echo "LOOP_DETECTED:stall:Log not growing for ${stall_duration}s (minimal output: ${log_lines} lines)" > "${log_file}.loop"
+        debug_log "kill" "Killing stalled agent tree" "pid=$agent_pid"
         _kill_process_tree "$agent_pid"
+        debug_log "kill" "Kill complete" "pid=$agent_pid"
         return
       fi
 
       # Normal stall detection for active logs
       if [[ $stall_count -ge $stall_threshold ]]; then
         local stall_duration=$((40 + (stall_count - 2) * check_interval))  # 2 * 20s + rest * 60s
+        debug_log "stall" "STALL DETECTED (normal)" "agent=$agent" "duration=${stall_duration}s" "stall_count=$stall_count" "threshold=$stall_threshold"
         echo "LOOP_DETECTED:stall:Log not growing for ${stall_duration}s" > "${log_file}.loop"
+        debug_log "kill" "Killing stalled agent tree" "pid=$agent_pid"
         _kill_process_tree "$agent_pid"
+        debug_log "kill" "Kill complete" "pid=$agent_pid"
         return
       fi
     else
@@ -1634,6 +1646,7 @@ run_agent() {
   fi
 
   emit_event "AGENT_START" "agent=${agent}|model=${original_model}|fallbacks=${fallback_chain:-none}"
+  debug_log "agent" "AGENT_START" "agent=$agent" "model=$original_model" "fallback=$fallback_chain" "timeout=${agent_timeout}s" "log=$log_file"
 
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo -e "${BLUE}▶ Agent:   ${YELLOW}${agent}${NC}"
@@ -1673,10 +1686,13 @@ run_agent() {
 
     # Use 'script' to allocate a pseudo-TTY so opencode streams output
     # line-by-line instead of block-buffering (Node.js buffers stdout in pipes)
+    local current_model
+    current_model=$(get_current_model "$agent")
     local run_cmd="opencode run --agent ${agent} $(printf '%q' "$message")"
     if command -v timeout &>/dev/null; then
       run_cmd="timeout ${agent_timeout} ${run_cmd}"
     fi
+    debug_log "process" "Spawning agent process" "agent=$agent" "model=$current_model" "attempt=$attempt/$max_attempts" "pid=pending" "timeout=${agent_timeout}s"
     if command -v script &>/dev/null; then
       (cd "$REPO_ROOT" && script -qc "$run_cmd" /dev/null) \
         < /dev/null 2>&1 | tee "$log_file" &
@@ -1685,13 +1701,16 @@ run_agent() {
         < /dev/null 2>&1 | tee "$log_file" &
     fi
     local agent_pid=$!
+    debug_log "process" "Agent process spawned" "agent=$agent" "tee_pid=$agent_pid"
 
     # Start loop monitor in background
     monitor_agent_loop "$log_file" "$agent" "$agent_pid" &
     local monitor_pid=$!
+    debug_log "process" "Loop monitor started" "agent=$agent" "monitor_pid=$monitor_pid" "agent_pid=$agent_pid"
 
     # Wait for agent to finish
     wait "$agent_pid" 2>/dev/null || exit_code=$?
+    debug_log "process" "Agent process exited" "agent=$agent" "exit_code=$exit_code" "pid=$agent_pid"
 
     # Kill monitor
     kill "$monitor_pid" 2>/dev/null
@@ -2529,6 +2548,7 @@ EOF
 # ── Main execution ───────────────────────────────────────────────────
 
 main() {
+  debug_log "main" "Pipeline starting" "pid=$$" "args=$*"
   echo ""
   echo -e "${CYAN}╔══════════════════════════════════════════════════╗${NC}"
   echo -e "${CYAN}║${NC}     ${YELLOW}OpenCode Multi-Agent Pipeline v2${NC}             ${CYAN}║${NC}"
@@ -2561,11 +2581,14 @@ main() {
   #
   # Fail explicitly if untracked files block checkout (don't silently die).
 
+  debug_log "git" "Branch checkout" "current=$current_branch" "target=$branch" "main=$main_branch"
   if [[ "$current_branch" == "$branch" ]]; then
     # Already on the target feature branch — nothing to do
     echo -e "${GREEN}✓ Already on target branch: ${branch}${NC}"
+    debug_log "git" "Already on target branch — skipping checkout"
   else
     # Need to switch branches
+    debug_log "git" "Switching branches" "from=$current_branch" "to=$branch"
     if ! git -C "$REPO_ROOT" rev-parse --verify "$branch" &>/dev/null; then
       # New branch — must be on main/master to create it
       if [[ "$current_branch" != "$main_branch" && "$current_branch" != "master" ]]; then
@@ -2675,14 +2698,18 @@ main() {
     planner_prompt=$(build_prompt "u-planner")
     local planner_start
     planner_start=$(date +%s)
+    debug_log "planner" "Starting planner"
     if run_agent "u-planner" "$planner_prompt"; then
       local planner_dur=$(( $(date +%s) - planner_start ))
       echo -e "${GREEN}✓ Planner completed in ${planner_dur}s${NC}"
+      debug_log "planner" "Planner completed" "duration=${planner_dur}s" "plan_exists=$(test -f "$PLAN_FILE" && echo yes || echo no)"
       if apply_plan "$PLAN_FILE"; then
         write_checkpoint "u-planner" "done" "$planner_dur" ""
+        debug_log "planner" "Plan applied" "file=$PLAN_FILE"
       fi
     else
       echo -e "${YELLOW}⚠ Planner failed, using standard pipeline${NC}"
+      debug_log "planner" "PLANNER FAILED — using standard pipeline"
       write_checkpoint "u-planner" "failed" "$(( $(date +%s) - planner_start ))" ""
     fi
     # Archive plan.json for this task, then clean up git
@@ -2705,6 +2732,7 @@ main() {
   fi
 
   echo ""
+  debug_log "pipeline" "Agents resolved" "agents=$(echo "$agents_to_run" | tr '\n' ',')" "profile=${PIPELINE_PROFILE:-standard}"
   echo -e "${BLUE}Agents to run:${NC} $(echo "$agents_to_run" | tr '\n' ' ')"
   echo ""
 
@@ -2729,12 +2757,14 @@ main() {
     should_run_summarizer=true
   fi
   for agent in $agents_to_run; do
+    debug_log "loop" "=== Agent loop iteration ===" "agent=$agent"
     if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
       foundry_set_state_status "$TASK_DIR" "in_progress" "$agent" "$agent"
     fi
 
     local prompt
     prompt=$(build_prompt "$agent")
+    debug_log "loop" "Prompt built" "agent=$agent" "prompt_length=${#prompt}"
 
     local agent_start
     agent_start=$(date +%s)
@@ -2743,7 +2773,9 @@ main() {
     local agent_log="$LOG_DIR/${TIMESTAMP}_${agent}.log"
 
     local run_exit=0
+    debug_log "loop" "Calling run_agent" "agent=$agent" "log=$agent_log"
     run_agent "$agent" "$prompt" || run_exit=$?
+    debug_log "loop" "run_agent returned" "agent=$agent" "exit=$run_exit" "duration=$(($(date +%s) - agent_start))s"
 
     if [[ $run_exit -eq 0 ]]; then
       local agent_dur=$(( $(date +%s) - agent_start ))

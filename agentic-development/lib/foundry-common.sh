@@ -65,6 +65,48 @@ runtime_log() {
   printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$log_file"
 }
 
+# ── Debug logging ──────────────────────────────────────────────────
+# Enable with FOUNDRY_DEBUG=true in .env.local
+# Writes timestamped debug entries to runtime/logs/foundry-debug.log
+# Usage: debug_log "category" "message" ["key=value" ...]
+
+# Load FOUNDRY_DEBUG from .env.local (unless already set in environment)
+if [[ "${FOUNDRY_DEBUG:-}" != "true" && -f "$REPO_ROOT/.env.local" ]]; then
+  if grep -qm1 '^FOUNDRY_DEBUG=true' "$REPO_ROOT/.env.local" 2>/dev/null; then
+    FOUNDRY_DEBUG=true
+  fi
+fi
+FOUNDRY_DEBUG="${FOUNDRY_DEBUG:-false}"
+FOUNDRY_DEBUG_LOG=""
+
+_init_debug_log() {
+  if [[ "$FOUNDRY_DEBUG" == "true" && -z "$FOUNDRY_DEBUG_LOG" ]]; then
+    ensure_runtime_root
+    FOUNDRY_DEBUG_LOG="${RUNTIME_LOG_DIR}/foundry-debug.log"
+    debug_log "init" "Debug logging enabled" "pid=$$" "repo=$REPO_ROOT"
+  fi
+}
+
+debug_log() {
+  [[ "$FOUNDRY_DEBUG" != "true" ]] && return 0
+  [[ -z "$FOUNDRY_DEBUG_LOG" ]] && _init_debug_log
+  local category="$1"
+  shift || true
+  local message="$1"
+  shift || true
+  # Extra key=value pairs
+  local extras=""
+  while [[ $# -gt 0 ]]; do
+    extras="${extras} $1"
+    shift
+  done
+  printf '[%s] [%s] %s%s\n' \
+    "$(date '+%Y-%m-%d %H:%M:%S.%3N')" \
+    "$category" \
+    "$message" \
+    "$extras" >> "$FOUNDRY_DEBUG_LOG" 2>/dev/null
+}
+
 foundry_worker_config_file() {
   echo "${REPO_ROOT}/.opencode/pipeline/monitor-workers"
 }
