@@ -115,9 +115,34 @@ The `brama-core/.claude/commands/skills/` directory appears to be a duplicate or
 
 ## Tester
 
-- **Status**: pending
-- **Test results**: —
-- **New tests written**: —
+- **Status**: completed
+- **Test results**: N/A — No tests required
+- **New tests written**: N/A
+
+### Analysis
+
+This task involved **pure file reorganization** — moving skill documentation and slash commands from `brama-core/.claude/` to root `.claude/`:
+
+**Files changed:**
+- 9 markdown skill files in `.claude/commands/skills/` (created)
+- 1 updated skill documentation file `.claude/skills/documentation/SKILL.md`
+- Deleted `brama-core/.claude/` directory (entire removal)
+
+**Test applicability:**
+| Test Type | Applicable? | Reason |
+|-----------|-------------|--------|
+| Unit/Functional tests | No | No PHP/Python/JS code changed |
+| Convention tests (TC-01..TC-05) | No | No agent manifests or compose files changed |
+| E2E tests | No | No UI changes (templates, controllers, CSS, JS) |
+
+**Verification performed:**
+- [x] Root `.claude/commands/skills/` exists with 9 slash command files
+- [x] Root `.claude/skills/` contains all skill directories
+- [x] `brama-core/.claude/` successfully deleted
+- [x] Documentation skill content updated correctly
+- [x] Slash command files have correct content structure
+
+**Conclusion:** This is a tooling configuration change only. No application code was modified, therefore no automated tests are required. The merge was executed correctly.
 
 ## Auditor
 
@@ -139,3 +164,4 @@ The `brama-core/.claude/commands/skills/` directory appears to be a duplicate or
 ---
 
 - **Commit (u-coder)**: 2e81526
+- **Commit (u-validator)**: c6decbd

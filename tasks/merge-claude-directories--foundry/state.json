@@ -4,9 +4,9 @@
   "started_at": "2026-03-26T09:40:04.018565Z",
   "attempt": 1,
   "status": "in_progress",
-  "current_step": "u-validator",
-  "resume_from": "u-validator",
-  "updated_at": "2026-03-26T09:57:03.736432Z",
+  "current_step": "u-tester",
+  "resume_from": "u-tester",
+  "updated_at": "2026-03-26T09:58:10.086969Z",
   "task_file": "/workspaces/brama/tasks/merge-claude-directories--foundry/task.md",
   "branch": "pipeline/merge-claude-directories",
   "agents": [
@@ -36,12 +36,23 @@
       "agent": "u-validator",
       "status": "done",
       "model": "openai/gpt-5.2",
-      "duration_seconds": 325,
+      "duration_seconds": 803,
       "input_tokens": 0,
       "output_tokens": 0,
       "cost": 0.0,
       "call_count": 1,
-      "updated_at": "2026-03-26T09:57:03.736420Z"
+      "updated_at": "2026-03-26T09:57:03.983934Z"
+    },
+    {
+      "agent": "u-tester",
+      "status": "done",
+      "model": "opencode-go/kimi-k2.5",
+      "duration_seconds": 63,
+      "input_tokens": 21042,
+      "output_tokens": 1899,
+      "cost": 0.0174,
+      "call_count": 1,
+      "updated_at": "2026-03-26T09:58:10.086941Z"
     }
   ]
 }
