@@ -99,16 +99,23 @@ Use `run` when you want Foundry to materialize the task directory and start righ
 ./agentic-development/foundry.sh run --task-file /absolute/path/to/task.md
 ```
 
-### Queue-first mode
+### Queue-first mode (manual)
 
 Use this when you want a pool of pending tasks that background processing will consume later:
 
 ```bash
-mkdir -p tasks/add-streaming-support--foundry
-cp /absolute/path/to/task.md tasks/add-streaming-support--foundry/task.md
+# Method 1: Manual directory creation
+mkdir -p tasks/add-streaming-support--foundry/artifacts
+cat > tasks/add-streaming-support--foundry/task.md <<EOF
+# Add streaming support
+
+Task description here...
+EOF
 ```
 
 If `state.json` does not exist yet, Foundry treats the task as `pending`.
+
+**Note**: The directory name must follow the pattern `<slug>--foundry`. Task files created this way will be picked up by `./agentic-development/foundry.sh headless` or `batch` commands.
 
 ## Task Pool Semantics
 

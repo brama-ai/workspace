@@ -1071,6 +1071,65 @@ get_current_model() {
   sed -n 's/^model:[[:space:]]*//p' "$agent_file" 2>/dev/null | tr -d ' '
 }
 
+# Model blacklist cache (30min TTL)
+MODEL_BLACKLIST_FILE="${REPO_ROOT}/.opencode/pipeline/.model-blacklist.json"
+
+is_model_blacklisted() {
+  local model="$1"
+  local now
+  now=$(date +%s)
+
+  [[ ! -f "$MODEL_BLACKLIST_FILE" ]] && return 1
+
+  local blacklist_entry
+  blacklist_entry=$(jq -r --arg model "$model" --argjson now "$now" \
+    '.[$model] | select(. != null and . > $now)' \
+    "$MODEL_BLACKLIST_FILE" 2>/dev/null || echo "")
+
+  [[ -n "$blacklist_entry" ]]
+}
+
+blacklist_model() {
+  local model="$1"
+  local ttl_seconds="${2:-1800}"  # Default 30 min
+  local now
+  now=$(date +%s)
+  local expires_at=$((now + ttl_seconds))
+
+  mkdir -p "$(dirname "$MODEL_BLACKLIST_FILE")"
+
+  if [[ -f "$MODEL_BLACKLIST_FILE" ]]; then
+    jq --arg model "$model" --argjson expires "$expires_at" \
+      '. + {($model): $expires}' \
+      "$MODEL_BLACKLIST_FILE" > "${MODEL_BLACKLIST_FILE}.tmp" 2>/dev/null || echo "{}" > "${MODEL_BLACKLIST_FILE}.tmp"
+  else
+    echo "{\"$model\": $expires_at}" > "${MODEL_BLACKLIST_FILE}.tmp"
+  fi
+
+  mv "${MODEL_BLACKLIST_FILE}.tmp" "$MODEL_BLACKLIST_FILE"
+  echo -e "${YELLOW}  🚫 Blacklisted model: ${model} for ${ttl_seconds}s${NC}"
+}
+
+filter_blacklisted_models() {
+  local models_csv="$1"
+  local filtered=()
+
+  IFS=',' read -r -a model_array <<< "$models_csv"
+
+  for model in "${model_array[@]}"; do
+    if ! is_model_blacklisted "$model"; then
+      filtered+=("$model")
+    else
+      echo -e "${YELLOW}  ⏭️  Skipping blacklisted model: ${model}${NC}" >&2
+    fi
+  done
+
+  # Join array back to CSV
+  local result
+  result=$(IFS=','; echo "${filtered[*]}")
+  echo "$result"
+}
+
 swap_agent_model() {
   local agent="$1"
   local new_model="$2"
@@ -1410,9 +1469,17 @@ monitor_agent_loop() {
 
   local monitor_start
   monitor_start=$(date +%s)
+  local fast_check_count=0
 
   while kill -0 "$agent_pid" 2>/dev/null; do
-    sleep "$check_interval"
+    # Use faster checks (20s) for the first few iterations to catch immediate failures
+    local current_interval=$check_interval
+    if [[ $fast_check_count -lt 2 ]]; then
+      current_interval=20
+      fast_check_count=$((fast_check_count + 1))
+    fi
+
+    sleep "$current_interval"
     [[ -f "$log_file" ]] || continue
 
     local cur_size
@@ -1421,8 +1488,26 @@ monitor_agent_loop() {
     # Check 1: Log file not growing (agent stalled)
     if [[ "$cur_size" -eq "$prev_size" && "$cur_size" -gt 0 ]]; then
       stall_count=$((stall_count + 1))
-      if [[ $stall_count -ge $max_stalls ]]; then
-        echo "LOOP_DETECTED:stall:Log not growing for $((max_stalls * check_interval))s" > "${log_file}.loop"
+
+      # Faster stall detection if log is minimal (model didn't start)
+      local stall_threshold=$max_stalls
+      local log_lines
+      log_lines=$(wc -l < "$log_file" 2>/dev/null | tr -d ' ' || echo 0)
+
+      # If log has < 5 lines, use aggressive stall detection
+      # This handles cases where model fails to start due to rate limits
+      if [[ "$log_lines" -lt 5 && "$stall_count" -ge 1 ]]; then
+        # After just 20s with minimal output, trigger fallback
+        local stall_duration=$((20 + (stall_count - 1) * current_interval))
+        echo "LOOP_DETECTED:stall:Log not growing for ${stall_duration}s (minimal output: ${log_lines} lines)" > "${log_file}.loop"
+        kill "$agent_pid" 2>/dev/null
+        return
+      fi
+
+      # Normal stall detection for active logs
+      if [[ $stall_count -ge $stall_threshold ]]; then
+        local stall_duration=$((40 + (stall_count - 2) * check_interval))  # 2 * 20s + rest * 60s
+        echo "LOOP_DETECTED:stall:Log not growing for ${stall_duration}s" > "${log_file}.loop"
         kill "$agent_pid" 2>/dev/null
         return
       fi
@@ -1545,8 +1630,10 @@ run_agent() {
   local max_attempts=$(( MAX_RETRIES + 1 ))
   local fallback_index=0
 
-  # Split fallback chain into array
-  IFS=',' read -r -a fallback_models <<< "$fallback_chain"
+  # Split fallback chain into array, filtering blacklisted models
+  local filtered_fallback_chain
+  filtered_fallback_chain=$(filter_blacklisted_models "$fallback_chain")
+  IFS=',' read -r -a fallback_models <<< "$filtered_fallback_chain"
 
   while [[ $attempt -lt $max_attempts ]]; do
     attempt=$((attempt + 1))
@@ -1648,10 +1735,35 @@ run_agent() {
 
       # Stall/loop should trigger fallback (model may be unresponsive due to rate limit)
       if [[ $fallback_index -lt ${#fallback_models[@]} ]]; then
+        local failed_model
+        failed_model=$(get_current_model "$agent")
+
+        # Blacklist the failed model (30min TTL)
+        blacklist_model "$failed_model" 1800
+
         local next_model="${fallback_models[$fallback_index]}"
         fallback_index=$((fallback_index + 1))
+
+        # Skip blacklisted models in fallback chain
+        while [[ $fallback_index -le ${#fallback_models[@]} ]] && is_model_blacklisted "$next_model"; do
+          echo -e "${YELLOW}  ⏭️  Skipping blacklisted fallback model: ${next_model}${NC}"
+          if [[ $fallback_index -lt ${#fallback_models[@]} ]]; then
+            next_model="${fallback_models[$fallback_index]}"
+            fallback_index=$((fallback_index + 1))
+          else
+            next_model=""
+            break
+          fi
+        done
+
+        if [[ -z "$next_model" ]]; then
+          echo -e "${RED}✗ No more fallback models available (all blacklisted)${NC}"
+          restore_agent_model "$agent" "$original_model"
+          return 1
+        fi
+
         echo -e "${YELLOW}  Stall detected — switching to fallback: ${next_model}${NC}"
-        emit_event "AGENT_FALLBACK" "agent=${agent}|from=$(get_current_model "$agent")|to=${next_model}|reason=stall"
+        emit_event "AGENT_FALLBACK" "agent=${agent}|from=${failed_model}|to=${next_model}|reason=stall"
         swap_agent_model "$agent" "$next_model"
         attempt=$((attempt - 1))
         sleep 5
