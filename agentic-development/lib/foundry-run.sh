@@ -1672,11 +1672,15 @@ run_agent() {
     local monitor_pid=$!
 
     # Wait for agent to finish
-    wait "$agent_pid" 2>/dev/null || exit_code=$?
+    wait "$tee_pid" 2>/dev/null || exit_code=$?
 
-    # Kill monitor
+    # Kill monitor and any remaining agent processes
     kill "$monitor_pid" 2>/dev/null
     wait "$monitor_pid" 2>/dev/null
+    # Ensure agent process tree is fully cleaned up
+    if [[ -n "$agent_pgid" ]]; then
+      kill -- "-$agent_pgid" 2>/dev/null || true
+    fi
 
     local agent_end_epoch
     agent_end_epoch=$(date +%s)
