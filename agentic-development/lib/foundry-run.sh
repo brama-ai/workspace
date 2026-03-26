@@ -2555,61 +2555,88 @@ main() {
   local main_branch
   main_branch=$(git -C "$REPO_ROOT" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@refs/remotes/origin/@@' || echo "main")
 
-  # Only enforce main branch requirement for new branches (not for existing task branches)
-  if ! git -C "$REPO_ROOT" rev-parse --verify "$branch" &>/dev/null; then
-    # New branch — must be on main/master
-    if [[ "$current_branch" != "$main_branch" && "$current_branch" != "master" ]]; then
-      # Check if we can auto-switch to main (clean working tree)
-      if git -C "$REPO_ROOT" diff-index --quiet HEAD -- 2>/dev/null; then
-        echo -e "${YELLOW}⚠ Not on ${main_branch} (on ${current_branch}), but working tree is clean${NC}"
-        echo -e "${YELLOW}  Auto-switching to ${main_branch}...${NC}"
-        if git -C "$REPO_ROOT" checkout "$main_branch" 2>/dev/null; then
-          echo -e "${GREEN}✓ Switched to ${main_branch}${NC}"
+  # ── Branch checkout logic ──────────────────────────────────────────
+  # Case 1: Already on the target branch → skip checkout entirely
+  # Case 2: Target branch exists → switch to it
+  # Case 3: Target branch doesn't exist → create from main
+  #
+  # Fail explicitly if untracked files block checkout (don't silently die).
+
+  if [[ "$current_branch" == "$branch" ]]; then
+    # Already on the target feature branch — nothing to do
+    echo -e "${GREEN}✓ Already on target branch: ${branch}${NC}"
+  else
+    # Need to switch branches
+    if ! git -C "$REPO_ROOT" rev-parse --verify "$branch" &>/dev/null; then
+      # New branch — must be on main/master to create it
+      if [[ "$current_branch" != "$main_branch" && "$current_branch" != "master" ]]; then
+        if git -C "$REPO_ROOT" diff-index --quiet HEAD -- 2>/dev/null; then
+          echo -e "${YELLOW}⚠ Not on ${main_branch} (on ${current_branch}), auto-switching...${NC}"
+          if ! git -C "$REPO_ROOT" checkout "$main_branch" 2>/dev/null; then
+            echo -e "${RED}✗ Failed to switch to ${main_branch}${NC}"
+            [[ "$TASK_LIFECYCLE" == true ]] && foundry_set_state_status "$TASK_DIR" "stopped" "branch_switch_failed" ""
+            exit 1
+          fi
           current_branch="$main_branch"
         else
-          echo -e "${RED}✗ Failed to auto-switch to ${main_branch}${NC}"
-          echo -e "${RED}  Run: git checkout ${main_branch}${NC}"
+          echo -e "${RED}✗ Cannot create branch: must be on ${main_branch} (currently on ${current_branch})${NC}"
+          echo -e "${RED}  Working tree has uncommitted changes — cannot auto-switch${NC}"
+          echo -e "${RED}  Run: git stash && git checkout ${main_branch}${NC}"
+          [[ "$TASK_LIFECYCLE" == true ]] && foundry_set_state_status "$TASK_DIR" "stopped" "dirty_workspace" ""
           exit 1
         fi
+      fi
+      echo -e "${GREEN}✓ On ${main_branch} — safe to create task branch${NC}"
+    fi
+
+    # Create or switch to branch (with retry for lock contention)
+    local branch_ok=false
+    local checkout_error=""
+    for _try in 1 2 3 4 5; do
+      checkout_error=""
+      if git -C "$REPO_ROOT" rev-parse --verify "$branch" &>/dev/null; then
+        # Branch exists — switch to it (or re-create in worktree mode)
+        if [[ -f "$REPO_ROOT/.git" ]]; then
+          git -C "$REPO_ROOT" branch -D "$branch" 2>/dev/null || true
+          checkout_error=$(git -C "$REPO_ROOT" checkout -b "$branch" 2>&1) && { branch_ok=true; break; }
+        else
+          checkout_error=$(git -C "$REPO_ROOT" checkout "$branch" 2>&1) && {
+            echo -e "${YELLOW}Switched to existing branch: ${branch}${NC}"
+            branch_ok=true; break
+          }
+        fi
       else
-        echo -e "${RED}✗ Cannot create new task branch: must be on ${main_branch} (currently on ${current_branch})${NC}"
-        echo -e "${RED}  Working tree has uncommitted changes - cannot auto-switch${NC}"
-        echo -e "${RED}  Run: git stash && git checkout ${main_branch}${NC}"
+        checkout_error=$(git -C "$REPO_ROOT" checkout -b "$branch" 2>&1) && {
+          echo -e "${GREEN}Created branch: ${branch}${NC}"
+          branch_ok=true; break
+        }
+      fi
+
+      # Check if failure is due to untracked files (not recoverable by retry)
+      if echo "$checkout_error" | grep -q "untracked working tree files would be overwritten"; then
+        local blocking_files
+        blocking_files=$(echo "$checkout_error" | grep -A50 "untracked working tree files" | grep "^\t" | head -10)
+        echo -e "${RED}✗ Cannot switch to branch ${branch}: untracked files would be overwritten${NC}"
+        echo -e "${RED}  Blocking files:${NC}"
+        echo "$blocking_files" | while read -r f; do echo -e "${RED}    $f${NC}"; done
+        echo -e "${RED}  Fix: remove or commit these files, then retry${NC}"
+        [[ "$TASK_LIFECYCLE" == true ]] && {
+          foundry_set_state_status "$TASK_DIR" "stopped" "untracked_files_block_checkout" ""
+          pipeline_task_append_event "$TASK_DIR" "task_stopped" \
+            "Untracked files block checkout to $branch: $(echo "$blocking_files" | tr '\n' ', ')" ""
+        }
         exit 1
       fi
-    fi
-    echo -e "${GREEN}✓ On ${main_branch} — safe to create task branch${NC}"
-  fi
 
-  # Create or switch to branch (with retry for lock contention in parallel mode)
-  local branch_ok=false
-  for _try in 1 2 3 4 5; do
-    if git -C "$REPO_ROOT" rev-parse --verify "$branch" &>/dev/null; then
-      # Branch exists — re-create from current HEAD in worktree mode
-      if [[ -f "$REPO_ROOT/.git" ]]; then
-        git -C "$REPO_ROOT" branch -D "$branch" 2>/dev/null || true
-        if git -C "$REPO_ROOT" checkout -b "$branch" 2>/dev/null; then
-          echo -e "${YELLOW}Re-created branch (worktree re-run): ${branch}${NC}"
-          branch_ok=true; break
-        fi
-      else
-        if git -C "$REPO_ROOT" checkout "$branch" 2>/dev/null; then
-          echo -e "${YELLOW}Switched to existing branch: ${branch}${NC}"
-          branch_ok=true; break
-        fi
-      fi
-    else
-      if git -C "$REPO_ROOT" checkout -b "$branch" 2>/dev/null; then
-        echo -e "${GREEN}Created branch: ${branch}${NC}"
-        branch_ok=true; break
-      fi
+      echo -e "${YELLOW}Git lock contention (attempt ${_try}/5), retrying in ${_try}s...${NC}"
+      sleep "$_try"
+    done
+    if [[ "$branch_ok" != true ]]; then
+      echo -e "${RED}Failed to create/switch branch after 5 attempts${NC}"
+      [[ -n "$checkout_error" ]] && echo -e "${RED}  Last error: ${checkout_error}${NC}"
+      [[ "$TASK_LIFECYCLE" == true ]] && foundry_set_state_status "$TASK_DIR" "stopped" "branch_checkout_failed" ""
+      exit 1
     fi
-    echo -e "${YELLOW}Git lock contention (attempt ${_try}/5), retrying in ${_try}s...${NC}"
-    sleep "$_try"
-  done
-  if [[ "$branch_ok" != true ]]; then
-    echo -e "${RED}Failed to create/switch branch after 5 attempts${NC}"
-    exit 1
   fi
 
   # Move task to in-progress (if using task file lifecycle)
