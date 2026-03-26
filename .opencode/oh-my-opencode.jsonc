@@ -58,96 +58,104 @@
     // Subagent model overrides + fallbacks
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     //
-    // Rule: spread primaries across providers. Fallback order = fastest TTFO first.
-    // GPT included in fallback (after fast models) — may stall when rate-limited,
-    // stall detection handles it in ~20s. Will auto-recover when limits reset.
+    // Rule: spread primaries across 6 providers. Fallback order = fastest TTFO first.
+    // Measured TTFO (2026-03-26):
+    //   anthropic 6-7s | google 6s | minimax-coding-plan 7s | opencode-go 8s | openai may-stall | opencode/free 12-19s
     "u-architect": {
       "model": "anthropic/claude-opus-4-6",
       "fallback_models": [
-        "google/gemini-2.5-flash",          // 6s TTFO
-        "opencode-go/glm-5",               // 8s TTFO
-        "openai/gpt-5.4",                  // may stall if rate-limited
-        "opencode/big-pickle",             // 12s TTFO
+        "google/gemini-2.5-flash",                    // 6s
+        "minimax-coding-plan/MiniMax-M2.7",           // 7s
+        "opencode-go/glm-5",                          // 8s
+        "openai/gpt-5.4",                             // may stall
+        "opencode/big-pickle",                        // 12s
         "openrouter/free"
       ]
     },
     "u-coder": {
       "model": "anthropic/claude-sonnet-4-6",
       "fallback_models": [
-        "opencode-go/glm-5",               // 8s TTFO
-        "google/gemini-2.5-flash",          // 6s TTFO
-        "openai/gpt-5.3-codex",            // may stall if rate-limited
-        "opencode/big-pickle",             // 12s TTFO
+        "minimax-coding-plan/MiniMax-M2.7",           // 7s
+        "opencode-go/glm-5",                          // 8s
+        "google/gemini-2.5-flash",                    // 6s
+        "openai/gpt-5.3-codex",                       // may stall
+        "opencode/big-pickle",                        // 12s
         "openrouter/qwen/qwen3-coder:free"
       ]
     },
     "u-reviewer": {
-      "model": "opencode-go/glm-5",
+      "model": "minimax-coding-plan/MiniMax-M2.7",
       "fallback_models": [
-        "anthropic/claude-sonnet-4-6",      // 6s TTFO
-        "google/gemini-2.5-flash",          // 6s TTFO
-        "openai/gpt-5.4",                  // may stall if rate-limited
-        "opencode/big-pickle",             // 12s TTFO
+        "anthropic/claude-sonnet-4-6",                // 6s
+        "opencode-go/glm-5",                          // 8s
+        "google/gemini-2.5-flash",                    // 6s
+        "openai/gpt-5.4",                             // may stall
+        "opencode/big-pickle",                        // 12s
         "openrouter/qwen/qwen3-coder:free"
       ]
     },
     "u-validator": {
-      "model": "opencode-go/kimi-k2.5",
+      "model": "minimax-coding-plan/MiniMax-M2.5-highspeed",
       "fallback_models": [
-        "google/gemini-2.5-flash",          // 6s TTFO
-        "anthropic/claude-sonnet-4-6",      // 6s TTFO
-        "openai/gpt-5.2",                  // may stall if rate-limited
-        "opencode/big-pickle",             // 12s TTFO
+        "opencode-go/kimi-k2.5",                      // 8s
+        "google/gemini-2.5-flash",                    // 6s
+        "anthropic/claude-sonnet-4-6",                // 6s
+        "openai/gpt-5.2",                             // may stall
+        "opencode/big-pickle",                        // 12s
         "openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free"
       ]
     },
     "u-tester": {
       "model": "opencode-go/kimi-k2.5",
       "fallback_models": [
-        "anthropic/claude-sonnet-4-6",      // 6s TTFO
-        "google/gemini-2.5-flash",          // 6s TTFO
-        "openai/gpt-5.3-codex",            // may stall if rate-limited
-        "opencode/big-pickle",             // 12s TTFO
+        "minimax-coding-plan/MiniMax-M2.7",           // 7s
+        "anthropic/claude-sonnet-4-6",                // 6s
+        "google/gemini-2.5-flash",                    // 6s
+        "openai/gpt-5.3-codex",                       // may stall
+        "opencode/big-pickle",                        // 12s
         "openrouter/qwen/qwen3-coder:free"
       ]
     },
     "u-auditor": {
       "model": "anthropic/claude-opus-4-6",
       "fallback_models": [
-        "opencode-go/glm-5",               // 8s TTFO
-        "google/gemini-2.5-flash",          // 6s TTFO
-        "openai/gpt-5.4",                  // may stall if rate-limited
-        "opencode/big-pickle",             // 12s TTFO
+        "minimax-coding-plan/MiniMax-M2.7",           // 7s
+        "opencode-go/glm-5",                          // 8s
+        "google/gemini-2.5-flash",                    // 6s
+        "openai/gpt-5.4",                             // may stall
+        "opencode/big-pickle",                        // 12s
         "openrouter/free"
       ]
     },
     "u-documenter": {
       "model": "google/gemini-2.5-flash",
       "fallback_models": [
-        "anthropic/claude-sonnet-4-6",      // 6s TTFO
-        "opencode-go/kimi-k2.5",           // 8s TTFO
-        "openai/gpt-5.4",                  // may stall if rate-limited
-        "opencode/big-pickle",             // 12s TTFO
+        "anthropic/claude-sonnet-4-6",                // 6s
+        "minimax-coding-plan/MiniMax-M2.7",           // 7s
+        "opencode-go/kimi-k2.5",                      // 8s
+        "openai/gpt-5.4",                             // may stall
+        "opencode/big-pickle",                        // 12s
         "openrouter/free"
       ]
     },
     "u-summarizer": {
-      "model": "anthropic/claude-sonnet-4-6",
+      "model": "openai/gpt-5.4",
       "fallback_models": [
-        "anthropic/claude-opus-4-6",        // 7s TTFO
-        "google/gemini-2.5-flash",          // 6s TTFO
-        "openai/gpt-5.4",                  // may stall if rate-limited
-        "opencode-go/glm-5",               // 8s TTFO
-        "opencode/big-pickle",             // 12s TTFO
+        "anthropic/claude-sonnet-4-6",                // 6s
+        "minimax-coding-plan/MiniMax-M2.7",           // 7s
+        "google/gemini-2.5-flash",                    // 6s
+        "opencode-go/glm-5",                          // 8s
+        "opencode/big-pickle",                        // 12s
         "openrouter/deepseek/deepseek-r1-0528:free"
       ]
     },
     "u-translater": {
       "model": "google/gemini-2.5-flash",
       "fallback_models": [
-        "opencode-go/kimi-k2.5",
-        "anthropic/claude-sonnet-4-6",
-        "opencode/big-pickle",
+        "minimax-coding-plan/MiniMax-M2.5",           // 7s
+        "opencode-go/kimi-k2.5",                      // 8s
+        "anthropic/claude-sonnet-4-6",                // 6s
+        "opencode/big-pickle",                        // 12s
         "openrouter/free"
       ]
     },
@@ -322,6 +330,7 @@
       "opencode-go": 3,
       "anthropic": 3,
       "openai": 4,
+      "minimax-coding-plan": 4,
       "google": 2,
       "opencode": 3,
       "openrouter": 6
@@ -329,6 +338,8 @@
     "modelConcurrency": {
       "anthropic/claude-opus-4-6": 2,
       "anthropic/claude-sonnet-4-6": 3,
+      "minimax-coding-plan/MiniMax-M2.7": 3,
+      "minimax-coding-plan/MiniMax-M2.5-highspeed": 4,
       "opencode-go/glm-5": 3,
       "opencode-go/kimi-k2.5": 3,
       "google/gemini-2.5-flash": 3,

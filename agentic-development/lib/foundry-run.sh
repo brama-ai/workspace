@@ -98,20 +98,20 @@ FREE_MODELS="${PIPELINE_FREE_MODELS:-opencode/big-pickle,opencode/gpt-5-nano}"
 # "free" expands to: opencode/big-pickle,opencode/gpt-5-nano
 # "cheap" expands to: openrouter/deepseek-v3.2,openrouter/gemini-3.1-flash-lite
 #
-# Measured TTFO (2026-03-26): anthropic 6-7s, google 6s, opencode-go 8s, opencode/free 12-19s
-# openai/* may hit rate limits — stall detection handles fallback in ~20s
-# minimax/* temporarily disabled (subscription routing issue)
-# Order: fastest responding first → openai (may stall) → free tier last
-FALLBACK_INVESTIGATOR="${PIPELINE_FALLBACK_INVESTIGATOR:-google/gemini-2.5-flash,opencode-go/glm-5,openai/gpt-5.4,anthropic/claude-sonnet-4-6,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
-FALLBACK_ARCHITECT="${PIPELINE_FALLBACK_ARCHITECT:-google/gemini-2.5-flash,opencode-go/glm-5,openai/gpt-5.4,anthropic/claude-sonnet-4-6,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
-FALLBACK_CODER="${PIPELINE_FALLBACK_CODER:-anthropic/claude-sonnet-4-6,opencode-go/glm-5,openai/gpt-5.3-codex,google/gemini-2.5-flash,opencode/big-pickle,openrouter/qwen/qwen3-coder:free}"
-FALLBACK_VALIDATOR="${PIPELINE_FALLBACK_VALIDATOR:-opencode-go/kimi-k2.5,google/gemini-2.5-flash,openai/gpt-5.2,anthropic/claude-sonnet-4-6,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
-FALLBACK_TESTER="${PIPELINE_FALLBACK_TESTER:-anthropic/claude-sonnet-4-6,opencode-go/glm-5,openai/gpt-5.3-codex,google/gemini-2.5-flash,opencode/big-pickle,openrouter/qwen/qwen3-coder:free}"
-FALLBACK_DOCUMENTER="${PIPELINE_FALLBACK_DOCUMENTER:-anthropic/claude-sonnet-4-6,google/gemini-2.5-flash,openai/gpt-5.4,opencode-go/kimi-k2.5,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
-FALLBACK_AUDITOR="${PIPELINE_FALLBACK_AUDITOR:-anthropic/claude-sonnet-4-6,opencode-go/glm-5,openai/gpt-5.4,google/gemini-2.5-flash,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
-FALLBACK_E2E="${PIPELINE_FALLBACK_E2E:-opencode-go/glm-5,google/gemini-2.5-flash,openai/gpt-5.4,anthropic/claude-sonnet-4-6,opencode/big-pickle,openrouter/qwen/qwen3-coder:free}"
-FALLBACK_MERGER="${PIPELINE_FALLBACK_MERGER:-anthropic/claude-sonnet-4-6,opencode-go/glm-5,openai/gpt-5.4,google/gemini-2.5-flash,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
-FALLBACK_SUMMARIZER="${PIPELINE_FALLBACK_SUMMARIZER:-anthropic/claude-opus-4-6,google/gemini-2.5-flash,openai/gpt-5.4,opencode-go/glm-5,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528:free}"
+# Measured TTFO (2026-03-26): anthropic 6-7s, google 6s, minimax-coding-plan 7s, opencode-go 8s, opencode/free 12-19s
+# openai/* may hit rate limits — stall detection handles fallback in ~12s
+# Provider: minimax-coding-plan (NOT minimax/)
+# Order: fastest (6-8s) → openai (may stall) → free tier last
+FALLBACK_INVESTIGATOR="${PIPELINE_FALLBACK_INVESTIGATOR:-google/gemini-2.5-flash,minimax-coding-plan/MiniMax-M2.7,opencode-go/glm-5,openai/gpt-5.4,anthropic/claude-sonnet-4-6,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
+FALLBACK_ARCHITECT="${PIPELINE_FALLBACK_ARCHITECT:-google/gemini-2.5-flash,minimax-coding-plan/MiniMax-M2.7,opencode-go/glm-5,openai/gpt-5.4,anthropic/claude-sonnet-4-6,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
+FALLBACK_CODER="${PIPELINE_FALLBACK_CODER:-minimax-coding-plan/MiniMax-M2.7,opencode-go/glm-5,google/gemini-2.5-flash,openai/gpt-5.3-codex,anthropic/claude-sonnet-4-6,opencode/big-pickle,openrouter/qwen/qwen3-coder:free}"
+FALLBACK_VALIDATOR="${PIPELINE_FALLBACK_VALIDATOR:-opencode-go/kimi-k2.5,google/gemini-2.5-flash,minimax-coding-plan/MiniMax-M2.7,openai/gpt-5.2,anthropic/claude-sonnet-4-6,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
+FALLBACK_TESTER="${PIPELINE_FALLBACK_TESTER:-minimax-coding-plan/MiniMax-M2.7,anthropic/claude-sonnet-4-6,opencode-go/glm-5,openai/gpt-5.3-codex,google/gemini-2.5-flash,opencode/big-pickle,openrouter/qwen/qwen3-coder:free}"
+FALLBACK_DOCUMENTER="${PIPELINE_FALLBACK_DOCUMENTER:-anthropic/claude-sonnet-4-6,minimax-coding-plan/MiniMax-M2.7,google/gemini-2.5-flash,openai/gpt-5.4,opencode-go/kimi-k2.5,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
+FALLBACK_AUDITOR="${PIPELINE_FALLBACK_AUDITOR:-minimax-coding-plan/MiniMax-M2.7,anthropic/claude-sonnet-4-6,opencode-go/glm-5,openai/gpt-5.4,google/gemini-2.5-flash,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
+FALLBACK_E2E="${PIPELINE_FALLBACK_E2E:-opencode-go/glm-5,minimax-coding-plan/MiniMax-M2.7,google/gemini-2.5-flash,openai/gpt-5.4,anthropic/claude-sonnet-4-6,opencode/big-pickle,openrouter/qwen/qwen3-coder:free}"
+FALLBACK_MERGER="${PIPELINE_FALLBACK_MERGER:-minimax-coding-plan/MiniMax-M2.7,anthropic/claude-sonnet-4-6,opencode-go/glm-5,openai/gpt-5.4,google/gemini-2.5-flash,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
+FALLBACK_SUMMARIZER="${PIPELINE_FALLBACK_SUMMARIZER:-anthropic/claude-opus-4-6,minimax-coding-plan/MiniMax-M2.7,google/gemini-2.5-flash,openai/gpt-5.4,opencode-go/glm-5,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528:free}"
 
 # ── Help ──────────────────────────────────────────────────────────────
 
@@ -1491,7 +1491,8 @@ monitor_agent_loop() {
   local fast_check_count=0
 
   while kill -0 "$agent_pid" 2>/dev/null; do
-    # Use faster checks (20s) for the first few iterations to catch immediate failures
+    # Use faster checks (20s) for the first few iterations to catch stalled models.
+    # Measured TTFO: all working models respond within 8s; 20s gives safe margin for slow free-tier.
     local current_interval=$check_interval
     if [[ $fast_check_count -lt 2 ]]; then
       current_interval=20
