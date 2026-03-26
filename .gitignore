@@ -52,3 +52,6 @@ agentic-development/runtime/*
 tasks-e2e-test/
 agentic-development/tests/e2e-agents/tasks-e2e-isolated/
 agentic-development/tests/e2e-agents/test-results/
+
+# Doctor root cause reports (auto-generated)
+agentic-development/doctor/root-cause-*.md

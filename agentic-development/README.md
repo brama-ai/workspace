@@ -287,6 +287,69 @@ Execution-level logs and reports:
 
 This prepares task/runtime directories and validates supporting dependencies.
 
+## Doctor (Foundry Diagnostics)
+
+The Doctor agent diagnoses Foundry pipeline problems, creates root cause reports, and fixes task state issues.
+
+### Usage
+
+Via slash command (recommended):
+```bash
+/doctor              # Diagnose and create root cause report
+/doctor analyze      # Analyze patterns from previous reports
+/doctor fix          # Apply state fixes
+```
+
+Or direct invocation:
+```bash
+opencode run --agent u-doctor "Diagnose current Foundry state"
+```
+
+### What it checks
+
+- **Failed tasks** - analyzes why they failed, extracts evidence from logs
+- **Stuck tasks** - detects tasks with stale locks or no recent updates
+- **Zombie processes** - finds orphaned foundry/agent processes
+- **Missing files** - checks for absent handoff.md, state.json, summary.md
+- **Stale locks** - identifies `.claim.lock` files older than 30 minutes
+
+### Root Cause Reports
+
+Doctor creates timestamped reports in [`doctor/`](doctor/):
+
+```text
+agentic-development/doctor/
+  root-cause-20260326-104200.md  # Individual reports (ignored by git)
+  patterns.md                     # Auto-generated pattern summary
+```
+
+Each report contains:
+- **Symptoms** - observable problems
+- **Root Cause** - why it happened
+- **Evidence** - state files, logs, process info
+- **Pattern Analysis** - similar issues from history
+- **Recommended Fix** - immediate (state) and long-term (code) fixes
+
+### State Fixes (Automatic)
+
+Doctor can automatically fix:
+- Remove stale `.claim.lock` files (>30min old)
+- Update `state.json` to mark dead tasks as failed/cancelled
+- Kill confirmed zombie processes
+- Create missing `handoff.md` skeletons
+
+Doctor will **never** automatically:
+- Modify code files
+- Delete task directories
+- Change git branches
+- Restart running agents
+
+### Pattern Detection
+
+When 3+ root cause reports show the same issue, Doctor recommends a code fix.
+
+Example: If `openai/gpt-5.4` stalls in 3 separate tasks, Doctor suggests demoting it from the primary model list.
+
 ## Compatibility Notes
 
 - `make builder-setup` remains as a legacy alias.

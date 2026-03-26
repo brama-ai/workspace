@@ -1,4 +1,0 @@
-{"timestamp": "2026-03-25T17:42:58.375568Z", "type": "run_started", "message": "Foundry run started", "step": "u-planner"}
-{"timestamp": "2026-03-25T17:45:50.713634Z", "type": "run_completed", "message": "Foundry run completed", "step": "u-summarizer"}
-{"timestamp": "2026-03-25T17:51:38.078223Z", "type": "run_started", "message": "Foundry run started", "step": "u-planner"}
-{"timestamp": "2026-03-25T18:13:40.617537Z", "type": "stopped", "message": "Pipeline stopped by user"}
