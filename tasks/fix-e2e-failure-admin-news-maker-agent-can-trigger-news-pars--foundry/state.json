@@ -3,12 +3,10 @@
   "workflow": "foundry",
   "started_at": "2026-03-24T23:17:00.659813Z",
   "attempt": 1,
-  "status": "in_progress",
+  "status": "cancelled",
   "current_step": null,
   "resume_from": null,
-  "updated_at": "2026-03-25T18:21:34.259366Z",
+  "updated_at": "2026-03-25T21:26:28.202603Z",
   "task_file": "/workspaces/brama/tasks/fix-e2e-failure-admin-news-maker-agent-can-trigger-news-pars--foundry/task.md",
-  "branch": null,
-  "worker_id": "worker-1",
-  "claimed_at": "2026-03-25T18:21:34.259366Z"
+  "branch": null
 }

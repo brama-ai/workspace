@@ -39,7 +39,8 @@ export default async function globalSetup() {
   }
 
   // Create test tasks directory (isolated from production)
-  const testTasksDir = path.join(repoRoot, 'tasks-e2e-test');
+  // Use FOUNDRY_TASK_ROOT from environment if available (for isolated e2e container)
+  const testTasksDir = process.env.FOUNDRY_TASK_ROOT || path.join(repoRoot, 'tasks-e2e-test');
   if (!fs.existsSync(testTasksDir)) {
     fs.mkdirSync(testTasksDir, { recursive: true });
   }
@@ -47,4 +48,5 @@ export default async function globalSetup() {
   console.log('✅ Global setup complete');
   console.log(`   Repo root: ${repoRoot}`);
   console.log(`   Test tasks dir: ${testTasksDir}`);
+  console.log(`   Isolated mode: ${process.env.E2E_TEST_MODE === '1' ? 'YES' : 'NO'}`);
 }

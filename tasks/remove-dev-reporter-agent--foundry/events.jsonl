@@ -1,2 +1,0 @@
-{"timestamp": "2026-03-25T13:53:17.445942Z", "type": "run_started", "message": "Foundry run started", "step": "u-planner"}
-{"timestamp": "2026-03-25T13:53:54.102697Z", "type": "run_completed", "message": "Foundry run completed", "step": "u-summarizer"}

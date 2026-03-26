@@ -35,7 +35,8 @@ export default async function globalTeardown() {
   }
 
   // Optionally clean up test tasks directory
-  const testTasksDir = path.join(repoRoot, 'tasks-e2e-test');
+  // Use FOUNDRY_TASK_ROOT from environment if available (for isolated e2e container)
+  const testTasksDir = process.env.FOUNDRY_TASK_ROOT || path.join(repoRoot, 'tasks-e2e-test');
   if (fs.existsSync(testTasksDir)) {
     console.log('   Cleaning test tasks directory...');
     fs.rmSync(testTasksDir, { recursive: true, force: true });

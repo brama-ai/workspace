@@ -12,7 +12,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const REPO_ROOT = path.resolve(__dirname, '../../../..');
-export const TEST_TASKS_DIR = path.join(REPO_ROOT, 'tasks-e2e-test');
+// Use FOUNDRY_TASK_ROOT from environment if available (for isolated e2e container)
+// Otherwise fall back to tasks-e2e-test in repo root
+export const TEST_TASKS_DIR = process.env.FOUNDRY_TASK_ROOT || path.join(REPO_ROOT, 'tasks-e2e-test');
 
 export interface ExecResult {
   stdout: string;
@@ -172,10 +174,13 @@ export function runFoundry(args: string[], options: {
   e2eTestMode?: boolean;
   taskRoot?: string;
   timeout?: number;
+  background?: boolean;
+  env?: Record<string, string>;
 } = {}): ExecResult {
   const foundryScript = getFoundryScript();
   const env: Record<string, string> = {
     ...process.env as Record<string, string>,
+    ...(options.env || {}),
   };
 
   if (options.e2eTestMode) {
@@ -187,6 +192,15 @@ export function runFoundry(args: string[], options: {
   }
 
   const command = `${foundryScript} ${args.join(' ')}`;
+
+  if (options.background) {
+    // For background execution, we don't wait for completion
+    // This is a simplified version - in production you might want to use child_process.spawn
+    return exec(command + ' &', {
+      env,
+      timeout: options.timeout || 300000,
+    });
+  }
 
   return exec(command, {
     env,
@@ -229,6 +243,7 @@ export function getFoundryStatus(): {
   failed: number;
   suspended: number;
   cancelled: number;
+  stopped: number;
 } {
   const result = runFoundry(['status'], { taskRoot: TEST_TASKS_DIR });
 
@@ -239,12 +254,13 @@ export function getFoundryStatus(): {
     failed: 0,
     suspended: 0,
     cancelled: 0,
+    stopped: 0,
   };
 
   // Parse output like "Pending: 5"
   const lines = result.stdout.split('\n');
   lines.forEach(line => {
-    const match = line.match(/(Pending|In progress|Completed|Failed|Suspended|Cancelled):\s*(\d+)/i);
+    const match = line.match(/(Pending|In progress|Completed|Failed|Suspended|Cancelled|Stopped):\s*(\d+)/i);
     if (match) {
       const key = match[1].toLowerCase().replace(' ', '_') as keyof typeof counts;
       counts[key] = parseInt(match[2], 10);

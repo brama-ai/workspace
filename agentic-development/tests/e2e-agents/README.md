@@ -13,6 +13,32 @@ This test suite validates:
 
 ## Quick Start
 
+### Option 1: Run in Isolated Docker Container (Recommended)
+
+This ensures complete isolation - tasks won't interfere with your main Foundry instance:
+
+```bash
+# From this directory (agentic-development/tests/e2e-agents)
+./run-e2e-tests.sh
+
+# Run specific tests
+./run-e2e-tests.sh --grep "git workflow"
+
+# Keep containers running for debugging
+E2E_CLEANUP=0 ./run-e2e-tests.sh
+```
+
+The isolated container uses:
+- Empty `tasks-e2e-isolated/` directory (mounted separately)
+- `FOUNDRY_TASK_ROOT=/workspaces/brama/tasks-e2e-isolated`
+- `E2E_TEST_MODE=1` flag
+
+Note: Foundry agents only use filesystem (tasks/, git) - no database needed.
+
+### Option 2: Run Locally (Development)
+
+For faster iteration during test development:
+
 ```bash
 # From this directory (agentic-development/tests/e2e-agents)
 npm install
@@ -30,6 +56,8 @@ npm run test:ui
 # Debug mode
 npm run test:debug
 ```
+
+⚠️ **Warning:** Local tests use `tasks-e2e-test/` directory but may still be picked up by your main Foundry instance if it's running!
 
 ## Test Structure
 
@@ -95,9 +123,11 @@ const commits = getCommits(5); // last 5 commits
 ## Test Isolation
 
 Tests run in isolation using:
-1. **Separate task directory**: `tasks-e2e-test/` instead of `tasks/`
-2. **Test branch prefix**: `e2e-test/*` for easy cleanup
-3. **Sequential execution**: One test at a time to avoid git conflicts
+1. **Isolated container** (recommended): `docker-compose.e2e.yml` with empty `tasks-e2e-isolated/` mount
+2. **Separate task directory**: `tasks-e2e-test/` (local) or `tasks-e2e-isolated/` (container)
+3. **Test branch prefix**: `e2e-test/*` for easy cleanup
+4. **Sequential execution**: One test at a time to avoid git conflicts
+5. **Environment variables**: `FOUNDRY_TASK_ROOT` and `E2E_TEST_MODE=1`
 
 ## Current Test Coverage
 
@@ -128,15 +158,29 @@ Tests run in isolation using:
 - ✅ Handles multiple pending tasks
 - ✅ Tracks worker assignment for parallel tasks
 
-**Total: 22 tests, all passing ✅**
+### Foundry CLI Commands (@smoke)
+- ✅ Creates tasks using foundry_create_task_dir
+- ✅ Creates multiple tasks and tracks them
+- ✅ Gets Foundry status with task counts
+- ✅ Validates task directory structure
+- ✅ Handles markdown formatting and special characters
+
+### Task Execution by Agents (⚠️ Requires Isolated Container)
+- ✅ Executes simple task and generates summary
+- ✅ Tracks task state transitions during execution
+- ✅ Handles tasks with multiple requirements
+- ✅ Fails tasks gracefully when requirements cannot be met
+- ✅ Runs task through full agent pipeline
+
+**Total: 45+ tests**
 
 ## Next Steps
 
 Future test suites to add:
-- [ ] Real agent execution with mocks (--e2e-test-mode)
 - [ ] TUI monitor interactions
 - [ ] Error handling and recovery
 - [ ] Webhook notifications
+- [ ] Multi-worker parallel execution
 
 ## Troubleshooting
 
