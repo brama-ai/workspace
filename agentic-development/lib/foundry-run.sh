@@ -2383,9 +2383,24 @@ main() {
   if ! git -C "$REPO_ROOT" rev-parse --verify "$branch" &>/dev/null; then
     # New branch — must be on main/master
     if [[ "$current_branch" != "$main_branch" && "$current_branch" != "master" ]]; then
-      echo -e "${RED}✗ Cannot create new task branch: must be on ${main_branch} (currently on ${current_branch})${NC}"
-      echo -e "${RED}  Run: git checkout ${main_branch}${NC}"
-      exit 1
+      # Check if we can auto-switch to main (clean working tree)
+      if git -C "$REPO_ROOT" diff-index --quiet HEAD -- 2>/dev/null; then
+        echo -e "${YELLOW}⚠ Not on ${main_branch} (on ${current_branch}), but working tree is clean${NC}"
+        echo -e "${YELLOW}  Auto-switching to ${main_branch}...${NC}"
+        if git -C "$REPO_ROOT" checkout "$main_branch" 2>/dev/null; then
+          echo -e "${GREEN}✓ Switched to ${main_branch}${NC}"
+          current_branch="$main_branch"
+        else
+          echo -e "${RED}✗ Failed to auto-switch to ${main_branch}${NC}"
+          echo -e "${RED}  Run: git checkout ${main_branch}${NC}"
+          exit 1
+        fi
+      else
+        echo -e "${RED}✗ Cannot create new task branch: must be on ${main_branch} (currently on ${current_branch})${NC}"
+        echo -e "${RED}  Working tree has uncommitted changes - cannot auto-switch${NC}"
+        echo -e "${RED}  Run: git stash && git checkout ${main_branch}${NC}"
+        exit 1
+      fi
     fi
     echo -e "${GREEN}✓ On ${main_branch} — safe to create task branch${NC}"
   fi
