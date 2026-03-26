@@ -4,9 +4,9 @@
   "started_at": "2026-03-26T15:14:27.469631Z",
   "attempt": 1,
   "status": "in_progress",
-  "current_step": "u-validator",
-  "resume_from": "u-validator",
-  "updated_at": "2026-03-26T20:12:11.662336Z",
+  "current_step": "u-summarizer",
+  "resume_from": "u-summarizer",
+  "updated_at": "2026-03-26T20:29:50.124944Z",
   "task_file": "/workspaces/brama/tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/task.md",
   "branch": "pipeline/implement-hitl-for-foundry-pipeline-per-openspec-d",
   "agents": [
@@ -25,23 +25,23 @@
       "agent": "u-validator",
       "status": "done",
       "model": "opencode-go/kimi-k2.5",
-      "duration_seconds": 4,
+      "duration_seconds": 7,
       "input_tokens": 0,
       "output_tokens": 0,
       "cost": 0.0,
       "call_count": 1,
-      "updated_at": "2026-03-26T20:12:11.662308Z"
+      "updated_at": "2026-03-26T20:12:11.926048Z"
     },
     {
       "agent": "u-summarizer",
-      "status": "pending",
-      "model": "",
-      "duration_seconds": 0,
-      "input_tokens": 0,
-      "output_tokens": 0,
-      "cost": 0,
-      "call_count": 0,
-      "updated_at": ""
+      "status": "done",
+      "model": "anthropic/claude-opus-4-6",
+      "duration_seconds": 145,
+      "input_tokens": 13,
+      "output_tokens": 7281,
+      "cost": 1.0565,
+      "call_count": 1,
+      "updated_at": "2026-03-26T20:29:50.124930Z"
     }
   ]
 }

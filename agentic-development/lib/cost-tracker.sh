@@ -64,19 +64,16 @@ calculate_cost_from_values() {
 
 calculate_step_cost() {
   local meta_file="$1"
-  python3 - "$meta_file" <<'PYEOF'
-import json, subprocess, sys
-with open(sys.argv[1], 'r') as f:
-    data = json.load(f)
-tokens = data.get('tokens', {})
-model = data.get('model', '')
-cmd = [
-    'bash', '-lc',
-    f'. "{sys.argv[1].rsplit("/", 3)[0]}/../../agentic-development/lib/cost-tracker.sh" >/dev/null 2>&1; '
-    f'calculate_cost_from_values "{model}" "{tokens.get("input_tokens", 0)}" "{tokens.get("output_tokens", 0)}" "{tokens.get("cache_read", 0)}"'
-]
-print(subprocess.check_output(cmd, text=True).strip())
-PYEOF
+  local tokens model
+  tokens=$(jq -c '.tokens // {}' "$meta_file" 2>/dev/null || echo "{}")
+  model=$(jq -r '.model // ""' "$meta_file" 2>/dev/null || echo "")
+  
+  local input_tokens output_tokens cache_read
+  input_tokens=$(echo "$tokens" | jq -r '.input_tokens // 0')
+  output_tokens=$(echo "$tokens" | jq -r '.output_tokens // 0')
+  cache_read=$(echo "$tokens" | jq -r '.cache_read // 0')
+  
+  calculate_cost_from_values "$model" "$input_tokens" "$output_tokens" "$cache_read"
 }
 
 summarize_export_tokens() {

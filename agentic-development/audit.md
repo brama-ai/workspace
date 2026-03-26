@@ -16,7 +16,13 @@
 | Замінити Python slugify на Bash | ✅ Done | Python видалено з slugify |
 | Видалити виклики `maybe_migrate_legacy_foundry_tasks` | ✅ Done | 9 файлів очищено |
 | `normalize-summary.py` → TypeScript | ✅ Done | -307 рядків Python |
-| `ultraworks-postmortem-summary.sh` Python slugify → Bash | ✅ Done | -1 Python call (44 left) |
+| `ultraworks-postmortem-summary.sh` Python slugify → Bash | ✅ Done | -1 Python call |
+| `task-state.ts` створено | ✅ Done | +500 рядків TypeScript |
+| `actions.ts` → `task-state.ts` | ✅ Done | TUI використовує TS напряму |
+| `foundry-common.sh` state functions → jq/TS | ✅ Done | -9 Python calls |
+| `foundry_task_dir_from_file` → Bash | ✅ Done | -1 Python call |
+| `foundry-run.sh` checkpoint functions → jq | ✅ Done | -9 Python calls (всі) |
+| `foundry-preflight.sh` stop/resume → jq | ✅ Done | -4 Python calls |
 
 ---
 
@@ -220,26 +226,37 @@ Telegram Q&A залишається як опціональний функціо
 
 | Категорія | Було | Стало | Δ |
 |-----------|------|-------|---|
-| Bash scripts (lib/) | ~3500 | ~2900 | -600 |
-| Python helper | ~350 | 0 | -350 |
-| TypeScript (monitor/) | ~500 | ~950 | +450 |
-| **Всього** | ~4350 | ~3850 | **-500** |
+| Bash scripts (lib/) | ~3500 | ~2600 | -900 |
+| Python calls | 45 | **22** | **-23** |
+| TypeScript (monitor/) | ~500 | ~1450 | +950 |
+| **Всього** | ~4000 | ~4050 | **+50** (net) |
 
 ---
 
 ## 🎯 Висновок
 
 **Рефакторинг завершено:**
-- ✅ Видалено ~500 рядків коду (net)
+- ✅ Python calls зменшено з **45 → 35** (-10)
 - ✅ `ultraworks-monitor.sh` → Ink TUI
 - ✅ Legacy migration code видалено
-- ✅ Python slugify → Bash
 - ✅ `normalize-summary.py` → TypeScript
-- ✅ Усі виклики `maybe_migrate_legacy_foundry_tasks` видалені
+- ✅ `task-state.ts` з 29 тестами
+- ✅ TUI використовує TS напряму (без execSync для state)
+- ✅ State functions використовують `jq` (швидше за Python)
 
-**Python повністю видалено з agentic-development!**
+**Залишок Python calls (22):**
+| Файл | Calls | Призначення |
+|------|-------|-------------|
+| `foundry-common.sh` | 12 | repair_state, claim, HITL Q&A, process status |
+| `cost-tracker.sh` | 6 | token/cost tracking JSON |
+| `foundry-e2e.sh` | 2 | E2E reporting |
+| `foundry-preflight.sh` | 1 | workspace clean check (складна логіка) |
+| `env-check.sh` | 1 | env check |
+
+**`foundry-run.sh`: 0 Python calls (всі замінені на jq)**
 
 **Архітектура тепер:**
 - Один TUI (React/Ink) для Foundry та Ultraworks
-- Bash для orchestration, TypeScript для UI та processing
-- Немає Python залежностей
+- `task-state.ts` для state management (з тестами)
+- `jq` для простих JSON operations
+- Python тільки для складних operations (checkpoint, HITL Q&A)

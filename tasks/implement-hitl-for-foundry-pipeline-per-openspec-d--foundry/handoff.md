@@ -66,10 +66,11 @@
 
 ## Summarizer
 
-- **Status**: pending
-- **Summary file**: —
-- **Next task recommendation**: —
+- **Status**: done
+- **Summary file**: `tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/summary.md`
+- **Next task recommendation**: Agent-to-Agent Q&A Escalation — реалізувати u-architect Q&A responder mode в foundry-run.sh (Section 14 HITL специфікації)
 
 ---
 
 - **Commit (u-coder)**: 086940d
+- **Commit (u-validator)**: e01c250

@@ -772,9 +772,11 @@ init_artifacts() {
   fi
 
   # Create fresh checkpoint
+  local task_escaped
+  task_escaped=$(printf '%s' "$TASK_MESSAGE" | jq -Rs .)
   cat > "$CHECKPOINT_FILE" << CHECKPOINT_EOF
 {
-  "task": $(printf '%s' "$TASK_MESSAGE" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))'),
+  "task": $task_escaped,
   "branch": "$branch",
   "workflow": "foundry",
   "started": "$(date '+%Y-%m-%d %H:%M:%S')",
@@ -786,20 +788,12 @@ CHECKPOINT_EOF
 
 set_planned_agents() {
   [[ -f "$CHECKPOINT_FILE" ]] || return 0
-
-  python3 - "$CHECKPOINT_FILE" "$@" <<'PYEOF'
-import json, sys
-cp_file = sys.argv[1]
-planned = sys.argv[2:]
-with open(cp_file, 'r') as f:
-    data = json.load(f)
-data['planned_agents'] = planned
-with open(cp_file, 'w') as f:
-    json.dump(data, f, indent=2)
-PYEOF
+  local agents_json
+  agents_json=$(printf '%s\n' "$@" | jq -R . | jq -s .)
+  local tmp="${CHECKPOINT_FILE}.tmp"
+  jq --argjson planned "$agents_json" '.planned_agents = $planned' "$CHECKPOINT_FILE" > "$tmp" && mv "$tmp" "$CHECKPOINT_FILE"
 }
 
-# Write checkpoint after agent completes
 write_checkpoint() {
   local agent="$1"
   local status="$2"
@@ -810,31 +804,19 @@ write_checkpoint() {
 
   [[ -f "$CHECKPOINT_FILE" ]] || return 0
 
-  # Use python3 to safely update JSON (stdin to avoid shell quoting issues)
-  python3 - "$CHECKPOINT_FILE" "$agent" "$status" "$duration" "$commit_hash" "$tokens_json" "$actual_model" <<'PYEOF'
-import json, sys
-cp_file, agent, status, duration, commit, tokens_raw, model = sys.argv[1:8]
-with open(cp_file, 'r') as f:
-    data = json.load(f)
-try:
-    tokens = json.loads(tokens_raw) if tokens_raw != '{}' else {}
-except json.JSONDecodeError:
-    tokens = {}
-from datetime import datetime
-data['agents'][agent] = {
-    'status': status,
-    'model': model,
-    'duration': int(duration),
-    'commit': commit,
-    'finished': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-    'tokens': tokens
-}
-with open(cp_file, 'w') as f:
-    json.dump(data, f, indent=2)
-PYEOF
-  if [[ $? -ne 0 ]]; then
-    echo -e "  ${YELLOW}⚠ write_checkpoint failed for ${agent}${NC}" >&2
-  fi
+  local finished
+  finished=$(date '+%Y-%m-%d %H:%M:%S')
+  local tmp="${CHECKPOINT_FILE}.tmp"
+  
+  jq --arg agent "$agent" \
+     --arg status "$status" \
+     --arg model "$actual_model" \
+     --argjson duration "$duration" \
+     --arg commit "$commit_hash" \
+     --arg finished "$finished" \
+     --argjson tokens "$tokens_json" \
+     '.agents[$agent] = {status: $status, model: $model, duration: $duration, commit: $commit, finished: $finished, tokens: $tokens}' \
+     "$CHECKPOINT_FILE" > "$tmp" && mv "$tmp" "$CHECKPOINT_FILE"
 }
 
 # Copy agent log to artifacts
@@ -870,43 +852,40 @@ save_agent_artifact() {
   fi
 }
 
-# Read checkpoint and determine which agent to resume from
 get_resume_agent() {
   [[ -f "$CHECKPOINT_FILE" ]] || return
-
-  python3 - "$CHECKPOINT_FILE" <<'PYEOF' 2>/dev/null || true
-import json, sys
-with open(sys.argv[1], 'r') as f:
-    data = json.load(f)
-agents_order = data.get('planned_agents') or ['planner', 'architect', 'coder', 'auditor', 'validator', 'tester', 'e2e', 'documenter', 'summarizer']
-completed = data.get('agents', {})
-for agent in agents_order:
-    info = completed.get(agent, {})
-    if info.get('status') != 'done':
-        print(agent)
-        break
-PYEOF
+  
+  local planned
+  planned=$(jq -r '.planned_agents // ["planner","architect","coder","auditor","validator","tester","e2e","documenter","summarizer"] | .[]' "$CHECKPOINT_FILE" 2>/dev/null)
+  
+  local default_order="planner architect coder auditor validator tester e2e documenter summarizer"
+  [[ -z "$planned" ]] && planned="$default_order"
+  
+  for agent in $planned; do
+    local status
+    status=$(jq -r --arg a "$agent" '.agents[$a].status // "pending"' "$CHECKPOINT_FILE" 2>/dev/null)
+    if [[ "$status" != "done" ]]; then
+      echo "$agent"
+      return
+    fi
+  done
 }
 
-# Print checkpoint summary
 print_checkpoint_summary() {
   [[ -f "$CHECKPOINT_FILE" ]] || return
-
-  python3 - "$CHECKPOINT_FILE" <<'PYEOF' 2>/dev/null || true
-import json, sys
-with open(sys.argv[1], 'r') as f:
-    data = json.load(f)
-agents = data.get('agents', {})
-if not agents:
-    print('  (no completed agents)')
-    exit()
-for name, info in agents.items():
-    status = info.get('status', '?')
-    dur = info.get('duration', 0)
-    commit = info.get('commit', '')
-    icon = '✓' if status == 'done' else '✗'
-    print(f'  {icon} {name}: {status} ({dur}s) {commit}')
-PYEOF
+  
+  local agents
+  agents=$(jq -r '.agents | keys | .[]' "$CHECKPOINT_FILE" 2>/dev/null)
+  [[ -z "$agents" ]] && { echo "  (no completed agents)"; return; }
+  
+  for name in $agents; do
+    local status dur commit icon
+    status=$(jq -r --arg n "$name" '.agents[$n].status // "?"' "$CHECKPOINT_FILE")
+    dur=$(jq -r --arg n "$name" '.agents[$n].duration // 0' "$CHECKPOINT_FILE")
+    commit=$(jq -r --arg n "$name" '.agents[$n].commit // ""' "$CHECKPOINT_FILE")
+    [[ "$status" == "done" ]] && icon="✓" || icon="✗"
+    echo "  $icon $name: $status (${dur}s) $commit"
+  done
 }
 
 # ── Dev Reporter Agent integration ───────────────────────────────────
@@ -2944,22 +2923,8 @@ main() {
 
       # Get status from checkpoint
       local agent_status agent_dur
-      agent_status=$(python3 - "$CHECKPOINT_FILE" "$agent" <<'PYEOF' 2>/dev/null || echo "unknown"
-import json, sys
-with open(sys.argv[1], 'r') as f:
-    data = json.load(f)
-info = data.get('agents', {}).get(sys.argv[2], {})
-print(info.get('status', 'skipped'))
-PYEOF
-)
-      agent_dur=$(python3 - "$CHECKPOINT_FILE" "$agent" <<'PYEOF' 2>/dev/null || echo "0"
-import json, sys
-with open(sys.argv[1], 'r') as f:
-    data = json.load(f)
-info = data.get('agents', {}).get(sys.argv[2], {})
-print(info.get('duration', 0))
-PYEOF
-)
+      agent_status=$(jq -r --arg a "$agent" '.agents[$a].status // "skipped"' "$CHECKPOINT_FILE" 2>/dev/null || echo "unknown")
+      agent_dur=$(jq -r --arg a "$agent" '.agents[$a].duration // 0' "$CHECKPOINT_FILE" 2>/dev/null || echo "0")
 
       local status_icon="✓"
       if [[ "$agent_status" != "done" ]]; then
@@ -3005,13 +2970,7 @@ PYEOF
         out_tok=$(echo "$agent_tokens" | jq -r '.output_tokens // 0' 2>/dev/null || echo 0)
         cache_r=$(echo "$agent_tokens" | jq -r '.cache_read // 0' 2>/dev/null || echo 0)
         cache_w=$(echo "$agent_tokens" | jq -r '.cache_write // 0' 2>/dev/null || echo 0)
-        agent_dur_s=$(python3 - "$CHECKPOINT_FILE" "$agent" <<'PYEOF' 2>/dev/null || echo "0"
-import json, sys
-with open(sys.argv[1], 'r') as f:
-    data = json.load(f)
-print(data.get('agents', {}).get(sys.argv[2], {}).get('duration', 0))
-PYEOF
-)
+        agent_dur_s=$(jq -r --arg a "$agent" '.agents[$a].duration // 0' "$CHECKPOINT_FILE" 2>/dev/null || echo "0")
         local agent_cost
         agent_cost=$(awk "BEGIN { printf \"%.3f\", ($in_tok * 3 + $out_tok * 15 + $cache_r * 0.30 + $cache_w * 3.75) / 1000000 }")
         grand_in=$((grand_in + in_tok))
