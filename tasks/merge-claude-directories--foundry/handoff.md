@@ -157,11 +157,12 @@ This task involved **pure file reorganization** — moving skill documentation a
 
 ## Summarizer
 
-- **Status**: pending
-- **Summary file**: —
-- **Next task recommendation**: —
+- **Status**: done
+- **Summary file**: `tasks/merge-claude-directories--foundry/summary.md`
+- **Next task recommendation**: Restore or remove `builder-agent` skill symlink — єдиний незавершений артефакт від мержу `.claude` директорій
 
 ---
 
 - **Commit (u-coder)**: 2e81526
 - **Commit (u-validator)**: c6decbd
+- **Commit (u-tester)**: a4a1e0f

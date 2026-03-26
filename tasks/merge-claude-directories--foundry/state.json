@@ -4,9 +4,9 @@
   "started_at": "2026-03-26T09:40:04.018565Z",
   "attempt": 1,
   "status": "in_progress",
-  "current_step": "u-tester",
-  "resume_from": "u-tester",
-  "updated_at": "2026-03-26T09:58:10.086969Z",
+  "current_step": "u-summarizer",
+  "resume_from": "u-summarizer",
+  "updated_at": "2026-03-26T10:15:03.766489Z",
   "task_file": "/workspaces/brama/tasks/merge-claude-directories--foundry/task.md",
   "branch": "pipeline/merge-claude-directories",
   "agents": [
@@ -47,12 +47,23 @@
       "agent": "u-tester",
       "status": "done",
       "model": "opencode-go/kimi-k2.5",
-      "duration_seconds": 63,
+      "duration_seconds": 66,
       "input_tokens": 21042,
       "output_tokens": 1899,
       "cost": 0.0174,
       "call_count": 1,
-      "updated_at": "2026-03-26T09:58:10.086941Z"
+      "updated_at": "2026-03-26T09:58:10.378339Z"
+    },
+    {
+      "agent": "u-summarizer",
+      "status": "done",
+      "model": "anthropic/claude-opus-4-6",
+      "duration_seconds": 102,
+      "input_tokens": 12,
+      "output_tokens": 4693,
+      "cost": 0.7107,
+      "call_count": 1,
+      "updated_at": "2026-03-26T10:15:03.766476Z"
     }
   ]
 }
