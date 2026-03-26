@@ -126,12 +126,41 @@ tasks/*--foundry/
 
 Each task directory is one unit of work. `state.json` decides whether it is:
 
-- `pending`
-- `in_progress`
-- `completed`
-- `failed`
-- `suspended`
-- `cancelled`
+- `pending` - Ready to be claimed by a worker
+- `in_progress` - Currently executing
+- `completed` - Finished successfully
+- `failed` - Failed permanently
+- `suspended` - Paused mid-execution, can resume from checkpoint
+- `stopped` - Halted before or during execution (see [Safe Start Protocol](./foundry-safe-start.md))
+- `cancelled` - Cancelled by user or system
+
+### Stopped Tasks
+
+The `stopped` state indicates a task was halted due to safety constraints or user intervention. Unlike `failed`, stopped tasks can be resumed after fixing the underlying issue.
+
+**Common stop reasons:**
+- `dirty_default_workspace` - Main branch has uncommitted changes
+- `base_resolution_failed` - Cannot resolve requested base reference
+- `exclusive_scope_conflict` - Another task holds lock on required files
+- `task_already_in_progress` - Task is already running elsewhere
+- `stopped_by_user` - Manual stop by user
+
+**Resume a stopped task:**
+```bash
+# Fix the issue (commit changes, resolve conflicts, etc.)
+./agentic-development/foundry.sh resume <task-slug>
+```
+
+**View stop details:**
+```bash
+# Check state.json for stop_reason and stop_details
+cat tasks/<task-slug>--foundry/state.json | jq '.stop_reason, .stop_details'
+
+# Read recovery instructions
+cat tasks/<task-slug>--foundry/handoff.md
+```
+
+See [Safe Start Protocol](./foundry-safe-start.md) for complete documentation on preflight checks and stopped task handling.
 
 ## Background Workers
 

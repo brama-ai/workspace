@@ -31,6 +31,7 @@ Commands:
   run [runtime args]   Run a single sequential Foundry task
   batch [args]         Consume pending Foundry task directories from ${FOUNDRY_TASK_ROOT_REL}
   retry [args]         Retry failed Foundry tasks
+  resume <slug>        Resume a stopped task (after fixing underlying issue)
   stats [args]         Show Foundry pipeline statistics
   cleanup [args]       Clean old runtime artifacts
   env-check [args]     Run environment checks
@@ -212,6 +213,29 @@ run_command() {
       ;;
     status)
       foundry_status
+      ;;
+    resume)
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "Error: task slug required"
+        echo "Usage: ./agentic-development/foundry.sh resume <task-slug>"
+        exit 1
+      fi
+      task_slug="$1"
+      task_dir=$(foundry_task_dir_for_slug "$task_slug" 2>/dev/null || true)
+      if [[ -z "$task_dir" ]]; then
+        echo "Error: task not found: $task_slug"
+        exit 1
+      fi
+      source "$REPO_ROOT/agentic-development/lib/foundry-preflight.sh"
+      if foundry_resume_stopped_task "$task_dir"; then
+        echo "✓ Task resumed: $task_slug"
+        echo "  Status: $(foundry_state_field "$task_dir" status)"
+        echo "  Run 'foundry.sh status' to see all tasks"
+      else
+        echo "✗ Failed to resume task: $task_slug"
+        exit 1
+      fi
       ;;
     run)
       runtime_log foundry "command=run args=$*"

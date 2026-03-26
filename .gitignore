@@ -47,3 +47,8 @@ brama-website/
 tasks/
 agentic-development/runtime/*
 !agentic-development/runtime/.gitkeep
+
+# E2E test directories
+tasks-e2e-test/
+agentic-development/tests/e2e-agents/tasks-e2e-isolated/
+agentic-development/tests/e2e-agents/test-results/

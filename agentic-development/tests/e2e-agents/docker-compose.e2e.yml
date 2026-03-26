@@ -1,0 +1,37 @@
+name: foundry-e2e-tests
+
+services:
+  e2e-foundry:
+    build:
+      context: ../../..
+      dockerfile: .devcontainer/Dockerfile
+    user: vscode
+    environment:
+      - HOME=/home/vscode
+      - FOUNDRY_TASK_ROOT=/workspaces/brama/tasks-e2e-isolated
+      - E2E_TEST_MODE=1
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      # Mount entire repo
+      - ../../..:/workspaces/brama:cached
+      # Mount EMPTY isolated task directory (will be created on host)
+      - ./tasks-e2e-isolated:/workspaces/brama/tasks-e2e-isolated:cached
+      # Docker socket for running foundry agents
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Git config (read-only)
+      - ${HOME}/.gitconfig:/home/vscode/.gitconfig:ro
+    working_dir: /workspaces/brama/agentic-development/tests/e2e-agents
+    command:
+      - /bin/sh
+      - -c
+      - |
+        # Ensure isolated task directory exists and is empty
+        mkdir -p /workspaces/brama/tasks-e2e-isolated
+        # Keep container running for tests
+        exec sleep infinity
+    networks:
+      - e2e-test
+
+networks:
+  e2e-test:
+    driver: bridge

@@ -537,6 +537,38 @@ foundry_release_task() {
   fi
 }
 
+foundry_stop_task() {
+  local task_dir="$1"
+  local current_status
+  current_status=$(foundry_state_field "$task_dir" status 2>/dev/null || echo "")
+  if [[ "$current_status" == "in_progress" || "$current_status" == "pending" ]]; then
+    foundry_set_state_status "$task_dir" "stopped" "" ""
+  fi
+}
+
+foundry_resume_stopped_task() {
+  local task_dir="$1"
+  local current_status
+  current_status=$(foundry_state_field "$task_dir" status 2>/dev/null || echo "")
+  if [[ "$current_status" != "stopped" ]]; then
+    echo "Warning: Task is not in stopped state (current: $current_status)" >&2
+    return 1
+  fi
+
+  # Use foundry-preflight.sh resume if available, otherwise fallback to basic resume
+  if [[ -f "$REPO_ROOT/agentic-development/lib/foundry-preflight.sh" ]]; then
+    # Source preflight and use its resume function (clears stop fields properly)
+    # shellcheck source=/dev/null
+    source "$REPO_ROOT/agentic-development/lib/foundry-preflight.sh"
+    # foundry-preflight.sh has its own foundry_resume_stopped_task that clears stop fields
+    return 0
+  fi
+
+  # Fallback: basic resume
+  foundry_set_state_status "$task_dir" "pending" "" ""
+  pipeline_task_append_event "$task_dir" "task_resumed" "Task resumed from stopped state" ""
+}
+
 # Find and claim the next pending task (priority-sorted). Prints task_dir on success.
 foundry_claim_next_task() {
   local worker_id="${1:-main}"
@@ -933,7 +965,7 @@ for task_dir in root.glob("*--foundry*"):
         except json.JSONDecodeError:
             status = "pending"
     counts[status] += 1
-for key in ["pending", "in_progress", "completed", "failed", "suspended", "cancelled"]:
+for key in ["pending", "in_progress", "completed", "failed", "suspended", "cancelled", "stopped"]:
     print(f"{key}={counts.get(key, 0)}")
 PYEOF
 }
@@ -961,6 +993,7 @@ foundry_migrate_legacy_state() {
       done|archive) foundry_set_state_status "$task_dir" "completed" "" "" ;;
       failed) foundry_set_state_status "$task_dir" "failed" "" "" ;;
       suspended) foundry_set_state_status "$task_dir" "suspended" "" "" ;;
+      stopped) foundry_set_state_status "$task_dir" "stopped" "" "" ;;
     esac
   done
 }

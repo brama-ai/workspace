@@ -1,0 +1,21 @@
+{
+  "name": "@brama/foundry-e2e-agents",
+  "version": "0.0.1",
+  "description": "E2E tests for Foundry multi-agent pipeline system",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "test:headed": "playwright test --headed",
+    "test:smoke": "playwright test --grep @smoke"
+  },
+  "keywords": ["foundry", "e2e", "agents", "testing"],
+  "author": "Brama Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}

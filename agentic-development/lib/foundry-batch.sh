@@ -129,7 +129,7 @@ worker_loop() {
 
     local task_file
     task_file=$(foundry_task_file "$task_dir")
-    [[ -f "$task_file" ]] || continue
+    [[ -f "$task_file" ]] || { foundry_release_task "$task_dir"; continue; }
 
     local exit_code=0
 

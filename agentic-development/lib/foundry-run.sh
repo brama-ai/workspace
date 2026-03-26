@@ -345,6 +345,25 @@ _detect_task_lifecycle() {
 _task_move_to_in_progress() {
   [[ "$TASK_LIFECYCLE" != true ]] && return
   TASK_ACTIVE_FILE="$TASK_FILE"
+
+  # Safe Start Protocol: Run preflight checks before transitioning to in_progress
+  if [[ -f "$REPO_ROOT/agentic-development/lib/foundry-preflight.sh" ]]; then
+    # shellcheck source=/dev/null
+    source "$REPO_ROOT/agentic-development/lib/foundry-preflight.sh"
+
+    echo -e "${BOLD}Running Safe Start preflight checks...${NC}"
+    if ! foundry_preflight_check "$TASK_DIR" "default"; then
+      echo -e "${RED}✗ Preflight checks failed - task stopped${NC}"
+      local stop_reason
+      stop_reason=$(foundry_state_field "$TASK_DIR" stop_reason 2>/dev/null || echo "unknown")
+      echo -e "${YELLOW}  Stop reason: $stop_reason${NC}"
+      echo -e "${YELLOW}  See handoff.md for recovery instructions${NC}"
+      echo -e "${YELLOW}  Resume with: ./agentic-development/foundry.sh resume $(basename "$TASK_DIR")${NC}"
+      exit 1
+    fi
+    echo -e "${GREEN}✓ Preflight checks passed${NC}"
+  fi
+
   foundry_set_state_status "$TASK_DIR" "in_progress" "${FROM_AGENT:-u-planner}" "${FROM_AGENT:-u-planner}"
   pipeline_task_append_event "$TASK_DIR" "run_started" "Foundry run started" "${FROM_AGENT:-u-planner}"
   echo -e "${BLUE}Task state: pending → in_progress${NC}"
