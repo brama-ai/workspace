@@ -30,6 +30,9 @@ type ViewMode = "list" | "detail" | "logs" | "agents";
 type DetailTab = "summary" | "state" | "task" | "handoff";
 type MainTab = 1 | 2 | 3;
 
+// Scroll state per detail tab
+type TabScrollState = Record<DetailTab, number>;
+
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 interface Command {
@@ -53,12 +56,14 @@ const COMMANDS: Command[] = [
   { key: "t", label: "Launch autotest (E2E failures → fix tasks)", section: "flow",    action: (r) => runAutotest(r, false) },
   { key: "T", label: "Launch autotest --smoke",                  section: "flow",       action: (r) => runAutotest(r, true) },
   // Navigation (info only)
-  { key: "↑/↓",  label: "Select task",                          section: "nav" },
-  { key: "Enter", label: "View task detail",                     section: "nav" },
-  { key: "a",     label: "View agents table for selected task",  section: "nav" },
-  { key: "l",     label: "View agent stdout logs",               section: "nav" },
-  { key: "d",     label: "Archive task (move to archives/)",     section: "nav" },
-  { key: "Esc",   label: "Back to task list from any sub-view",  section: "nav" },
+  { key: "↑/↓",      label: "Select task / scroll detail",          section: "nav" },
+  { key: "PgUp/Dn",  label: "Scroll detail by page",               section: "nav" },
+  { key: "g/G",      label: "Jump to top/end in detail",            section: "nav" },
+  { key: "Enter",    label: "View task detail",                     section: "nav" },
+  { key: "a",        label: "View agents table for selected task",  section: "nav" },
+  { key: "l",        label: "View agent stdout logs",               section: "nav" },
+  { key: "d",        label: "Archive task (move to archives/)",     section: "nav" },
+  { key: "Esc",      label: "Back to task list from any sub-view",  section: "nav" },
 ];
 
 const EXECUTABLE_COMMANDS = COMMANDS.filter((c) => c.action);
@@ -104,6 +109,14 @@ export function App({ tasksRoot }: Props) {
   const [msg, setMsg] = useState("");
   const [lastAttachCmd, setLastAttachCmd] = useState("");
   const [tick, setTick] = useState(0);
+
+  // Scroll offsets per detail tab (preserved when switching tabs)
+  const [detailScrollOffsets, setDetailScrollOffsets] = useState<TabScrollState>({
+    summary: 0,
+    state: 0,
+    task: 0,
+    handoff: 0,
+  });
 
   // Processes tab state
   const [procStatus, setProcStatus] = useState<ProcessStatus>({ workers: [], zombies: [], lock: null });
@@ -205,11 +218,38 @@ export function App({ tasksRoot }: Props) {
 
     // ── Tab 1: Tasks ─────────────────────────────────────────────────
 
-    // Detail sub-tab navigation
+    // Detail sub-tab navigation and scroll
     if (view === "detail") {
       const allTabs: DetailTab[] = ["summary", "state", "task", "handoff"];
       if (key.leftArrow)  { const i = allTabs.indexOf(detailTab); setDetailTab(allTabs[i > 0 ? i - 1 : allTabs.length - 1]); return; }
       if (key.rightArrow) { const i = allTabs.indexOf(detailTab); setDetailTab(allTabs[i < allTabs.length - 1 ? i + 1 : 0]); return; }
+
+      // Scroll navigation in detail view
+      const SCROLL_PAGE = Math.max(1, rows - 14);
+      if (key.upArrow || input === "k") {
+        setDetailScrollOffsets((prev) => ({ ...prev, [detailTab]: Math.max(0, prev[detailTab] - 1) }));
+        return;
+      }
+      if (key.downArrow || input === "j") {
+        setDetailScrollOffsets((prev) => ({ ...prev, [detailTab]: prev[detailTab] + 1 }));
+        return;
+      }
+      if (key.pageUp) {
+        setDetailScrollOffsets((prev) => ({ ...prev, [detailTab]: Math.max(0, prev[detailTab] - SCROLL_PAGE) }));
+        return;
+      }
+      if (key.pageDown) {
+        setDetailScrollOffsets((prev) => ({ ...prev, [detailTab]: prev[detailTab] + SCROLL_PAGE }));
+        return;
+      }
+      if (input === "g") {
+        setDetailScrollOffsets((prev) => ({ ...prev, [detailTab]: 0 }));
+        return;
+      }
+      if (input === "G") {
+        setDetailScrollOffsets((prev) => ({ ...prev, [detailTab]: 999999 }));
+        return;
+      }
     }
 
     // Navigation
@@ -264,7 +304,7 @@ export function App({ tasksRoot }: Props) {
   // Footer hint per tab/view
   let footerHint = "";
   if (tab === 1 && view === "list")   footerHint = "  ↑/↓ select  Enter detail  [a] agents  [l] logs  [d] archive  [s] start  [k] stop  [q] quit";
-  if (tab === 1 && view === "detail") footerHint = "  ←/→ tabs  [y] copy  [Esc] back  [q] quit";
+  if (tab === 1 && view === "detail") footerHint = "  ←/→ tabs  ↑/↓ scroll  PgUp/PgDn  [g] top  [G] end  [y] copy  [Esc] back  [q] quit";
   if (tab === 1 && view !== "list" && view !== "detail") footerHint = "  [y] copy slug  [Esc] back  [q] quit";
   if (tab === 2) footerHint = "  ↑/↓ select  Enter run  ←/→ tabs  [q] quit";
   if (tab === 3) footerHint = "  ↑/↓ select process  [z] clean zombies  ←/→ tabs  [q] quit";
@@ -298,6 +338,8 @@ export function App({ tasksRoot }: Props) {
           rows={rows}
           tick={tick}
           detailTab={detailTab}
+          detailScrollOffsets={detailScrollOffsets}
+          setDetailScrollOffsets={setDetailScrollOffsets}
           setMsg={setMsg}
         />
       )}
@@ -344,7 +386,7 @@ function TabLabel({ n, label, active, hasAlert }: { n: number; label: string; ac
 
 // ── Tasks Tab ─────────────────────────────────────────────────────
 function TasksTab({
-  data, idx, view, selected, cols, rows, tick, detailTab, setMsg,
+  data, idx, view, selected, cols, rows, tick, detailTab, detailScrollOffsets, setDetailScrollOffsets, setMsg,
 }: {
   data: ReadResult;
   idx: number;
@@ -354,11 +396,13 @@ function TasksTab({
   rows: number;
   tick: number;
   detailTab: DetailTab;
+  detailScrollOffsets: TabScrollState;
+  setDetailScrollOffsets: React.Dispatch<React.SetStateAction<TabScrollState>>;
   setMsg: (m: string) => void;
 }) {
   if (view === "agents" && selected) return <AgentsView task={selected} cols={cols} />;
   if (view === "logs"   && selected) return <LogsView task={selected} rows={rows} tick={tick} />;
-  if (view === "detail" && selected) return <DetailView task={selected} rows={rows} tab={detailTab} tick={tick} setMsg={setMsg} />;
+  if (view === "detail" && selected) return <DetailView task={selected} rows={rows} cols={cols} tab={detailTab} scrollOffset={detailScrollOffsets[detailTab]} setScrollOffset={(offset) => setDetailScrollOffsets((prev) => ({ ...prev, [detailTab]: offset }))} tick={tick} setMsg={setMsg} />;
 
   const { tasks, counts } = data;
   const total = counts.pending + counts.in_progress + counts.completed + counts.failed + counts.suspended;
@@ -722,13 +766,67 @@ function LogsView({ task, rows, tick }: { task: TaskInfo; rows: number; tick: nu
   );
 }
 
+// ── Scrollbar ─────────────────────────────────────────────────────
+function Scrollbar({ scrollOffset, totalLines, viewportLines }: {
+  scrollOffset: number;
+  totalLines: number;
+  viewportLines: number;
+}) {
+  if (totalLines <= viewportLines) return null;
+
+  const trackHeight = viewportLines;
+  const thumbHeight = Math.max(1, Math.round((viewportLines / totalLines) * trackHeight));
+  const maxOffset   = totalLines - viewportLines;
+  const thumbPos    = Math.round((Math.min(scrollOffset, maxOffset) / maxOffset) * (trackHeight - thumbHeight));
+
+  return (
+    <Box flexDirection="column" width={1}>
+      {Array.from({ length: trackHeight }).map((_, i) => {
+        const inThumb = i >= thumbPos && i < thumbPos + thumbHeight;
+        return (
+          <Text key={i} color={inThumb ? "cyan" : undefined} dimColor={!inThumb}>
+            {inThumb ? "█" : "░"}
+          </Text>
+        );
+      })}
+    </Box>
+  );
+}
+
+// ── Scrollable content box ─────────────────────────────────────────
+function ScrollableContent({ lines, scrollOffset, viewportLines, cols }: {
+  lines: string[];
+  scrollOffset: number;
+  viewportLines: number;
+  cols: number;
+}) {
+  const maxOffset    = Math.max(0, lines.length - viewportLines);
+  const clampedOffset = Math.min(scrollOffset, maxOffset);
+  const visible      = lines.slice(clampedOffset, clampedOffset + viewportLines);
+  const contentWidth = cols - 3; // leave 1 char for scrollbar + 2 for indent
+
+  return (
+    <Box>
+      <Box flexDirection="column" flexGrow={1}>
+        {visible.map((line, i) => (
+          <Text key={i}>  {line.slice(0, contentWidth)}</Text>
+        ))}
+      </Box>
+      <Scrollbar scrollOffset={clampedOffset} totalLines={lines.length} viewportLines={viewportLines} />
+    </Box>
+  );
+}
+
 // ── Detail View ───────────────────────────────────────────────────
 function DetailView({
-  task, rows, tab, tick, setMsg,
+  task, rows, cols, tab, scrollOffset, setScrollOffset, tick, setMsg,
 }: {
   task: TaskInfo;
   rows: number;
+  cols: number;
   tab: DetailTab;
+  scrollOffset: number;
+  setScrollOffset: (offset: number) => void;
   tick: number;
   setMsg: (m: string) => void;
 }) {
@@ -743,6 +841,11 @@ function DetailView({
   const availableTabs: DetailTab[] = isFinished
     ? ["summary", "task", "handoff"]
     : ["state", "task", "handoff"];
+
+  // Header lines: title(1) + tabs(1) + separator(1) + status(1) + blank(1) = ~5 fixed lines
+  // Footer: blank(1) = 1 line
+  const HEADER_LINES = 7;
+  const viewportLines = Math.max(3, rows - HEADER_LINES);
 
   useEffect(() => {
     try {
@@ -767,10 +870,10 @@ function DetailView({
     try {
       const path = join(task.dir, "summary.md");
       setSummaryContent(existsSync(path)
-        ? readFileSync(path, "utf-8").split("\n").slice(0, rows - 12)
+        ? readFileSync(path, "utf-8").split("\n")
         : ["No summary.md found", "", "Summary is generated after task completion."]);
     } catch (e: any) { setSummaryContent([`Error: ${e.message}`]); }
-  }, [task.dir, tab, rows]);
+  }, [task.dir, tab]);
 
   useEffect(() => {
     if (tab !== "task") return;
@@ -778,25 +881,32 @@ function DetailView({
       const path = join(task.dir, "task.md");
       setSummaryContent([]);
       setTaskContent(existsSync(path)
-        ? readFileSync(path, "utf-8").split("\n").filter((l: string) => !l.startsWith("<!-- priority:")).slice(0, rows - 10)
+        ? readFileSync(path, "utf-8").split("\n").filter((l: string) => !l.startsWith("<!-- priority:"))
         : ["No task.md found"]);
     } catch (e: any) { setTaskContent([`Error: ${e.message}`]); }
-  }, [task.dir, tab, rows]);
+  }, [task.dir, tab]);
 
   useEffect(() => {
     if (tab !== "handoff") return;
     try {
       const path = join(task.dir, "handoff.md");
       setHandoffContent(existsSync(path)
-        ? readFileSync(path, "utf-8").split("\n").slice(0, rows - 10)
+        ? readFileSync(path, "utf-8").split("\n")
         : ["No handoff.md found"]);
     } catch (e: any) { setHandoffContent([`Error: ${e.message}`]); }
-  }, [task.dir, tab, rows]);
+  }, [task.dir, tab]);
 
-  const copySlug = () => {
-    const slug = basename(task.dir);
-    setMsg(copyToClipboard(slug) ? `Copied: ${slug}` : `Copy failed`);
-  };
+  // Clamp scroll offset when content changes
+  useEffect(() => {
+    let totalLines = 0;
+    if (tab === "summary") totalLines = summaryContent.length;
+    else if (tab === "task") totalLines = taskContent.length;
+    else if (tab === "handoff") totalLines = handoffContent.length;
+    if (totalLines > 0) {
+      const maxOffset = Math.max(0, totalLines - viewportLines);
+      if (scrollOffset > maxOffset) setScrollOffset(maxOffset);
+    }
+  }, [summaryContent, taskContent, handoffContent, tab, viewportLines]);
 
   const spinner = SPINNER_FRAMES[tick % 10];
 
@@ -846,7 +956,7 @@ function DetailView({
           <Text> </Text>
           <Text bold>  Summary</Text>
           <Text dimColor>{"  " + "─".repeat(40)}</Text>
-          {summaryContent.map((line, i) => <Text key={i}>  {line}</Text>)}
+          <ScrollableContent lines={summaryContent} scrollOffset={scrollOffset} viewportLines={viewportLines} cols={cols} />
         </Box>
       )}
 
@@ -901,15 +1011,11 @@ function DetailView({
       )}
 
       {activeTab === "task" && (
-        <Box flexDirection="column">
-          {taskContent.map((line, i) => <Text key={i}>  {line}</Text>)}
-        </Box>
+        <ScrollableContent lines={taskContent} scrollOffset={scrollOffset} viewportLines={viewportLines} cols={cols} />
       )}
 
       {activeTab === "handoff" && (
-        <Box flexDirection="column">
-          {handoffContent.map((line, i) => <Text key={i}>  {line}</Text>)}
-        </Box>
+        <ScrollableContent lines={handoffContent} scrollOffset={scrollOffset} viewportLines={viewportLines} cols={cols} />
       )}
 
       <Text> </Text>
