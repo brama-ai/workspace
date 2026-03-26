@@ -1454,6 +1454,19 @@ auto_inject_auditor() {
 
 # ── Anti-loop monitor ────────────────────────────────────────────────
 
+# Kill process and all its descendants recursively.
+# Needed because agent runs as: tee ← subshell ← script ← timeout ← opencode
+# A simple kill only hits tee, leaving opencode as orphan.
+_kill_process_tree() {
+  local pid="$1"
+  local children
+  children=$(pgrep -P "$pid" 2>/dev/null || true)
+  for child in $children; do
+    _kill_process_tree "$child"
+  done
+  kill "$pid" 2>/dev/null || true
+}
+
 monitor_agent_loop() {
   local log_file="$1"
   local agent="$2"
@@ -1502,7 +1515,7 @@ monitor_agent_loop() {
         # After just 20s with minimal output, trigger fallback
         local stall_duration=$((20 + (stall_count - 1) * current_interval))
         echo "LOOP_DETECTED:stall:Log not growing for ${stall_duration}s (minimal output: ${log_lines} lines)" > "${log_file}.loop"
-        kill "$agent_pid" 2>/dev/null
+        _kill_process_tree "$agent_pid"
         return
       fi
 
@@ -1510,7 +1523,7 @@ monitor_agent_loop() {
       if [[ $stall_count -ge $stall_threshold ]]; then
         local stall_duration=$((40 + (stall_count - 2) * check_interval))  # 2 * 20s + rest * 60s
         echo "LOOP_DETECTED:stall:Log not growing for ${stall_duration}s" > "${log_file}.loop"
-        kill "$agent_pid" 2>/dev/null
+        _kill_process_tree "$agent_pid"
         return
       fi
     else
@@ -1526,7 +1539,7 @@ monitor_agent_loop() {
         unique_errors=$(tail -100 "$log_file" 2>/dev/null | grep -iE 'error|failed|exception' | sort -u | wc -l | tr -d ' ')
         if [[ "$unique_errors" -lt 3 ]]; then
           echo "LOOP_DETECTED:repeated_errors:${recent_errors} errors with only ${unique_errors} unique patterns" > "${log_file}.loop"
-          kill "$agent_pid" 2>/dev/null
+          _kill_process_tree "$agent_pid"
           return
         fi
       fi
@@ -1545,7 +1558,7 @@ monitor_agent_loop() {
         prev_errors=$(sed -n '1,50p' "$log_file" 2>/dev/null | grep -iE 'error|ERROR' 2>/dev/null | wc -l | tr -d ' ')
         if [[ "$recent_errors" -ge "$prev_errors" && "$recent_errors" -gt 0 ]]; then
           echo "LOOP_DETECTED:iteration_limit:${make_runs} make runs, errors not decreasing (${prev_errors}->${recent_errors})" > "${log_file}.loop"
-          kill "$agent_pid" 2>/dev/null
+          _kill_process_tree "$agent_pid"
           return
         fi
       fi
@@ -1674,15 +1687,11 @@ run_agent() {
     local monitor_pid=$!
 
     # Wait for agent to finish
-    wait "$tee_pid" 2>/dev/null || exit_code=$?
+    wait "$agent_pid" 2>/dev/null || exit_code=$?
 
-    # Kill monitor and any remaining agent processes
+    # Kill monitor
     kill "$monitor_pid" 2>/dev/null
     wait "$monitor_pid" 2>/dev/null
-    # Ensure agent process tree is fully cleaned up
-    if [[ -n "$agent_pgid" ]]; then
-      kill -- "-$agent_pgid" 2>/dev/null || true
-    fi
 
     local agent_end_epoch
     agent_end_epoch=$(date +%s)
