@@ -6,20 +6,20 @@
   "status": "in_progress",
   "current_step": "u-coder",
   "resume_from": "u-coder",
-  "updated_at": "2026-03-26T19:35:35.943553Z",
+  "updated_at": "2026-03-26T20:12:04.297764Z",
   "task_file": "/workspaces/brama/tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/task.md",
   "branch": "pipeline/implement-hitl-for-foundry-pipeline-per-openspec-d",
   "agents": [
     {
       "agent": "u-coder",
       "status": "done",
-      "model": "anthropic/claude-sonnet-4-6",
-      "duration_seconds": 294,
-      "input_tokens": 48,
-      "output_tokens": 15334,
-      "cost": 1.9836,
+      "model": "zai-coding-plan/glm-5",
+      "duration_seconds": 469,
+      "input_tokens": 644809,
+      "output_tokens": 53705,
+      "cost": 0.0,
       "call_count": 1,
-      "updated_at": "2026-03-26T19:35:35.943538Z"
+      "updated_at": "2026-03-26T20:12:04.297752Z"
     },
     {
       "agent": "u-validator",

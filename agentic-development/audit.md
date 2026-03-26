@@ -15,6 +15,8 @@
 | Видалити `LEGACY_*` та `maybe_migrate_legacy_foundry_tasks()` | ✅ Done | -85 рядків |
 | Замінити Python slugify на Bash | ✅ Done | Python видалено з slugify |
 | Видалити виклики `maybe_migrate_legacy_foundry_tasks` | ✅ Done | 9 файлів очищено |
+| `normalize-summary.py` → TypeScript | ✅ Done | -307 рядків Python |
+| `ultraworks-postmortem-summary.sh` Python slugify → Bash | ✅ Done | -1 Python call (44 left) |
 
 ---
 
@@ -43,7 +45,6 @@
 | `foundry-e2e.sh` | E2E → task creation | ~150 | ✅ Active |
 | `foundry-telegram.sh` | Telegram HITL bot | ~100 | ✅ Active |
 | `ultraworks-postmortem-summary.sh` | Summary generation | ~150 | ✅ Active |
-| `normalize-summary.py` | Summary processing (Python) | ~307 | ⚠️ Pending TS migration |
 | `cost-tracker.sh` | Token cost tracking | ~100 | ✅ Active |
 
 ### TUI Monitor (monitor/)
@@ -55,6 +56,7 @@
 | `src/lib/tasks.ts` | Task state helpers | TypeScript | ✅ Active |
 | `src/lib/actions.ts` | Foundry/Ultraworks actions | TypeScript | ✅ Active |
 | `src/lib/format.ts` | Formatting helpers | TypeScript | ✅ Active |
+| `src/lib/normalize-summary.ts` | Summary normalization CLI | TypeScript | ✅ Active |
 
 ---
 
@@ -192,19 +194,11 @@ pipeline_slugify() {
 
 ---
 
-## ⚡ Залишкові пропозиції
+## ⚡ Залишкові пропозиції (Optional P4)
 
-### 1. **normalize-summary.py → TypeScript**
+### 1. **Inline Python в foundry-common.sh → TypeScript**
 
-| Поточний | Пропозиція |
-|----------|-----------|
-| `lib/normalize-summary.py` (307 рядків) | `monitor/src/lib/normalize-summary.ts` |
-
-**Вигода:** Повна відмова від Python в agentic-development.
-
-### 2. **State Management: TypeScript Port**
-
-`foundry-common.sh` має багато inline Python для JSON parsing:
+`foundry-common.sh` має inline Python для JSON parsing:
 
 ```bash
 # Приклад з foundry_process_status()
@@ -216,7 +210,7 @@ PYEOF
 
 **Рекомендація:** Перенести в TypeScript модуль, викликати через `npx tsx`.
 
-### 3. **Telegram QA Bot — залишити (підтверджено)**
+### 2. **Telegram QA Bot — залишити (підтверджено)**
 
 Telegram Q&A залишається як опціональний функціонал.
 
@@ -227,26 +221,25 @@ Telegram Q&A залишається як опціональний функціо
 | Категорія | Було | Стало | Δ |
 |-----------|------|-------|---|
 | Bash scripts (lib/) | ~3500 | ~2900 | -600 |
-| Python helper | ~350 | ~307 | -43 |
-| TypeScript (monitor/) | ~500 | ~500 | 0 |
-| **Всього** | ~4350 | ~3700 | **-650** |
+| Python helper | ~350 | 0 | -350 |
+| TypeScript (monitor/) | ~500 | ~950 | +450 |
+| **Всього** | ~4350 | ~3850 | **-500** |
 
 ---
 
 ## 🎯 Висновок
 
 **Рефакторинг завершено:**
-- ✅ Видалено ~650 рядків коду
+- ✅ Видалено ~500 рядків коду (net)
 - ✅ `ultraworks-monitor.sh` → Ink TUI
 - ✅ Legacy migration code видалено
 - ✅ Python slugify → Bash
+- ✅ `normalize-summary.py` → TypeScript
 - ✅ Усі виклики `maybe_migrate_legacy_foundry_tasks` видалені
 
-**Залишилось (P3):**
-- `normalize-summary.py` → TypeScript
-- Inline Python в `foundry-common.sh` → TypeScript modules
+**Python повністю видалено з agentic-development!**
 
 **Архітектура тепер:**
 - Один TUI (React/Ink) для Foundry та Ultraworks
-- Bash для orchestration, TypeScript для UI
-- Мінімум Python (тільки normalize-summary.py)
+- Bash для orchestration, TypeScript для UI та processing
+- Немає Python залежностей

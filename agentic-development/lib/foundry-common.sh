@@ -11,6 +11,23 @@ PIPELINE_TASKS_ROOT="${PIPELINE_TASKS_ROOT:-${REPO_ROOT}/tasks}"
 FOUNDRY_TASK_ROOT="${PIPELINE_TASKS_ROOT}"
 FOUNDRY_TASK_ROOT_REL="${FOUNDRY_TASK_ROOT#"$REPO_ROOT"/}"
 
+TASK_STATE_TS="$REPO_ROOT/agentic-development/monitor/src/lib/task-state.ts"
+
+_task_state() {
+  local cmd="$1"
+  shift
+  PIPELINE_TASKS_ROOT="$PIPELINE_TASKS_ROOT" FOUNDRY_DEBUG="${FOUNDRY_DEBUG:-}" npx tsx "$TASK_STATE_TS" "$cmd" "$@" 2>/dev/null
+}
+
+_state_json() {
+  local task_dir="$1"
+  echo "$task_dir/state.json"
+}
+
+_iso_timestamp() {
+  date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
 pipeline_slugify() {
   local text="${1:-unknown}"
   local title=""
@@ -178,24 +195,13 @@ pipeline_task_append_event() {
   local step="${4:-}"
   local event_file="$task_dir/events.jsonl"
   mkdir -p "$task_dir"
-  python3 - "$event_file" "$event_type" "$message" "$step" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-
-path, event_type, message, step = sys.argv[1:5]
-event = {
-    "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-    "type": event_type,
-}
-if message:
-    event["message"] = message
-if step:
-    event["step"] = step
-
-with open(path, "a", encoding="utf-8") as fh:
-    fh.write(json.dumps(event, ensure_ascii=True) + "\n")
-PYEOF
+  local ts
+  ts=$(_iso_timestamp)
+  local event="{\"timestamp\":\"$ts\",\"type\":\"$event_type\""
+  [[ -n "$message" ]] && event="$event,\"message\":\"$message\""
+  [[ -n "$step" ]] && event="$event,\"step\":\"$step\""
+  event="$event}"
+  echo "$event" >> "$event_file"
 }
 
 foundry_task_dir_for_slug() {
@@ -382,34 +388,16 @@ foundry_update_state_field() {
   local task_dir="$1"
   local key="$2"
   local value="$3"
+  local state_file
+  state_file="$(_state_json "$task_dir")"
   foundry_repair_state_file "$task_dir"
-  python3 - "$task_dir" "$key" "$value" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-key = sys.argv[2]
-value = sys.argv[3]
-state_path = task_dir / "state.json"
-data = {}
-if state_path.exists():
-    try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            data = {}
-    except (json.JSONDecodeError, OSError, TypeError, ValueError):
-        data = {}
-if value == "__NULL__":
-    data[key] = None
-else:
-    data[key] = value
-data["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
+  local ts
+  ts=$(_iso_timestamp)
+  if [[ "$value" == "__NULL__" ]]; then
+    jq --arg k "$key" --arg ts "$ts" '.[$k] = null | .updated_at = $ts' "$state_file" > "${state_file}.tmp" && mv "${state_file}.tmp" "$state_file"
+  else
+    jq --arg k "$key" --arg v "$value" --arg ts "$ts" '.[$k] = $v | .updated_at = $ts' "$state_file" > "${state_file}.tmp" && mv "${state_file}.tmp" "$state_file"
+  fi
 }
 
 foundry_set_state_status() {
@@ -418,90 +406,36 @@ foundry_set_state_status() {
   local current_step="${3:-}"
   local resume_from="${4:-}"
   foundry_repair_state_file "$task_dir"
-  python3 - "$task_dir" "$status" "$current_step" "$resume_from" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-status = sys.argv[2]
-current_step = sys.argv[3] or None
-resume_from = sys.argv[4] or None
-state_path = task_dir / "state.json"
-if state_path.exists():
-    try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            data = {}
-    except (json.JSONDecodeError, OSError, TypeError, ValueError):
-        data = {}
-else:
-    data = {
-        "task_id": task_dir.name,
-        "workflow": "foundry",
-        "started_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "attempt": 1,
-    }
-data["status"] = status
-data["current_step"] = current_step
-data["resume_from"] = resume_from
-data["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
+  local state_file
+  state_file="$(_state_json "$task_dir")"
+  local ts
+  ts=$(_iso_timestamp)
+  local updates=".status = \$status | .updated_at = \$ts"
+  [[ -n "$current_step" ]] && updates="$updates | .current_step = \$step"
+  [[ -n "$resume_from" ]] && updates="$updates | .resume_from = \$resume"
+  jq --arg status "$status" --arg ts "$ts" --arg step "$current_step" --arg resume "$resume_from" \
+    "$updates" "$state_file" > "${state_file}.tmp" && mv "${state_file}.tmp" "$state_file"
 }
 
 foundry_increment_attempt() {
   local task_dir="$1"
   foundry_repair_state_file "$task_dir"
-  python3 - "$task_dir" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-state_path = task_dir / "state.json"
-data = {}
-if state_path.exists():
-    try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            data = {}
-    except (json.JSONDecodeError, OSError, TypeError, ValueError):
-        data = {}
-data["attempt"] = int(data.get("attempt", 1)) + 1
-data["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
+  local state_file
+  state_file="$(_state_json "$task_dir")"
+  local ts
+  ts=$(_iso_timestamp)
+  local result
+  result=$(jq --arg ts "$ts" '.attempt = ((.attempt // 1) + 1) | .updated_at = $ts' "$state_file" > "${state_file}.tmp" && mv "${state_file}.tmp" "$state_file" && jq -r '.attempt' "$state_file")
+  echo "$result"
 }
 
 foundry_state_field() {
   local task_dir="$1"
   local key="$2"
-  python3 - "$task_dir" "$key" <<'PYEOF'
-import json
-import sys
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-key = sys.argv[2]
-state_path = task_dir / "state.json"
-if not state_path.exists():
-    raise SystemExit(0)
-try:
-    data = json.loads(state_path.read_text(encoding="utf-8"))
-except json.JSONDecodeError:
-    raise SystemExit(0)
-value = data.get(key)
-if value is None:
-    raise SystemExit(0)
-print(value)
-PYEOF
+  local state_file
+  state_file="$(_state_json "$task_dir")"
+  [[ -f "$state_file" ]] || return 0
+  jq -r --arg k "$key" '.[$k] // empty' "$state_file" 2>/dev/null || true
 }
 
 # ── Atomic task claiming for parallel workers ───────────────────────
@@ -978,47 +912,7 @@ foundry_list_task_dirs() {
 
 foundry_find_tasks_by_status() {
   local wanted="${1:-pending}"
-  python3 - "$PIPELINE_TASKS_ROOT" "$wanted" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-root = Path(sys.argv[1])
-wanted = set(sys.argv[2].split(","))
-now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-for task_dir in sorted(root.glob("*--foundry*")):
-    if not task_dir.is_dir():
-        continue
-    state_path = task_dir / "state.json"
-    # Auto-create state.json for manually-placed task.md files
-    if not state_path.exists() and (task_dir / "task.md").exists():
-        payload = {
-            "task_id": task_dir.name,
-            "workflow": "foundry",
-            "started_at": now,
-            "attempt": 1,
-            "status": "pending",
-            "current_step": None,
-            "resume_from": None,
-            "updated_at": now,
-            "task_file": str(task_dir / "task.md"),
-            "branch": None,
-        }
-        try:
-            state_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n")
-        except OSError:
-            pass
-    status = "pending"
-    if state_path.exists():
-        try:
-            status = json.loads(state_path.read_text(encoding="utf-8")).get("status", "pending")
-        except json.JSONDecodeError:
-            status = "pending"
-    if status in wanted:
-        print(task_dir)
-PYEOF
+  _task_state find-by-status "$wanted"
 }
 
 # ── HITL: Q&A file path helper ───────────────────────────────────────
@@ -1026,49 +920,10 @@ foundry_qa_file() { echo "$1/qa.json"; }
 foundry_qa_draft_file() { echo "$1/qa-draft.json"; }
 
 foundry_task_counts() {
-  python3 - "$PIPELINE_TASKS_ROOT" <<'PYEOF'
-import json
-import sys
-from collections import Counter
-from datetime import datetime, timezone
-from pathlib import Path
-
-root = Path(sys.argv[1])
-counts = Counter()
-now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-for task_dir in root.glob("*--foundry*"):
-    if not task_dir.is_dir():
-        continue
-    state_path = task_dir / "state.json"
-    # Auto-create state.json for manually-placed task.md files
-    if not state_path.exists() and (task_dir / "task.md").exists():
-        payload = {
-            "task_id": task_dir.name,
-            "workflow": "foundry",
-            "started_at": now,
-            "attempt": 1,
-            "status": "pending",
-            "current_step": None,
-            "resume_from": None,
-            "updated_at": now,
-            "task_file": str(task_dir / "task.md"),
-            "branch": None,
-        }
-        try:
-            state_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n")
-        except OSError:
-            pass
-    status = "pending"
-    if state_path.exists():
-        try:
-            status = json.loads(state_path.read_text(encoding="utf-8")).get("status", "pending")
-        except json.JSONDecodeError:
-            status = "pending"
-    counts[status] += 1
-for key in ["pending", "in_progress", "waiting_answer", "completed", "failed", "suspended", "cancelled", "stopped"]:
-    print(f"{key}={counts.get(key, 0)}")
-PYEOF
+  local counts
+  counts=$(_task_state counts)
+  [[ -n "$counts" ]] || return 0
+  echo "$counts" | jq -r 'to_entries | .[] | "\(.key)=\(.value)"'
 }
 
 # ── HITL: Handle waiting_answer state ───────────────────────────────

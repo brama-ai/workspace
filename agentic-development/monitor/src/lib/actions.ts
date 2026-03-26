@@ -1,19 +1,7 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync } from "node:fs";
 import { join, basename, dirname } from "node:path";
-import { execSync, spawn } from "node:child_process";
-
-function readState(dir: string): any {
-  const p = join(dir, "state.json");
-  try {
-    return JSON.parse(readFileSync(p, "utf-8"));
-  } catch {
-    return {};
-  }
-}
-
-function writeState(dir: string, data: any): void {
-  writeFileSync(join(dir, "state.json"), JSON.stringify(data, null, 2) + "\n");
-}
+import { execSync } from "node:child_process";
+import { readState, writeState, type TaskState } from "./task-state.js";
 
 export function claimTask(taskDir: string, workerId: string): boolean {
   const state = readState(taskDir);
@@ -21,8 +9,8 @@ export function claimTask(taskDir: string, workerId: string): boolean {
 
   state.status = "in_progress";
   state.worker_id = workerId;
-  state.claimed_at = new Date().toISOString().replace(/\.\d+Z$/, "Z");
-  state.updated_at = state.claimed_at;
+  (state as any).claimed_at = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+  state.updated_at = (state as any).claimed_at;
 
   writeState(taskDir, state);
   return true;
@@ -34,21 +22,15 @@ export function releaseTask(taskDir: string): void {
 
   state.status = "pending";
   delete state.worker_id;
-  delete state.claimed_at;
+  delete (state as any).claimed_at;
   state.updated_at = new Date().toISOString().replace(/\.\d+Z$/, "Z");
 
   writeState(taskDir, state);
 }
 
-/**
- * Archive a task: move it to tasks/archives/DD-MM-YYYY/task-slug/
- * Returns the archive path, or throws if task is truly in_progress (mid-pipeline).
- * Tasks stuck as in_progress but with all agents done are auto-completed first.
- */
 export function archiveTask(taskDir: string): string {
   const state = readState(taskDir);
   if (state.status === "in_progress") {
-    // Allow archive if all agents completed (task stuck in finalization)
     const agents = Array.isArray(state.agents) ? state.agents : [];
     const summarizerDone = agents.some(
       (a: any) => a.agent?.includes("summarizer") && a.status === "done"
