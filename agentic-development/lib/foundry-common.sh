@@ -840,6 +840,64 @@ with open(state_path, "w", encoding="utf-8") as fh:
 PYEOF
 }
 
+# Write all planned agents to state.json as "pending" + set profile
+# Called ONCE after planner determines the agent list, before execution starts.
+foundry_state_set_planned_agents() {
+  local task_dir="$1"
+  local profile="$2"
+  shift 2
+  local agents=("$@")
+  foundry_repair_state_file "$task_dir"
+  python3 - "$task_dir" "$profile" "${agents[@]}" <<'PYEOF'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+task_dir = Path(sys.argv[1])
+profile = sys.argv[2]
+planned_agents = sys.argv[3:]
+
+state_path = task_dir / "state.json"
+data = {}
+if state_path.exists():
+    try:
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            data = {}
+    except (json.JSONDecodeError, OSError):
+        data = {}
+
+# Preserve existing agent entries (planner may already be "done")
+existing = {a["agent"]: a for a in data.get("agents", []) if isinstance(a, dict)}
+
+agents = []
+for name in planned_agents:
+    if name in existing:
+        agents.append(existing[name])
+    else:
+        agents.append({
+            "agent": name,
+            "status": "pending",
+            "model": "",
+            "duration_seconds": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost": 0,
+            "call_count": 0,
+            "updated_at": ""
+        })
+
+data["agents"] = agents
+data["profile"] = profile
+data["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+with open(state_path, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, ensure_ascii=True, indent=2)
+    fh.write("\n")
+PYEOF
+}
+
 foundry_create_task_dir() {
   local task_text="$1"
   local slug="${2:-}"

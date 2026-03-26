@@ -16,6 +16,8 @@ import {
   ultraworksCleanup,
   findRepoRoot,
   cleanZombies,
+  runDoctor,
+  runDoctorTask,
   getProcessStatus,
   tailLog,
   type CmdResult,
@@ -23,11 +25,11 @@ import {
   type ProcessEntry,
 } from "../lib/actions.js";
 
-const VERSION = "2.2.0";
+const VERSION = "2.3.0";
 const REFRESH_MS = 3000;
 
 type ViewMode = "list" | "detail" | "logs" | "agents";
-type DetailTab = "summary" | "state" | "task" | "handoff";
+type DetailTab = "summary" | "agents" | "state" | "task" | "handoff";
 type MainTab = 1 | 2 | 3;
 
 // Scroll state per detail tab
@@ -48,6 +50,7 @@ const COMMANDS: Command[] = [
   { key: "k", label: "Kill / stop Foundry workers",              section: "foundry",    action: (r) => stopWorkers(r) },
   { key: "f", label: "Retry all failed tasks",                   section: "foundry",    action: (r) => retryFailed(r) },
   { key: "z", label: "Clean zombie processes & stale lock",      section: "foundry",    action: (r) => cleanZombies(r) },
+  { key: "x", label: "Run Doctor diagnostics",                   section: "foundry",    action: (r) => runDoctor(r) },
   // Ultraworks
   { key: "u", label: "Launch Ultraworks (tmux)",                 section: "ultraworks", action: (r) => ultraworksLaunch(r) },
   { key: "U", label: "Attach to Ultraworks session",             section: "ultraworks", action: (r) => ultraworksAttach(r) },
@@ -63,6 +66,7 @@ const COMMANDS: Command[] = [
   { key: "a",        label: "View agents table for selected task",  section: "nav" },
   { key: "l",        label: "View agent stdout logs",               section: "nav" },
   { key: "d",        label: "Archive task (move to archives/)",     section: "nav" },
+  { key: "x",        label: "Run Doctor on selected task",          section: "nav" },
   { key: "Esc",      label: "Back to task list from any sub-view",  section: "nav" },
 ];
 
@@ -113,6 +117,7 @@ export function App({ tasksRoot }: Props) {
   // Scroll offsets per detail tab (preserved when switching tabs)
   const [detailScrollOffsets, setDetailScrollOffsets] = useState<TabScrollState>({
     summary: 0,
+    agents: 0,
     state: 0,
     task: 0,
     handoff: 0,
@@ -258,7 +263,8 @@ export function App({ tasksRoot }: Props) {
     if (key.return) {
       if (selected) {
         const isFinished = selected.status === "completed" || selected.status === "failed";
-        setDetailTab(isFinished ? "summary" : "state");
+        const isRunning = selected.status === "in_progress";
+        setDetailTab(isFinished ? "summary" : isRunning ? "agents" : "state");
       }
       setView("detail");
       return;
@@ -266,7 +272,7 @@ export function App({ tasksRoot }: Props) {
 
     // Sub-views
     if (input === "l" || input === "L") { setView("logs"); return; }
-    if (input === "a") { setView("agents"); return; }
+    if (input === "a") { setView("detail"); setDetailTab("agents"); return; }
 
     // Archive
     if (input === "d" || input === "D") {
@@ -296,6 +302,15 @@ export function App({ tasksRoot }: Props) {
     if (input === "z" || input === "Z") { handleCmd(cleanZombies(repoRoot)); return; }
     if (input === "t") { handleCmd(runAutotest(repoRoot, false)); return; }
     if (input === "T") { handleCmd(runAutotest(repoRoot, true)); return; }
+    // Doctor diagnostics
+    if (input === "x" || input === "X") {
+      if (selected) {
+        handleCmd(runDoctorTask(repoRoot, basename(selected.dir)));
+      } else {
+        handleCmd(runDoctor(repoRoot));
+      }
+      return;
+    }
     if (input === "r" || input === "R") { setData(readAllTasks(root)); setMsg("Refreshed"); return; }
   });
 
@@ -303,7 +318,7 @@ export function App({ tasksRoot }: Props) {
 
   // Footer hint per tab/view
   let footerHint = "";
-  if (tab === 1 && view === "list")   footerHint = "  ↑/↓ select  Enter detail  [a] agents  [l] logs  [d] archive  [s] start  [k] stop  [q] quit";
+  if (tab === 1 && view === "list")   footerHint = "  ↑/↓ select  Enter detail  [a] agents  [l] logs  [d] archive  [x] doctor  [s] start  [k] stop  [q] quit";
   if (tab === 1 && view === "detail") footerHint = "  ←/→ tabs  ↑/↓ scroll  PgUp/PgDn  [g] top  [G] end  [y] copy  [Esc] back  [q] quit";
   if (tab === 1 && view !== "list" && view !== "detail") footerHint = "  [y] copy slug  [Esc] back  [q] quit";
   if (tab === 2) footerHint = "  ↑/↓ select  Enter run  ←/→ tabs  [q] quit";
@@ -837,10 +852,13 @@ function DetailView({
   const [handoffContent, setHandoffContent] = useState<string[]>([]);
 
   const isFinished     = task.status === "completed" || task.status === "failed";
-  const defaultFirstTab: DetailTab = isFinished ? "summary" : "state";
+  const isRunning      = task.status === "in_progress";
+  const defaultFirstTab: DetailTab = isFinished ? "summary" : isRunning ? "agents" : "state";
   const availableTabs: DetailTab[] = isFinished
-    ? ["summary", "task", "handoff"]
-    : ["state", "task", "handoff"];
+    ? ["summary", "agents", "task", "handoff"]
+    : isRunning
+    ? ["agents", "state", "task", "handoff"]
+    : ["state", "agents", "task", "handoff"];
 
   // Header lines: title(1) + tabs(1) + separator(1) + status(1) + blank(1) = ~5 fixed lines
   // Footer: blank(1) = 1 line
@@ -918,7 +936,7 @@ function DetailView({
     return `${Math.floor(diff / 3600)}h ago`;
   };
 
-  const tabLabels: Record<DetailTab, string> = { summary: "Summary", state: "State", task: "Task", handoff: "Handoff" };
+  const tabLabels: Record<DetailTab, string> = { summary: "Summary", agents: "Agents", state: "State", task: "Task", handoff: "Handoff" };
   const activeTab = availableTabs.includes(tab) ? tab : defaultFirstTab;
 
   return (
@@ -960,6 +978,87 @@ function DetailView({
         </Box>
       )}
 
+      {activeTab === "agents" && (
+        <Box flexDirection="column">
+          <Box>
+            <Text dimColor>  Status: </Text>
+            <Text bold color={
+              task.status === "completed" ? "green" :
+              task.status === "failed"    ? "red"   :
+              task.status === "in_progress" ? "yellow" :
+              task.status === "suspended"   ? "magenta" : undefined
+            }>{task.status}</Text>
+            {task.currentStep && <Text dimColor> [{task.currentStep}]</Text>}
+            {task.updatedAt && <Text dimColor> {timeAgo(task.updatedAt)}</Text>}
+          </Box>
+          {(task.profile || stateData?.profile) && <Box><Text dimColor>  Profile: </Text><Text bold color="cyan">{task.profile || stateData?.profile}</Text></Box>}
+          <Text> </Text>
+          {task.agents && task.agents.length > 0 ? (
+            <Box flexDirection="column">
+              <Box>
+                <Text dimColor>  </Text>
+                <Text bold>{"Agent".padEnd(20)}</Text>
+                <Text bold>{"Status".padEnd(12)}</Text>
+                <Text bold>{"Model".padEnd(22)}</Text>
+                <Text bold>{"Time".padStart(8)}</Text>
+                <Text bold>{"Tokens".padStart(10)}</Text>
+                <Text bold>{"Cost".padStart(8)}</Text>
+              </Box>
+              <Text dimColor>{"  " + "─".repeat(cols > 80 ? 78 : 40)}</Text>
+              {task.agents.map((a) => {
+                const isAgentRunning = a.status === "in_progress" || a.status === "running";
+                const isDone = a.status === "done" || a.status === "completed";
+                const isFailed = a.status === "failed" || a.status === "error";
+                const isPending = !a.status || a.status === "pending";
+                const icon  = isAgentRunning ? spinner : isDone ? "✓" : isFailed ? "✗" : "·";
+                const color = isAgentRunning ? "cyan" : isDone ? "green" : isFailed ? "red" : undefined;
+                const modelStr = (a.model || "").replace(/^(anthropic|openai|google|minimax|opencode-go|opencode|openrouter)\//, "");
+                const tokensStr = (a.inputTokens || a.outputTokens) ? `${formatTokens(a.inputTokens || 0)}/${formatTokens(a.outputTokens || 0)}` : "";
+                const costStr = a.cost ? `$${a.cost.toFixed(2)}` : "";
+                const timeStr = (a.durationSeconds && a.durationSeconds > 0) ? formatDuration(a.durationSeconds) : "";
+                return (
+                  <Box key={a.agent}>
+                    <Text>  </Text>
+                    <Text color={color as any}>{icon} </Text>
+                    <Text dimColor={isPending}>{a.agent.padEnd(18)}</Text>
+                    <Text color={color as any} dimColor={isPending}>{(a.status || "pending").padEnd(12)}</Text>
+                    <Text dimColor={isPending}>{modelStr.slice(0, 20).padEnd(22)}</Text>
+                    <Text dimColor={isPending}>{timeStr.padStart(8)}</Text>
+                    <Text dimColor={isPending}>{tokensStr.padStart(10)}</Text>
+                    <Text color={isDone || isFailed ? "yellow" : undefined} dimColor={isPending}>{costStr.padStart(8)}</Text>
+                  </Box>
+                );
+              })}
+              {(() => {
+                const doneAgents = task.agents!.filter(a => a.durationSeconds && a.durationSeconds > 0);
+                if (doneAgents.length === 0) return null;
+                const totalTime = doneAgents.reduce((s, a) => s + (a.durationSeconds || 0), 0);
+                const totalCost = doneAgents.reduce((s, a) => s + (a.cost || 0), 0);
+                const totalIn = doneAgents.reduce((s, a) => s + (a.inputTokens || 0), 0);
+                const totalOut = doneAgents.reduce((s, a) => s + (a.outputTokens || 0), 0);
+                return (<>
+                  <Text dimColor>{"  " + "─".repeat(cols > 80 ? 78 : 40)}</Text>
+                  <Box>
+                    <Text>  </Text>
+                    <Text bold>{"  Total".padEnd(20)}</Text>
+                    <Text>{"".padEnd(12)}</Text>
+                    <Text>{"".padEnd(22)}</Text>
+                    <Text bold>{formatDuration(totalTime).padStart(8)}</Text>
+                    <Text dimColor>{`${formatTokens(totalIn)}/${formatTokens(totalOut)}`.padStart(10)}</Text>
+                    <Text bold color="yellow">{`$${totalCost.toFixed(2)}`.padStart(8)}</Text>
+                  </Box>
+                </>);
+              })()}
+            </Box>
+          ) : (
+            <Text dimColor>  No agents yet</Text>
+          )}
+          {loopCount > 0 && (
+            <Box><Text> </Text><Text color="yellow">  ⚠ Task retried {loopCount} time{loopCount > 1 ? "s" : ""}</Text></Box>
+          )}
+        </Box>
+      )}
+
       {activeTab === "state" && (
         <Box flexDirection="column">
           <Box>
@@ -974,38 +1073,13 @@ function DetailView({
             {task.updatedAt && <Text dimColor> {timeAgo(task.updatedAt)}</Text>}
           </Box>
           {stateData?.branch && <Box><Text dimColor>  Branch: </Text><Text>{stateData.branch}</Text></Box>}
+          {(task.profile || stateData?.profile) && <Box><Text dimColor>  Profile: </Text><Text bold color="cyan">{task.profile || stateData?.profile}</Text></Box>}
           {task.workerId     && <Box><Text dimColor>  Worker: </Text><Text>{task.workerId}</Text></Box>}
-          <Text> </Text>
-          <Text bold>  Agents</Text>
-          <Text dimColor>{"  " + "─".repeat(40)}</Text>
-          {task.agents && task.agents.length > 0 ? (
-            <Box flexDirection="column">
-              <Box>
-                <Text dimColor>  </Text>
-                <Text bold>{"Agent".padEnd(14)}</Text>
-                <Text bold>{"Status".padEnd(10)}</Text>
-                <Text bold>{"Time".padStart(8)}</Text>
-              </Box>
-              {task.agents.map((a) => {
-                const isRunning = a.status === "in_progress" || a.status === "running";
-                const icon  = isRunning ? spinner : a.status === "done" || a.status === "completed" ? "✓" : a.status === "failed" || a.status === "error" ? "✗" : "○";
-                const color = isRunning ? "cyan" : a.status === "done" || a.status === "completed" ? "green" : a.status === "failed" || a.status === "error" ? "red" : undefined;
-                return (
-                  <Box key={a.agent}>
-                    <Text>  </Text>
-                    <Text color={color as any}>{icon} </Text>
-                    <Text>{a.agent.padEnd(12)}</Text>
-                    <Text color={color as any}>{(a.status || "pending").padEnd(10)}</Text>
-                    <Text>{formatDuration(a.durationSeconds || 0).padStart(7)}</Text>
-                  </Box>
-                );
-              })}
-            </Box>
-          ) : (
-            <Text dimColor>  No agents yet</Text>
-          )}
+          {task.attempt && task.attempt > 1 && <Box><Text dimColor>  Attempt: </Text><Text color="yellow">{task.attempt}</Text></Box>}
+          {stateData?.task_file && <Box><Text dimColor>  Task file: </Text><Text dimColor>{stateData.task_file}</Text></Box>}
+          {task.hasStaleLock && <Box><Text color="red">  ⚠ Stale lock detected</Text></Box>}
           {loopCount > 0 && (
-            <Box><Text> </Text><Text color="yellow">  ⚠ Task retried {loopCount} time{loopCount > 1 ? "s" : ""}</Text></Box>
+            <Box><Text color="yellow">  ⚠ Task retried {loopCount} time{loopCount > 1 ? "s" : ""}</Text></Box>
           )}
         </Box>
       )}

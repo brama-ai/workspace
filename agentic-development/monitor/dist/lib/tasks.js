@@ -175,6 +175,7 @@ export function readAllTasks(root) {
             worktreePath,
             branchName,
             attempt: state?.attempt,
+            profile: state?.profile,
             // Diagnostic fields
             hasStaleLock: checkStaleLock(taskDir, status),
             lastEventTime: lastEvent?.time,

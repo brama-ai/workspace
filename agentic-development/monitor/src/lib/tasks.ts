@@ -33,6 +33,7 @@ export interface TaskInfo {
   lastEventAge?: number; // seconds
   branchExists?: boolean;
   attempt?: number;
+  profile?: string;
 }
 
 export interface TaskCounts {
@@ -222,6 +223,7 @@ export function readAllTasks(root: string): ReadResult {
       worktreePath,
       branchName,
       attempt: state?.attempt,
+      profile: state?.profile,
       // Diagnostic fields
       hasStaleLock: checkStaleLock(taskDir, status),
       lastEventTime: lastEvent?.time,

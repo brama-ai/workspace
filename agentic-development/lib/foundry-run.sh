@@ -2609,6 +2609,11 @@ main() {
   agents_to_run=$(get_agents_to_run)
   set_planned_agents $agents_to_run
 
+  # Write ALL planned agents to state.json as "pending" so monitor shows the full plan
+  if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
+    foundry_state_set_planned_agents "$TASK_DIR" "${PIPELINE_PROFILE:-standard}" $agents_to_run
+  fi
+
   echo ""
   echo -e "${BLUE}Agents to run:${NC} $(echo "$agents_to_run" | tr '\n' ' ')"
   echo ""

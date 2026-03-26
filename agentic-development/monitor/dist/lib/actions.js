@@ -179,6 +179,17 @@ export function cleanZombies(repoRoot) {
     const commonSh = join(repoRoot, "agentic-development", "lib", "foundry-common.sh");
     return runQuick(`bash -c 'REPO_ROOT="${repoRoot}" source "${commonSh}" && n=$(foundry_cleanup_zombies) && echo "Cleaned: $n zombie(s)/stale lock(s)"'`, repoRoot);
 }
+// ── Doctor diagnostics ──────────────────────────────────────────
+/** Run u-doctor general diagnostics in tmux */
+export function runDoctor(repoRoot) {
+    const cmd = `opencode run --agent u-doctor "Diagnose current Foundry state. Check failed tasks, zombie processes, missing files, and stale locks. Create root cause report in agentic-development/doctor/"`;
+    return runInTmux("foundry-doctor", cmd, repoRoot);
+}
+/** Run u-doctor diagnostics for a specific task */
+export function runDoctorTask(repoRoot, taskSlug) {
+    const cmd = `opencode run --agent u-doctor "Diagnose task '${taskSlug}'. Check its state.json, handoff.md, agent logs, and identify why it failed or got stuck. Create root cause report in agentic-development/doctor/"`;
+    return runInTmux("foundry-doctor", cmd, repoRoot);
+}
 /** Tail last N lines of a log file */
 export function tailLog(logPath, lines = 40) {
     try {

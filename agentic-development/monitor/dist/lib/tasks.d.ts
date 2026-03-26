@@ -27,6 +27,7 @@ export interface TaskInfo {
     lastEventAge?: number;
     branchExists?: boolean;
     attempt?: number;
+    profile?: string;
 }
 export interface TaskCounts {
     pending: number;
