@@ -1417,11 +1417,13 @@ auto_inject_auditor() {
     is_agent_task=$(jq -r '.is_agent_task // false' "$plan_file" 2>/dev/null || echo "false")
   fi
 
-  # Fallback only when plan.json is missing: check apps_affected for -agent dirs
+  # Fallback only when plan.json is missing: check for brama platform agent work
+  # NOTE: .opencode/agents/ changes (pipeline configs) do NOT count as agent tasks
   if [[ "$is_agent_task" != "true" && ! -f "$plan_file" ]]; then
     local task_lower
     task_lower=$(echo "$TASK_MESSAGE" | tr '[:upper:]' '[:lower:]')
-    if echo "$task_lower" | grep -qE '(new agent|create agent|add .+-agent)'; then
+    if echo "$task_lower" | grep -qE '(new agent|create agent|add .+-agent)' && \
+       echo "$task_lower" | grep -qvE '(foundry|pipeline|opencode.agents)'; then
       is_agent_task="true"
     fi
   fi
@@ -1933,7 +1935,7 @@ Write ONLY a JSON file to \`pipeline-plan.json\` (in the repo root) with this ex
 \`\`\`
 
 **Fields**:
-- \`is_agent_task\`: set to \`true\` when the task creates, modifies, or significantly changes an agent (any app in \`apps/\` with \`-agent\` suffix, or agent configs in \`.opencode/agents/\`). When true, the pipeline auto-injects an auditor step after the coder to verify agent compliance.
+- \`is_agent_task\`: set to \`true\` ONLY when the task creates, modifies, or significantly changes a **brama platform agent** (any app in \`brama-agents/\` with \`-agent\` suffix). When true, the pipeline auto-injects an auditor step after the coder to verify agent compliance. NOTE: changes to pipeline agent configs in \`.opencode/agents/\` (u-coder.md, u-architect.md etc.) are NOT agent tasks — those are pipeline configuration changes.
 
 Agent options: u-planner, u-architect, u-coder, u-auditor, u-validator, u-tester, e2e, u-merger, u-documenter, u-translater, u-summarizer.
 For quick-fix: typically ["u-coder", "u-validator", "u-summarizer"].
