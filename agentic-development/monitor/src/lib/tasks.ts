@@ -13,6 +13,26 @@ export interface AgentInfo {
   callCount?: number;
 }
 
+export interface QAQuestion {
+  id: string;
+  agent: string;
+  timestamp: string;
+  priority: "blocking" | "non-blocking";
+  category: string;
+  question: string;
+  context?: string;
+  options?: string[];
+  answer: string | null;
+  answered_at: string | null;
+  answered_by: string | null;
+  answer_source?: string | null;
+}
+
+export interface QAData {
+  version: number;
+  questions: QAQuestion[];
+}
+
 export interface TaskInfo {
   dir: string;
   workflow: "foundry" | "ultraworks";
@@ -34,11 +54,18 @@ export interface TaskInfo {
   branchExists?: boolean;
   attempt?: number;
   profile?: string;
+  // HITL fields
+  qaData?: QAData;
+  waitingAgent?: string;
+  waitingSince?: string;
+  questionsCount?: number;
+  questionsAnswered?: number;
 }
 
 export interface TaskCounts {
   pending: number;
   in_progress: number;
+  waiting_answer: number;
   completed: number;
   failed: number;
   suspended: number;
@@ -53,9 +80,10 @@ export interface ReadResult {
 
 const STATUS_ORDER: Record<string, number> = {
   in_progress: 0,
-  completed: 1,
-  failed: 2,
-  suspended: 3,
+  waiting_answer: 1,
+  completed: 2,
+  failed: 3,
+  suspended: 4,
 };
 
 function readJson(path: string): any {
@@ -146,10 +174,23 @@ function checkBranchExists(branch: string | undefined): boolean {
   }
 }
 
+function readQAData(taskDir: string): QAData | undefined {
+  const qaPath = join(taskDir, "qa.json");
+  if (!existsSync(qaPath)) return undefined;
+  try {
+    const data = JSON.parse(readFileSync(qaPath, "utf-8"));
+    if (data && Array.isArray(data.questions)) {
+      return data as QAData;
+    }
+  } catch {}
+  return undefined;
+}
+
 export function readAllTasks(root: string): ReadResult {
   const counts: TaskCounts = {
     pending: 0,
     in_progress: 0,
+    waiting_answer: 0,
     completed: 0,
     failed: 0,
     suspended: 0,
@@ -208,6 +249,12 @@ export function readAllTasks(root: string): ReadResult {
     // Diagnostic info for stale detection
     const lastEvent = getLastEvent(taskDir);
 
+    // HITL: read qa.json for waiting_answer tasks
+    let qaData: QAData | undefined;
+    if (status === "waiting_answer") {
+      qaData = readQAData(taskDir);
+    }
+
     tasks.push({
       dir: taskDir,
       workflow,
@@ -229,6 +276,12 @@ export function readAllTasks(root: string): ReadResult {
       lastEventTime: lastEvent?.time,
       lastEventAge: lastEvent?.age,
       branchExists: checkBranchExists(branchName),
+      // HITL fields
+      qaData,
+      waitingAgent: state?.waiting_agent,
+      waitingSince: state?.waiting_since,
+      questionsCount: typeof state?.questions_count === "number" ? state.questions_count : undefined,
+      questionsAnswered: typeof state?.questions_answered === "number" ? state.questions_answered : undefined,
     });
   }
 

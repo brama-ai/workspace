@@ -982,6 +982,10 @@ for task_dir in sorted(root.glob("*--foundry*")):
 PYEOF
 }
 
+# ── HITL: Q&A file path helper ───────────────────────────────────────
+foundry_qa_file() { echo "$1/qa.json"; }
+foundry_qa_draft_file() { echo "$1/qa-draft.json"; }
+
 foundry_task_counts() {
   python3 - "$PIPELINE_TASKS_ROOT" <<'PYEOF'
 import json
@@ -1023,9 +1027,237 @@ for task_dir in root.glob("*--foundry*"):
         except json.JSONDecodeError:
             status = "pending"
     counts[status] += 1
-for key in ["pending", "in_progress", "completed", "failed", "suspended", "cancelled", "stopped"]:
+for key in ["pending", "in_progress", "waiting_answer", "completed", "failed", "suspended", "cancelled", "stopped"]:
     print(f"{key}={counts.get(key, 0)}")
 PYEOF
+}
+
+# ── HITL: Handle waiting_answer state ───────────────────────────────
+# Called when an agent exits with code 75.
+# Validates qa.json, updates state.json, emits event.
+# Returns 0 if pipeline may continue (continue_on_wait=true), 75 to pause.
+foundry_handle_waiting_answer() {
+  local agent="$1"
+  local task_dir="$2"
+  local qa_file
+  qa_file=$(foundry_qa_file "$task_dir")
+
+  if [[ ! -f "$qa_file" ]]; then
+    echo "Warning: Agent $agent exited 75 but qa.json not found at $qa_file" >&2
+    return 1
+  fi
+
+  local unanswered
+  unanswered=$(python3 -c "
+import json, sys
+data = json.loads(open(sys.argv[1]).read())
+print(sum(1 for q in data.get('questions', []) if q.get('answer') is None))
+" "$qa_file" 2>/dev/null || echo "0")
+
+  if [[ "$unanswered" -eq 0 ]]; then
+    echo "Warning: Agent $agent exited 75 but no unanswered questions in qa.json" >&2
+    return 1
+  fi
+
+  # Update state.json
+  foundry_update_state_field "$task_dir" "status" "waiting_answer"
+  foundry_update_state_field "$task_dir" "waiting_agent" "$agent"
+  foundry_update_state_field "$task_dir" "waiting_since" "$(date -u +%FT%TZ)"
+  foundry_update_state_field "$task_dir" "questions_count" "$unanswered"
+  foundry_update_state_field "$task_dir" "questions_answered" "0"
+
+  # Emit event
+  pipeline_task_append_event "$task_dir" "waiting_answer" \
+    "Agent $agent has $unanswered unanswered question(s)" "$agent"
+
+  # Check if profile allows continuing
+  local continue_on_wait="false"
+  local plan_file="$task_dir/pipeline-plan.json"
+  if [[ -f "$plan_file" ]] && command -v jq &>/dev/null; then
+    continue_on_wait=$(jq -r '.continue_on_wait // false' "$plan_file" 2>/dev/null || echo "false")
+  fi
+
+  if [[ "$continue_on_wait" == "true" ]]; then
+    echo "Profile allows continuation — skipping to next agent" >&2
+    foundry_update_state_field "$task_dir" "resume_from" "$agent"
+    return 0  # Continue pipeline
+  fi
+
+  # Default: pause pipeline
+  echo "Pipeline paused — waiting for human answers" >&2
+  return 75
+}
+
+# ── HITL: Sync qa.json answers back to handoff.md ───────────────────
+foundry_sync_qa_to_handoff() {
+  local task_dir="$1"
+  local qa_file
+  qa_file=$(foundry_qa_file "$task_dir")
+  local handoff_file="$task_dir/handoff.md"
+
+  [[ -f "$qa_file" ]] || return 0
+  [[ -f "$handoff_file" ]] || return 0
+
+  python3 - "$qa_file" "$handoff_file" <<'PYEOF'
+import json
+import sys
+from pathlib import Path
+
+qa_path = Path(sys.argv[1])
+handoff_path = Path(sys.argv[2])
+
+try:
+    data = json.loads(qa_path.read_text(encoding="utf-8"))
+except (json.JSONDecodeError, OSError):
+    raise SystemExit(0)
+
+questions = data.get("questions", [])
+if not questions:
+    raise SystemExit(0)
+
+# Build Q&A markdown block
+lines = ["", "### Q&A", ""]
+for i, q in enumerate(questions, 1):
+    priority = q.get("priority", "non-blocking")
+    agent = q.get("agent", "unknown")
+    question_text = q.get("question", "")
+    options = q.get("options", [])
+    answer = q.get("answer")
+    answered_by = q.get("answered_by", "")
+    answer_source = q.get("answer_source", "")
+
+    lines.append(f"> **Q{i}** [{priority}] {question_text} (asked by {agent})")
+    for opt in options:
+        checked = "x" if answer == opt else " "
+        lines.append(f"> - [{checked}] {opt}")
+    if answer:
+        by_info = f" (by {answered_by}" + (f" via {answer_source}" if answer_source else "") + ")"
+        lines.append(f">")
+        lines.append(f"> **A{i}**{by_info}: {answer}")
+    else:
+        lines.append(f">")
+        lines.append(f"> **A{i}**: —")
+    lines.append("")
+
+qa_block = "\n".join(lines)
+
+# Update or append Q&A section in handoff.md
+content = handoff_path.read_text(encoding="utf-8")
+
+# Remove existing Q&A block if present
+import re
+content = re.sub(r'\n### Q&A\n.*?(?=\n## |\Z)', '', content, flags=re.DOTALL)
+
+# Append new Q&A block
+content = content.rstrip() + "\n" + qa_block + "\n"
+handoff_path.write_text(content, encoding="utf-8")
+PYEOF
+}
+
+# ── HITL: Resume pipeline after Q&A answers ─────────────────────────
+# Validates all blocking questions are answered, then resumes pipeline.
+foundry_resume_qa() {
+  local task_dir="$1"
+  local qa_file
+  qa_file=$(foundry_qa_file "$task_dir")
+
+  if [[ ! -f "$qa_file" ]]; then
+    echo "Error: qa.json not found at $qa_file" >&2
+    return 1
+  fi
+
+  local blocking_unanswered
+  blocking_unanswered=$(python3 -c "
+import json, sys
+data = json.loads(open(sys.argv[1]).read())
+print(sum(1 for q in data.get('questions', [])
+         if q.get('priority') == 'blocking' and q.get('answer') is None))
+" "$qa_file" 2>/dev/null || echo "0")
+
+  if [[ "$blocking_unanswered" -gt 0 ]]; then
+    echo "Error: $blocking_unanswered blocking question(s) still unanswered" >&2
+    return 1
+  fi
+
+  # Sync qa.json answers back to handoff.md
+  foundry_sync_qa_to_handoff "$task_dir"
+
+  # Get waiting agent
+  local resume_agent
+  resume_agent=$(foundry_state_field "$task_dir" "waiting_agent" 2>/dev/null || echo "")
+
+  if [[ -z "$resume_agent" ]]; then
+    echo "Error: no waiting_agent in state.json" >&2
+    return 1
+  fi
+
+  # Update state
+  foundry_set_state_status "$task_dir" "pending" "$resume_agent" "$resume_agent"
+  foundry_update_state_field "$task_dir" "resume_from" "$resume_agent"
+
+  # Count answered questions
+  local total_answered
+  total_answered=$(python3 -c "
+import json, sys
+data = json.loads(open(sys.argv[1]).read())
+print(sum(1 for q in data.get('questions', []) if q.get('answer') is not None))
+" "$qa_file" 2>/dev/null || echo "0")
+
+  foundry_update_state_field "$task_dir" "questions_answered" "$total_answered"
+
+  # Emit event
+  pipeline_task_append_event "$task_dir" "qa_answered" \
+    "Questions answered — resuming from $resume_agent" "$resume_agent"
+
+  echo "✓ Pipeline resumed from $resume_agent"
+  return 0
+}
+
+# ── HITL: Answer a question in qa.json from CLI ──────────────────────
+foundry_answer_question() {
+  local task_dir="$1"
+  local question_id="$2"
+  local answer_text="$3"
+  local answered_by="${4:-human}"
+  local qa_file
+  qa_file=$(foundry_qa_file "$task_dir")
+
+  [[ -f "$qa_file" ]] || { echo "Error: qa.json not found" >&2; return 1; }
+
+  python3 - "$qa_file" "$question_id" "$answer_text" "$answered_by" <<'PYEOF'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+qa_path = Path(sys.argv[1])
+question_id = sys.argv[2]
+answer_text = sys.argv[3]
+answered_by = sys.argv[4]
+
+data = json.loads(qa_path.read_text(encoding="utf-8"))
+found = False
+for q in data.get("questions", []):
+    if q.get("id") == question_id:
+        q["answer"] = answer_text
+        q["answered_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        q["answered_by"] = answered_by
+        q["answer_source"] = "cli"
+        found = True
+        break
+
+if not found:
+    print(f"Error: question {question_id} not found", file=sys.stderr)
+    raise SystemExit(1)
+
+qa_path.write_text(json.dumps(data, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
+print(f"✓ Answered question {question_id}")
+PYEOF
+}
+
+# ── HITL: List tasks waiting for answers ────────────────────────────
+foundry_list_waiting_tasks() {
+  foundry_find_tasks_by_status "waiting_answer"
 }
 
 foundry_migrate_legacy_state() {
@@ -1258,5 +1490,6 @@ foundry_cancel_in_progress_tasks() {
         pipeline_task_append_event "$task_dir" "stopped" "Pipeline stopped by user" ""
       fi
     fi
+    # waiting_answer tasks are preserved — they need human input, not cancellation
   done
 }

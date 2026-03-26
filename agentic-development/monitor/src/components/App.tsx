@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput, useApp, useStdout } from "ink";
-import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, existsSync, statSync, writeFileSync } from "node:fs";
 import { join, basename } from "node:path";
 import { execSync } from "node:child_process";
-import { readAllTasks, type ReadResult, type TaskInfo } from "../lib/tasks.js";
+import { readAllTasks, type ReadResult, type TaskInfo, type QAQuestion } from "../lib/tasks.js";
 import { formatDuration, formatTokens, formatCost } from "../lib/format.js";
 import {
   startWorkers,
@@ -25,10 +25,10 @@ import {
   type ProcessEntry,
 } from "../lib/actions.js";
 
-const VERSION = "2.3.0";
+const VERSION = "2.4.0";
 const REFRESH_MS = 3000;
 
-type ViewMode = "list" | "detail" | "logs" | "agents";
+type ViewMode = "list" | "detail" | "logs" | "agents" | "qa";
 type DetailTab = "summary" | "agents" | "state" | "task" | "handoff";
 type MainTab = 1 | 2 | 3;
 
@@ -109,7 +109,7 @@ export function App({ tasksRoot }: Props) {
   const [cmdIdx, setCmdIdx] = useState(0);
   const [view, setView] = useState<ViewMode>("list");
   const [detailTab, setDetailTab] = useState<DetailTab>("state");
-  const [data, setData] = useState<ReadResult>({ tasks: [], counts: { pending: 0, in_progress: 0, completed: 0, failed: 0, suspended: 0, cancelled: 0 }, focusDir: null });
+  const [data, setData] = useState<ReadResult>({ tasks: [], counts: { pending: 0, in_progress: 0, waiting_answer: 0, completed: 0, failed: 0, suspended: 0, cancelled: 0 }, focusDir: null });
   const [msg, setMsg] = useState("");
   const [lastAttachCmd, setLastAttachCmd] = useState("");
   const [tick, setTick] = useState(0);
@@ -189,6 +189,9 @@ export function App({ tasksRoot }: Props) {
       return;
     }
 
+    // QA view is handled by the QAView component itself via its own useInput
+    // but we need to handle Esc to go back (already handled above)
+
     // Numeric tab switching
     if (input === "1") { setTab(1); setView("list"); return; }
     if (input === "2") { setTab(2); setView("list"); return; }
@@ -262,6 +265,11 @@ export function App({ tasksRoot }: Props) {
     if (key.downArrow) { setIdx((i) => Math.min(data.tasks.length - 1, i + 1)); if (view !== "list") setView("list"); return; }
     if (key.return) {
       if (selected) {
+        if (selected.status === "waiting_answer") {
+          // Open Q&A view directly for waiting tasks
+          setView("qa");
+          return;
+        }
         const isFinished = selected.status === "completed" || selected.status === "failed";
         const isRunning = selected.status === "in_progress";
         setDetailTab(isFinished ? "summary" : isRunning ? "agents" : "state");
@@ -318,9 +326,10 @@ export function App({ tasksRoot }: Props) {
 
   // Footer hint per tab/view
   let footerHint = "";
-  if (tab === 1 && view === "list")   footerHint = "  ↑/↓ select  Enter detail  [a] agents  [l] logs  [d] archive  [x] doctor  [s] start  [k] stop  [q] quit";
+  if (tab === 1 && view === "list")   footerHint = "  ↑/↓ select  Enter detail/qa  [a] agents  [l] logs  [d] archive  [x] doctor  [s] start  [k] stop  [q] quit";
   if (tab === 1 && view === "detail") footerHint = "  ←/→ tabs  ↑/↓ scroll  PgUp/PgDn  [g] top  [G] end  [y] copy  [Esc] back  [q] quit";
-  if (tab === 1 && view !== "list" && view !== "detail") footerHint = "  [y] copy slug  [Esc] back  [q] quit";
+  if (tab === 1 && view === "qa")     footerHint = "  ↑/↓ select question  Tab switch panel  Esc save & back  Ctrl+S save  1-9 quick-select option";
+  if (tab === 1 && view !== "list" && view !== "detail" && view !== "qa") footerHint = "  [y] copy slug  [Esc] back  [q] quit";
   if (tab === 2) footerHint = "  ↑/↓ select  Enter run  ←/→ tabs  [q] quit";
   if (tab === 3) footerHint = "  ↑/↓ select process  [z] clean zombies  ←/→ tabs  [q] quit";
 
@@ -356,6 +365,7 @@ export function App({ tasksRoot }: Props) {
           detailScrollOffsets={detailScrollOffsets}
           setDetailScrollOffsets={setDetailScrollOffsets}
           setMsg={setMsg}
+          setView={setView}
         />
       )}
       {tab === 2 && <CommandsTab cols={cols} selectedIdx={cmdIdx} />}
@@ -401,7 +411,7 @@ function TabLabel({ n, label, active, hasAlert }: { n: number; label: string; ac
 
 // ── Tasks Tab ─────────────────────────────────────────────────────
 function TasksTab({
-  data, idx, view, selected, cols, rows, tick, detailTab, detailScrollOffsets, setDetailScrollOffsets, setMsg,
+  data, idx, view, selected, cols, rows, tick, detailTab, detailScrollOffsets, setDetailScrollOffsets, setMsg, setView,
 }: {
   data: ReadResult;
   idx: number;
@@ -414,13 +424,15 @@ function TasksTab({
   detailScrollOffsets: TabScrollState;
   setDetailScrollOffsets: React.Dispatch<React.SetStateAction<TabScrollState>>;
   setMsg: (m: string) => void;
+  setView: (v: ViewMode) => void;
 }) {
   if (view === "agents" && selected) return <AgentsView task={selected} cols={cols} />;
   if (view === "logs"   && selected) return <LogsView task={selected} rows={rows} tick={tick} />;
+  if (view === "qa"     && selected) return <QAView task={selected} cols={cols} rows={rows} onBack={() => setView("list")} />;
   if (view === "detail" && selected) return <DetailView task={selected} rows={rows} cols={cols} tab={detailTab} scrollOffset={detailScrollOffsets[detailTab]} setScrollOffset={(offset) => setDetailScrollOffsets((prev) => ({ ...prev, [detailTab]: offset }))} tick={tick} setMsg={setMsg} />;
 
   const { tasks, counts } = data;
-  const total = counts.pending + counts.in_progress + counts.completed + counts.failed + counts.suspended;
+  const total = counts.pending + counts.in_progress + counts.waiting_answer + counts.completed + counts.failed + counts.suspended;
   const done  = counts.completed + counts.failed;
 
   return (
@@ -431,6 +443,7 @@ function TasksTab({
         <Text>  </Text>
         <Text color="blue"    bold>Pending: {counts.pending}</Text>
         <Text color="yellow"  bold>Running: {counts.in_progress}</Text>
+        {counts.waiting_answer > 0 && <Text color="cyan" bold>Waiting: {counts.waiting_answer} ❓</Text>}
         <Text color="green"   bold>Done: {counts.completed}</Text>
         <Text color="red"     bold>Failed: {counts.failed}</Text>
         {counts.suspended > 0 && <Text color="magenta" bold>Suspended: {counts.suspended}</Text>}
@@ -620,19 +633,20 @@ function TaskList({ tasks, selectedIdx, maxLines }: { tasks: TaskInfo[]; selecte
 function StatusHeader({ status }: { status: string }) {
   const base = status.split(":")[0];
   const labels: Record<string, [string, string]> = {
-    in_progress: ["In Progress:", "yellow"],
-    completed:   ["Completed:",   "green"],
-    failed:      ["Failed:",      "red"],
-    suspended:   ["Suspended:",   "magenta"],
-    pending:     ["Pending: (priority order)", "blue"],
+    in_progress:    ["In Progress:",          "yellow"],
+    waiting_answer: ["Waiting for Answers:",  "cyan"],
+    completed:      ["Completed:",            "green"],
+    failed:         ["Failed:",               "red"],
+    suspended:      ["Suspended:",            "magenta"],
+    pending:        ["Pending: (priority order)", "blue"],
   };
   const [label, color] = labels[base] ?? [base, "white"];
   return <Text bold color={color as any}>  {label}</Text>;
 }
 
 function TaskLine({ task, cursor }: { task: TaskInfo; cursor: boolean }) {
-  const icon    = { in_progress: "▸", completed: "✓", failed: "✗", suspended: "⏸", pending: "○" }[task.status] ?? "○";
-  const color   = { in_progress: "yellow", completed: "green", failed: "red", suspended: "magenta", pending: undefined }[task.status];
+  const icon    = { in_progress: "▸", waiting_answer: "?", completed: "✓", failed: "✗", suspended: "⏸", pending: "○" }[task.status] ?? "○";
+  const color   = { in_progress: "yellow", waiting_answer: "cyan", completed: "green", failed: "red", suspended: "magenta", pending: undefined }[task.status];
   const wfBadge = task.workflow === "ultraworks" ? "U" : "F";
   const wfColor = task.workflow === "ultraworks" ? "magenta" : "blue";
 
@@ -652,6 +666,12 @@ function TaskLine({ task, cursor }: { task: TaskInfo; cursor: boolean }) {
     if (task.currentStep) suffix += ` [${task.currentStep}]`;
     if (task.workerId)    suffix += ` ${task.workerId}`;
     if (task.sessionName) suffix += ` ${task.sessionName}`;
+  }
+  if (task.status === "waiting_answer") {
+    const answered = task.questionsAnswered ?? 0;
+    const total = task.questionsCount ?? (task.qaData?.questions.length ?? 0);
+    const agent = task.waitingAgent ?? "?";
+    suffix = ` ${agent}  ${answered}/${total} answered  [Enter to answer]`;
   }
   if (task.status === "completed" && task.startedAt && task.updatedAt) {
     const dur = Math.round((new Date(task.updatedAt).getTime() - new Date(task.startedAt).getTime()) / 1000);
@@ -1142,6 +1162,146 @@ function CmdLine({ k, desc, cursor, executable }: { k: string; desc: string; cur
       <Text bold={executable} dimColor={!executable}>{k.padEnd(8)}</Text>
       <Text dimColor={!cursor}>{desc}</Text>
       {cursor && <Text color="green"> ⏎</Text>}
+    </Box>
+  );
+}
+
+// ── Q&A View ──────────────────────────────────────────────────────
+function QAView({ task, cols, rows, onBack }: { task: TaskInfo; cols: number; rows: number; onBack: () => void }) {
+  const questions: QAQuestion[] = task.qaData?.questions ?? [];
+  const [selectedQ, setSelectedQ] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const q of questions) {
+      if (q.answer) init[q.id] = q.answer;
+    }
+    return init;
+  });
+  const [focusPanel, setFocusPanel] = useState<"list" | "editor">("list");
+  const [answerText, setAnswerText] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  const currentQ = questions[selectedQ];
+
+  // Sync answerText when question changes
+  useEffect(() => {
+    if (currentQ) {
+      setAnswerText(answers[currentQ.id] ?? "");
+    }
+  }, [selectedQ, currentQ?.id]);
+
+  const saveAnswers = () => {
+    if (!currentQ) return;
+    const updated = { ...answers, [currentQ.id]: answerText };
+    setAnswers(updated);
+
+    // Write to qa.json
+    const qaPath = join(task.dir, "qa.json");
+    try {
+      const data = existsSync(qaPath) ? JSON.parse(readFileSync(qaPath, "utf-8")) : { version: 1, questions: [] };
+      for (const q of data.questions) {
+        if (updated[q.id] !== undefined && updated[q.id] !== "") {
+          q.answer = updated[q.id];
+          q.answered_at = new Date().toISOString();
+          q.answered_by = "human";
+          q.answer_source = "tui";
+        }
+      }
+      writeFileSync(qaPath, JSON.stringify(data, null, 2) + "\n", "utf-8");
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {}
+  };
+
+  const leftW = Math.floor(cols * 0.45);
+  const rightW = cols - leftW - 3;
+  const listH = rows - 10;
+
+  if (questions.length === 0) {
+    return (
+      <Box flexDirection="column">
+        <Text bold color="cyan">  Q&A: {task.title.slice(0, 50)}</Text>
+        <Text> </Text>
+        <Text dimColor>  No questions found in qa.json</Text>
+        <Text> </Text>
+        <Text dimColor>  Esc back</Text>
+      </Box>
+    );
+  }
+
+  return (
+    <Box flexDirection="column">
+      <Box>
+        <Text bold color="cyan">  Q&A: </Text>
+        <Text>{task.title.slice(0, 40)}</Text>
+        {saved && <Text color="green"> ✓ saved</Text>}
+      </Box>
+      <Text dimColor>{"  " + "─".repeat(cols - 4)}</Text>
+
+      <Box>
+        {/* Left: question list */}
+        <Box flexDirection="column" width={leftW}>
+          <Text bold dimColor>  Questions ({questions.length})</Text>
+          <Text dimColor>  {"─".repeat(leftW - 4)}</Text>
+          {questions.slice(0, listH).map((q, i) => {
+            const isCurrent = i === selectedQ;
+            const isAnswered = !!(answers[q.id] || q.answer);
+            const isBlocking = q.priority === "blocking";
+            const marker = isAnswered ? "✓" : isBlocking ? "*" : "·";
+            const color = isAnswered ? "green" : isBlocking ? "red" : undefined;
+            const agentShort = q.agent.replace("u-", "");
+            return (
+              <Box key={q.id}>
+                <Text color="cyan">{isCurrent ? "  ► " : "    "}</Text>
+                <Text color={color as any}>{marker} </Text>
+                <Text bold={isCurrent} dimColor={!isCurrent && isAnswered}>
+                  {q.id} [{q.priority === "blocking" ? "B" : "N"}] {agentShort}
+                </Text>
+              </Box>
+            );
+          })}
+        </Box>
+
+        {/* Divider */}
+        <Box flexDirection="column">
+          {Array.from({ length: Math.min(listH + 3, rows - 6) }).map((_, i) => (
+            <Text key={i} dimColor>│</Text>
+          ))}
+        </Box>
+
+        {/* Right: question detail + answer editor */}
+        <Box flexDirection="column" width={rightW}>
+          {currentQ ? (
+            <>
+              <Text bold>{" Q" + (selectedQ + 1) + " [" + currentQ.priority + "]"}</Text>
+              <Text dimColor>{" " + "─".repeat(rightW - 2)}</Text>
+              <Text>{" " + currentQ.question.slice(0, rightW - 2)}</Text>
+              {currentQ.context && <Text dimColor>{" 📎 " + currentQ.context.slice(0, rightW - 5)}</Text>}
+              {currentQ.options && currentQ.options.length > 0 && (
+                <Box flexDirection="column">
+                  <Text dimColor>{" Options:"}</Text>
+                  {currentQ.options.map((opt, oi) => (
+                    <Text key={oi} dimColor>{`  ${oi + 1}. ${opt}`}</Text>
+                  ))}
+                </Box>
+              )}
+              <Text> </Text>
+              <Text bold color={focusPanel === "editor" ? "cyan" : undefined}>{" Answer:"}</Text>
+              <Box borderStyle={focusPanel === "editor" ? "single" : undefined} borderColor="cyan">
+                <Text>{" " + (answerText || "(type your answer)")}</Text>
+              </Box>
+              {answers[currentQ.id] && (
+                <Text color="green">{" ✓ Saved: " + answers[currentQ.id].slice(0, rightW - 12)}</Text>
+              )}
+            </>
+          ) : (
+            <Text dimColor>  Select a question</Text>
+          )}
+        </Box>
+      </Box>
+
+      <Text dimColor>{"  " + "─".repeat(cols - 4)}</Text>
+      <Text dimColor>  * = blocking  ✓ = answered  ► = selected  Tab: switch panel  Esc: save & back  Ctrl+S: save</Text>
     </Box>
   );
 }
