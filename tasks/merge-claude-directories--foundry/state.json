@@ -1,0 +1,36 @@
+{
+  "task_id": "merge-claude-directories--foundry",
+  "workflow": "foundry",
+  "started_at": "2026-03-26T09:40:04.018565Z",
+  "attempt": 1,
+  "status": "in_progress",
+  "current_step": "u-coder",
+  "resume_from": "u-coder",
+  "updated_at": "2026-03-26T09:43:39.985153Z",
+  "task_file": "/workspaces/brama/tasks/merge-claude-directories--foundry/task.md",
+  "branch": "pipeline/merge-claude-directories",
+  "agents": [
+    {
+      "agent": "u-planner",
+      "status": "done",
+      "model": "anthropic/claude-opus-4-6",
+      "duration_seconds": 84,
+      "input_tokens": 15,
+      "output_tokens": 3443,
+      "cost": 0.7512,
+      "call_count": 1,
+      "updated_at": "2026-03-26T09:41:43.638779Z"
+    },
+    {
+      "agent": "u-coder",
+      "status": "done",
+      "model": "anthropic/claude-sonnet-4-6",
+      "duration_seconds": 113,
+      "input_tokens": 24,
+      "output_tokens": 4998,
+      "cost": 0.2826,
+      "call_count": 1,
+      "updated_at": "2026-03-26T09:43:39.985138Z"
+    }
+  ]
+}
