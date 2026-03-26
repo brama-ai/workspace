@@ -48,6 +48,7 @@
       "fallback_models": [
         "anthropic/claude-opus-4-6",
         "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
         "opencode/big-pickle",
         "openrouter/free"
       ],
@@ -58,76 +59,86 @@
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     //
     // Rule: spread primaries across providers. Fallback order = fastest TTFO first.
+    // GPT included in fallback (after fast models) — may stall when rate-limited,
+    // stall detection handles it in ~20s. Will auto-recover when limits reset.
     "u-architect": {
       "model": "anthropic/claude-opus-4-6",
       "fallback_models": [
-        "google/gemini-2.5-flash",
-        "opencode-go/glm-5",
-        "opencode/big-pickle",
+        "google/gemini-2.5-flash",          // 6s TTFO
+        "opencode-go/glm-5",               // 8s TTFO
+        "openai/gpt-5.4",                  // may stall if rate-limited
+        "opencode/big-pickle",             // 12s TTFO
         "openrouter/free"
       ]
     },
     "u-coder": {
       "model": "anthropic/claude-sonnet-4-6",
       "fallback_models": [
-        "opencode-go/glm-5",
-        "google/gemini-2.5-flash",
-        "opencode/big-pickle",
+        "opencode-go/glm-5",               // 8s TTFO
+        "google/gemini-2.5-flash",          // 6s TTFO
+        "openai/gpt-5.3-codex",            // may stall if rate-limited
+        "opencode/big-pickle",             // 12s TTFO
         "openrouter/qwen/qwen3-coder:free"
       ]
     },
     "u-reviewer": {
       "model": "opencode-go/glm-5",
       "fallback_models": [
-        "anthropic/claude-sonnet-4-6",
-        "google/gemini-2.5-flash",
-        "opencode/big-pickle",
+        "anthropic/claude-sonnet-4-6",      // 6s TTFO
+        "google/gemini-2.5-flash",          // 6s TTFO
+        "openai/gpt-5.4",                  // may stall if rate-limited
+        "opencode/big-pickle",             // 12s TTFO
         "openrouter/qwen/qwen3-coder:free"
       ]
     },
     "u-validator": {
       "model": "opencode-go/kimi-k2.5",
       "fallback_models": [
-        "google/gemini-2.5-flash",
-        "anthropic/claude-sonnet-4-6",
-        "opencode/big-pickle",
+        "google/gemini-2.5-flash",          // 6s TTFO
+        "anthropic/claude-sonnet-4-6",      // 6s TTFO
+        "openai/gpt-5.2",                  // may stall if rate-limited
+        "opencode/big-pickle",             // 12s TTFO
         "openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free"
       ]
     },
     "u-tester": {
       "model": "opencode-go/kimi-k2.5",
       "fallback_models": [
-        "anthropic/claude-sonnet-4-6",
-        "google/gemini-2.5-flash",
-        "opencode/big-pickle",
+        "anthropic/claude-sonnet-4-6",      // 6s TTFO
+        "google/gemini-2.5-flash",          // 6s TTFO
+        "openai/gpt-5.3-codex",            // may stall if rate-limited
+        "opencode/big-pickle",             // 12s TTFO
         "openrouter/qwen/qwen3-coder:free"
       ]
     },
     "u-auditor": {
       "model": "anthropic/claude-opus-4-6",
       "fallback_models": [
-        "opencode-go/glm-5",
-        "google/gemini-2.5-flash",
-        "opencode/big-pickle",
+        "opencode-go/glm-5",               // 8s TTFO
+        "google/gemini-2.5-flash",          // 6s TTFO
+        "openai/gpt-5.4",                  // may stall if rate-limited
+        "opencode/big-pickle",             // 12s TTFO
         "openrouter/free"
       ]
     },
     "u-documenter": {
       "model": "google/gemini-2.5-flash",
       "fallback_models": [
-        "anthropic/claude-sonnet-4-6",
-        "opencode-go/kimi-k2.5",
-        "opencode/big-pickle",
+        "anthropic/claude-sonnet-4-6",      // 6s TTFO
+        "opencode-go/kimi-k2.5",           // 8s TTFO
+        "openai/gpt-5.4",                  // may stall if rate-limited
+        "opencode/big-pickle",             // 12s TTFO
         "openrouter/free"
       ]
     },
     "u-summarizer": {
       "model": "anthropic/claude-sonnet-4-6",
       "fallback_models": [
-        "anthropic/claude-opus-4-6",
-        "google/gemini-2.5-flash",
-        "opencode-go/glm-5",
-        "opencode/big-pickle",
+        "anthropic/claude-opus-4-6",        // 7s TTFO
+        "google/gemini-2.5-flash",          // 6s TTFO
+        "openai/gpt-5.4",                  // may stall if rate-limited
+        "opencode-go/glm-5",               // 8s TTFO
+        "opencode/big-pickle",             // 12s TTFO
         "openrouter/deepseek/deepseek-r1-0528:free"
       ]
     },
@@ -177,6 +188,7 @@
       "fallback_models": [
         "opencode-go/glm-5",
         "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
         "opencode/big-pickle",
         "openrouter/free"
       ],
@@ -187,6 +199,7 @@
       "fallback_models": [
         "opencode-go/glm-5",
         "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
         "opencode/big-pickle",
         "openrouter/qwen/qwen3-coder:free"
       ],
@@ -197,6 +210,7 @@
       "fallback_models": [
         "anthropic/claude-sonnet-4-6",
         "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
         "opencode/big-pickle",
         "openrouter/qwen/qwen3-coder:free"
       ],
@@ -207,6 +221,7 @@
       "fallback_models": [
         "anthropic/claude-sonnet-4-6",
         "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
         "opencode/big-pickle",
         "openrouter/qwen/qwen3-coder:free"
       ],
@@ -217,6 +232,7 @@
       "fallback_models": [
         "opencode-go/glm-5",
         "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
         "opencode/big-pickle",
         "openrouter/free"
       ],
@@ -231,6 +247,7 @@
       "fallback_models": [
         "anthropic/claude-sonnet-4-6",
         "opencode-go/kimi-k2.5",
+        "openai/gpt-5.4",
         "opencode/big-pickle",
         "openrouter/free"
       ],
@@ -240,6 +257,7 @@
       "model": "opencode-go/kimi-k2.5",
       "fallback_models": [
         "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
         "anthropic/claude-sonnet-4-6",
         "opencode/big-pickle",
         "openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free"
@@ -250,6 +268,7 @@
       "fallback_models": [
         "anthropic/claude-opus-4-6",
         "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
         "opencode-go/glm-5",
         "opencode/big-pickle",
         "openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free"
@@ -260,6 +279,7 @@
       "fallback_models": [
         "opencode-go/kimi-k2.5",
         "anthropic/claude-sonnet-4-6",
+        "openai/gpt-5.4",
         "opencode/big-pickle",
         "openrouter/free"
       ],
@@ -270,6 +290,7 @@
       "fallback_models": [
         "opencode-go/glm-5",
         "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
         "opencode/big-pickle",
         "openrouter/free"
       ],
@@ -283,6 +304,7 @@
       "model": "anthropic/claude-sonnet-4-6",
       "fallback_models": [
         "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
         "opencode-go/glm-5",
         "opencode/big-pickle",
         "openrouter/free"
@@ -299,6 +321,7 @@
     "providerConcurrency": {
       "opencode-go": 3,
       "anthropic": 3,
+      "openai": 4,
       "google": 2,
       "opencode": 3,
       "openrouter": 6
@@ -308,7 +331,8 @@
       "anthropic/claude-sonnet-4-6": 3,
       "opencode-go/glm-5": 3,
       "opencode-go/kimi-k2.5": 3,
-      "google/gemini-2.5-flash": 3
+      "google/gemini-2.5-flash": 3,
+      "openai/gpt-5.4": 2
     }
   },
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
