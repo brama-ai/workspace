@@ -7,6 +7,9 @@ test-results/
 playwright-report/
 test-results.xml
 
+# Test artifacts (created during test execution)
+agentic-development/
+
 # Playwright
 .playwright/
 
