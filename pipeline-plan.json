@@ -1,15 +1,7 @@
 {
-  "profile": "quick-fix",
-  "reasoning": "Mechanical search-and-replace of 'docker compose exec' → 'docker exec <container>' across 11 E2E test files. No logic changes, no migrations, no API changes. All changes are in test infrastructure only.",
-  "agents": ["coder", "validator", "summarizer"],
-  "skip_openspec": true,
-  "estimated_files": 11,
-  "apps_affected": ["core"],
-  "needs_migration": false,
-  "needs_api_change": false,
+  "profile": "standard",
+  "planned_agents": ["u-coder", "u-validator", "u-tester", "u-summarizer"],
   "is_agent_task": false,
-  "is_bug": true,
-  "bug_severity": "low",
   "timeout_overrides": {},
   "model_overrides": {}
 }
