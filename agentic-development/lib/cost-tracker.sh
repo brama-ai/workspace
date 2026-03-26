@@ -7,7 +7,6 @@ set -euo pipefail
 : "${REPO_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 # shellcheck source=/dev/null
 source "$REPO_ROOT/agentic-development/lib/foundry-common.sh"
-maybe_migrate_legacy_foundry_tasks
 ensure_foundry_task_root
 
 strip_export_json() {

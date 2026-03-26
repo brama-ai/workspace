@@ -45,6 +45,30 @@ When you encounter a situation where you cannot proceed without human input:
 
 4. On resume: read answers from `qa.json`, continue work, do NOT re-ask answered questions
 
+## Summary Artifacts
+
+Before completing (exit 0), write `artifacts/u-tester/result.json`:
+```json
+{
+  "agent": "u-tester",
+  "status": "done",
+  "confidence": 0.9,
+  "assessment": {
+    "what_went_well": [],
+    "what_went_wrong": [],
+    "improvement_suggestions": [],
+    "blocked_by": [],
+    "deviations_from_spec": []
+  },
+  "metrics": {
+    "tests_run": 0,
+    "tests_passed": 0,
+    "tests_failed": 0,
+    "tests_added": 0
+  }
+}
+```
+
 ## Output
 
 - Run the requested test suites and update or create tests when needed.

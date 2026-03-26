@@ -7,35 +7,32 @@
 FOUNDRY_HOME="${REPO_ROOT}/agentic-development"
 RUNTIME_ROOT="${FOUNDRY_HOME}/runtime"
 RUNTIME_LOG_DIR="${RUNTIME_ROOT}/logs"
-LEGACY_FOUNDRY_TASK_ROOT="${FOUNDRY_HOME}/tasks"
-LEGACY_FOUNDRY_QUEUE_ROOT="${FOUNDRY_HOME}/foundry-tasks"
 PIPELINE_TASKS_ROOT="${PIPELINE_TASKS_ROOT:-${REPO_ROOT}/tasks}"
 FOUNDRY_TASK_ROOT="${PIPELINE_TASKS_ROOT}"
 FOUNDRY_TASK_ROOT_REL="${FOUNDRY_TASK_ROOT#"$REPO_ROOT"/}"
 
 pipeline_slugify() {
   local text="${1:-unknown}"
-  python3 - "$text" <<'PYEOF'
-import re
-import sys
-
-text = sys.argv[1]
-title = ""
-for line in text.splitlines():
-    stripped = line.strip()
-    if stripped.startswith("# "):
-        title = stripped[2:].strip()
-        break
-    if stripped and not stripped.startswith("<!--"):
-        title = stripped
-        break
-
-if not title:
-    title = "unknown"
-
-slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
-print((slug or "unknown")[:60])
-PYEOF
+  local title=""
+  local line
+  
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [[ -z "$line" ]] && continue
+    if [[ "$line" == \#\ * ]]; then
+      title="${line#\# }"
+      break
+    fi
+    [[ "$line" != \<\!--* ]] && { title="$line"; break; }
+  done <<< "$text"
+  
+  [[ -z "$title" ]] && title="unknown"
+  
+  local slug
+  slug=$(echo "$title" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//;s/-$//')
+  [[ -z "$slug" ]] && slug="unknown"
+  echo "${slug:0:60}"
 }
 
 ensure_pipeline_tasks_root() {
@@ -1258,87 +1255,6 @@ PYEOF
 # ── HITL: List tasks waiting for answers ────────────────────────────
 foundry_list_waiting_tasks() {
   foundry_find_tasks_by_status "waiting_answer"
-}
-
-foundry_migrate_legacy_state() {
-  local queue_root="$1"
-  local status="$2"
-  local src_dir="$queue_root/$status"
-  [[ -d "$src_dir" ]] || return 0
-  local file task_dir slug cleaned
-  for file in "$src_dir"/*.md; do
-    [[ -f "$file" ]] || continue
-    slug=$(basename "$file" .md)
-    task_dir=$(foundry_task_dir_for_slug "$slug" || true)
-    if [[ -z "$task_dir" ]]; then
-      cleaned=$(sed '/^<!-- batch:.*-->$/d;/^<!-- suspended:.*-->$/d' "$file")
-      task_dir=$(foundry_create_task_dir "$cleaned" "$slug")
-    fi
-    if [[ ! -f "$task_dir/task.md" || ! -s "$task_dir/task.md" ]]; then
-      sed '/^<!-- batch:.*-->$/d;/^<!-- suspended:.*-->$/d' "$file" > "$task_dir/task.md"
-    fi
-    case "$status" in
-      todo) foundry_set_state_status "$task_dir" "pending" "" "" ;;
-      in-progress) foundry_set_state_status "$task_dir" "in_progress" "" "" ;;
-      done|archive) foundry_set_state_status "$task_dir" "completed" "" "" ;;
-      failed) foundry_set_state_status "$task_dir" "failed" "" "" ;;
-      suspended) foundry_set_state_status "$task_dir" "suspended" "" "" ;;
-      stopped) foundry_set_state_status "$task_dir" "stopped" "" "" ;;
-    esac
-  done
-}
-
-foundry_migrate_legacy_artifacts() {
-  local src_root="$1"
-  local artifact_root="$src_root/artifacts"
-  local summary_root="$src_root/summary"
-  [[ -d "$artifact_root" || -d "$summary_root" ]] || return 0
-
-  local dir slug task_dir
-  if [[ -d "$artifact_root" ]]; then
-    for dir in "$artifact_root"/*; do
-      [[ -d "$dir" ]] || continue
-      slug=$(basename "$dir")
-      task_dir=$(foundry_task_dir_for_slug "$slug" || true)
-      [[ -n "$task_dir" ]] || task_dir=$(foundry_create_task_dir "# ${slug}" "$slug")
-      mkdir -p "$(foundry_artifacts_dir "$task_dir")"
-      if [[ ! -e "$(foundry_artifacts_dir "$task_dir")/$(basename "$dir")" ]]; then
-        cp -R "$dir" "$(foundry_artifacts_dir "$task_dir")/" 2>/dev/null || true
-      fi
-    done
-  fi
-
-  local summary_file summary_name
-  if [[ -d "$summary_root" ]]; then
-    for summary_file in "$summary_root"/*.md; do
-      [[ -f "$summary_file" ]] || continue
-      summary_name=$(basename "$summary_file")
-      slug=$(printf '%s' "$summary_name" | sed -E 's/^[a-z]-[0-9_]+-//; s/\.md$//')
-      task_dir=$(foundry_task_dir_for_slug "$slug" || true)
-      [[ -n "$task_dir" ]] || continue
-      if [[ ! -s "$(foundry_summary_file "$task_dir")" ]]; then
-        cp "$summary_file" "$(foundry_summary_file "$task_dir")" 2>/dev/null || true
-      fi
-    done
-  fi
-}
-
-maybe_migrate_legacy_foundry_tasks() {
-  ensure_pipeline_tasks_root
-  [[ -d "$LEGACY_FOUNDRY_TASK_ROOT" || -d "$LEGACY_FOUNDRY_QUEUE_ROOT" ]] || return 0
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_TASK_ROOT" "todo"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_TASK_ROOT" "in-progress"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_TASK_ROOT" "done"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_TASK_ROOT" "failed"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_TASK_ROOT" "suspended"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_QUEUE_ROOT" "todo"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_QUEUE_ROOT" "in-progress"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_QUEUE_ROOT" "done"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_QUEUE_ROOT" "failed"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_QUEUE_ROOT" "suspended"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_QUEUE_ROOT" "archive"
-  foundry_migrate_legacy_artifacts "$LEGACY_FOUNDRY_TASK_ROOT"
-  foundry_migrate_legacy_artifacts "$LEGACY_FOUNDRY_QUEUE_ROOT"
 }
 
 ensure_foundry_task_root() {

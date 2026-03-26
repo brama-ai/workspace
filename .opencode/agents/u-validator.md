@@ -45,6 +45,29 @@ When you encounter a situation where you cannot proceed without human input:
 
 4. On resume: read answers from `qa.json`, continue work, do NOT re-ask answered questions
 
+## Summary Artifacts
+
+Before completing (exit 0), write `artifacts/u-validator/result.json`:
+```json
+{
+  "agent": "u-validator",
+  "status": "done",
+  "confidence": 0.95,
+  "assessment": {
+    "what_went_well": [],
+    "what_went_wrong": [],
+    "improvement_suggestions": [],
+    "blocked_by": [],
+    "deviations_from_spec": []
+  },
+  "metrics": {
+    "files_modified": 0,
+    "phpstan_errors_fixed": 0,
+    "cs_violations_fixed": 0
+  }
+}
+```
+
 ## Output
 
 - Run the requested validation tools and apply minimal production-code fixes where appropriate.
