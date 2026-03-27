@@ -142,6 +142,12 @@ npm run build
 ./agentic-development/foundry.sh status
 ```
 
+### Monitor refresh behavior
+
+- Task data refreshes every 3 seconds.
+- Process status refreshes asynchronously every 15 seconds so the TUI stays responsive while worker state is being sampled.
+- For an immediate shell-level snapshot, run `./agentic-development/foundry.sh status`.
+
 ### Monitor keyboard shortcuts
 
 | Key | Action |

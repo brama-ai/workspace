@@ -1,18 +1,7 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, readFileSync, readdirSync } from "node:fs";
 import { join, basename, dirname } from "node:path";
-import { execSync } from "node:child_process";
-function readState(dir) {
-    const p = join(dir, "state.json");
-    try {
-        return JSON.parse(readFileSync(p, "utf-8"));
-    }
-    catch {
-        return {};
-    }
-}
-function writeState(dir, data) {
-    writeFileSync(join(dir, "state.json"), JSON.stringify(data, null, 2) + "\n");
-}
+import { execSync, exec } from "node:child_process";
+import { readState, writeState } from "./task-state.js";
 export function claimTask(taskDir, workerId) {
     const state = readState(taskDir);
     if (state.status !== "pending")
@@ -34,15 +23,9 @@ export function releaseTask(taskDir) {
     state.updated_at = new Date().toISOString().replace(/\.\d+Z$/, "Z");
     writeState(taskDir, state);
 }
-/**
- * Archive a task: move it to tasks/archives/DD-MM-YYYY/task-slug/
- * Returns the archive path, or throws if task is truly in_progress (mid-pipeline).
- * Tasks stuck as in_progress but with all agents done are auto-completed first.
- */
 export function archiveTask(taskDir) {
     const state = readState(taskDir);
     if (state.status === "in_progress") {
-        // Allow archive if all agents completed (task stuck in finalization)
         const agents = Array.isArray(state.agents) ? state.agents : [];
         const summarizerDone = agents.some((a) => a.agent?.includes("summarizer") && a.status === "done");
         if (summarizerDone) {
@@ -162,17 +145,136 @@ export function ultraworksAttach(repoRoot) {
 export function ultraworksCleanup(repoRoot) {
     return runQuick(`"${ultraworksPath(repoRoot)}" cleanup`, repoRoot);
 }
-/** Read live process status via foundry_process_status() shell helper */
+/** Read live process status — pure TypeScript, no bash/jq overhead */
 export function getProcessStatus(repoRoot) {
     const empty = { workers: [], zombies: [], lock: null };
     try {
-        const commonSh = join(repoRoot, "agentic-development", "lib", "foundry-common.sh");
-        const out = execSync(`bash -c 'REPO_ROOT="${repoRoot}" source "${commonSh}" && foundry_process_status'`, { encoding: "utf-8", timeout: 5000, stdio: ["pipe", "pipe", "pipe"] }).trim();
-        return JSON.parse(out);
+        return getProcessStatusNative(repoRoot);
     }
     catch {
         return empty;
     }
+}
+function getProcessStatusNative(repoRoot) {
+    const workers = [];
+    const zombies = [];
+    let lock = null;
+    // Check batch lock
+    const lockfile = join(repoRoot, ".opencode", "pipeline", ".batch.lock");
+    if (existsSync(lockfile)) {
+        try {
+            const pid = readFileSync(lockfile, "utf-8").trim();
+            if (/^\d+$/.test(pid)) {
+                let state = "unknown";
+                let isZombie = false;
+                const procStatus = `/proc/${pid}/status`;
+                if (existsSync(procStatus)) {
+                    const content = readFileSync(procStatus, "utf-8");
+                    const m = content.match(/^State:\s+(\S)/m);
+                    if (m) {
+                        state = m[1];
+                        isZombie = state === "Z";
+                    }
+                }
+                lock = { pid: parseInt(pid), state, zombie: isZombie };
+            }
+        }
+        catch { }
+    }
+    // Read active processes via ps (single call, parse in JS)
+    try {
+        const out = execSync("ps -eo pid,stat,etime,args", {
+            encoding: "utf-8", timeout: 3000, stdio: ["pipe", "pipe", "pipe"],
+        });
+        const logDir = join(repoRoot, "agentic-development", "runtime", "logs");
+        for (const line of out.split("\n").slice(1)) {
+            const trimmed = line.trim();
+            if (!trimmed)
+                continue;
+            const parts = trimmed.match(/^\s*(\d+)\s+(\S+)\s+(\S+)\s+(.*)$/);
+            if (!parts)
+                continue;
+            const [, pidStr, stat, etime, args] = parts;
+            if (!/foundry|opencode/.test(args))
+                continue;
+            const pid = parseInt(pidStr);
+            const isZombie = stat.startsWith("Z");
+            // Try to find log file for this worker
+            let log = null;
+            try {
+                const logFiles = readdirSync(logDir).filter(f => f.includes(pidStr) || f.endsWith(".log"));
+                if (logFiles.length > 0)
+                    log = join(logDir, logFiles[logFiles.length - 1]);
+            }
+            catch { }
+            const entry = { pid, stat, etime, args: args.slice(0, 80), zombie: isZombie, log };
+            if (isZombie)
+                zombies.push(entry);
+            else
+                workers.push(entry);
+        }
+    }
+    catch { }
+    return { workers, zombies, lock };
+}
+/** Async version — returns via callback to avoid blocking Ink render */
+export function getProcessStatusAsync(repoRoot, cb) {
+    const empty = { workers: [], zombies: [], lock: null };
+    exec("ps -eo pid,stat,etime,args", { encoding: "utf-8", timeout: 3000 }, (err, out) => {
+        if (err) {
+            cb(empty);
+            return;
+        }
+        try {
+            const workers = [];
+            const zombies = [];
+            let lock = null;
+            // Check batch lock
+            const lockfile = join(repoRoot, ".opencode", "pipeline", ".batch.lock");
+            if (existsSync(lockfile)) {
+                try {
+                    const pid = readFileSync(lockfile, "utf-8").trim();
+                    if (/^\d+$/.test(pid)) {
+                        let state = "unknown";
+                        let isZombie = false;
+                        const procStatus = `/proc/${pid}/status`;
+                        if (existsSync(procStatus)) {
+                            const content = readFileSync(procStatus, "utf-8");
+                            const m = content.match(/^State:\s+(\S)/m);
+                            if (m) {
+                                state = m[1];
+                                isZombie = state === "Z";
+                            }
+                        }
+                        lock = { pid: parseInt(pid), state, zombie: isZombie };
+                    }
+                }
+                catch { }
+            }
+            for (const line of out.split("\n").slice(1)) {
+                const trimmed = line.trim();
+                if (!trimmed)
+                    continue;
+                const parts = trimmed.match(/^\s*(\d+)\s+(\S+)\s+(\S+)\s+(.*)$/);
+                if (!parts)
+                    continue;
+                const [, pidStr, stat, etime, args] = parts;
+                if (!/foundry|opencode/.test(args))
+                    continue;
+                const pid = parseInt(pidStr);
+                const isZombie = stat.startsWith("Z");
+                const entry = { pid, stat, etime, args: args.slice(0, 80), zombie: isZombie, log: null };
+                if (isZombie)
+                    zombies.push(entry);
+                else
+                    workers.push(entry);
+            }
+            cb({ workers, zombies, lock });
+        }
+        catch {
+            cb(empty);
+        }
+    });
 }
 /** Clean zombie processes and stale batch lock */
 export function cleanZombies(repoRoot) {

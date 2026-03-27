@@ -3,9 +3,10 @@ import { join } from "node:path";
 import { execSync } from "node:child_process";
 const STATUS_ORDER = {
     in_progress: 0,
-    completed: 1,
-    failed: 2,
-    suspended: 3,
+    waiting_answer: 1,
+    completed: 2,
+    failed: 3,
+    suspended: 4,
 };
 function readJson(path) {
     try {
@@ -90,22 +91,52 @@ function getLastEvent(taskDir) {
         return null;
     }
 }
-// Check if git branch exists
+// Batch check which git branches exist (single git call instead of per-task)
+let _branchCache = { branches: new Set(), ts: 0 };
+const BRANCH_CACHE_TTL = 30_000; // 30s
+function refreshBranchCache() {
+    const now = Date.now();
+    if (now - _branchCache.ts < BRANCH_CACHE_TTL)
+        return _branchCache.branches;
+    try {
+        const out = execSync("git branch -a --no-color 2>/dev/null", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+        const branches = new Set();
+        for (const line of out.split("\n")) {
+            const name = line.replace(/^\*?\s+/, "").replace(/^remotes\/origin\//, "").trim();
+            if (name && !name.startsWith("HEAD"))
+                branches.add(name);
+        }
+        _branchCache = { branches, ts: now };
+        return branches;
+    }
+    catch {
+        return _branchCache.branches;
+    }
+}
 function checkBranchExists(branch) {
     if (!branch)
         return false;
+    const branches = refreshBranchCache();
+    return branches.has(branch);
+}
+function readQAData(taskDir) {
+    const qaPath = join(taskDir, "qa.json");
+    if (!existsSync(qaPath))
+        return undefined;
     try {
-        execSync(`git rev-parse --verify "${branch}" 2>/dev/null`, { stdio: "pipe" });
-        return true;
+        const data = JSON.parse(readFileSync(qaPath, "utf-8"));
+        if (data && Array.isArray(data.questions)) {
+            return data;
+        }
     }
-    catch {
-        return false;
-    }
+    catch { }
+    return undefined;
 }
 export function readAllTasks(root) {
     const counts = {
         pending: 0,
         in_progress: 0,
+        waiting_answer: 0,
         completed: 0,
         failed: 0,
         suspended: 0,
@@ -160,6 +191,11 @@ export function readAllTasks(root) {
         }
         // Diagnostic info for stale detection
         const lastEvent = getLastEvent(taskDir);
+        // HITL: read qa.json for waiting_answer tasks
+        let qaData;
+        if (status === "waiting_answer") {
+            qaData = readQAData(taskDir);
+        }
         tasks.push({
             dir: taskDir,
             workflow,
@@ -181,6 +217,12 @@ export function readAllTasks(root) {
             lastEventTime: lastEvent?.time,
             lastEventAge: lastEvent?.age,
             branchExists: checkBranchExists(branchName),
+            // HITL fields
+            qaData,
+            waitingAgent: state?.waiting_agent,
+            waitingSince: state?.waiting_since,
+            questionsCount: typeof state?.questions_count === "number" ? state.questions_count : undefined,
+            questionsAnswered: typeof state?.questions_answered === "number" ? state.questions_answered : undefined,
         });
     }
     tasks.sort((a, b) => {

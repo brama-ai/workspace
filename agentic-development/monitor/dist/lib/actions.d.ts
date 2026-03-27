@@ -1,10 +1,5 @@
 export declare function claimTask(taskDir: string, workerId: string): boolean;
 export declare function releaseTask(taskDir: string): void;
-/**
- * Archive a task: move it to tasks/archives/DD-MM-YYYY/task-slug/
- * Returns the archive path, or throws if task is truly in_progress (mid-pipeline).
- * Tasks stuck as in_progress but with all agents done are auto-completed first.
- */
 export declare function archiveTask(taskDir: string): string;
 export declare function findRepoRoot(): string;
 export interface CmdResult {
@@ -36,8 +31,10 @@ export interface ProcessStatus {
         zombie: boolean;
     } | null;
 }
-/** Read live process status via foundry_process_status() shell helper */
+/** Read live process status — pure TypeScript, no bash/jq overhead */
 export declare function getProcessStatus(repoRoot: string): ProcessStatus;
+/** Async version — returns via callback to avoid blocking Ink render */
+export declare function getProcessStatusAsync(repoRoot: string, cb: (status: ProcessStatus) => void): void;
 /** Clean zombie processes and stale batch lock */
 export declare function cleanZombies(repoRoot: string): CmdResult;
 /** Run u-doctor general diagnostics in tmux */

@@ -18,7 +18,7 @@ import {
   cleanZombies,
   runDoctor,
   runDoctorTask,
-  getProcessStatus,
+  getProcessStatusAsync,
   tailLog,
   type CmdResult,
   type ProcessStatus,
@@ -27,6 +27,7 @@ import {
 
 const VERSION = "2.4.0";
 const REFRESH_MS = 3000;
+const PROC_REFRESH_MS = 15000; // Process status refresh — less frequent (was 3s, now 15s)
 
 type ViewMode = "list" | "detail" | "logs" | "agents" | "qa";
 type DetailTab = "summary" | "agents" | "state" | "task" | "handoff";
@@ -128,19 +129,26 @@ export function App({ tasksRoot }: Props) {
   const [procIdx, setProcIdx] = useState(0);
   const [procLogLines, setProcLogLines] = useState<string[]>([]);
 
-  // Refresh data periodically
+  // Refresh task data periodically (fast — pure file reads)
   useEffect(() => {
-    const refresh = () => {
+    const refreshTasks = () => {
       setData(readAllTasks(root));
-      setProcStatus(getProcessStatus(repoRoot));
-    };
-    refresh();
-    const id = setInterval(() => {
-      refresh();
       setTick((t) => t + 1);
-    }, REFRESH_MS);
+    };
+    refreshTasks();
+    const id = setInterval(refreshTasks, REFRESH_MS);
     return () => clearInterval(id);
   }, [root]);
+
+  // Refresh process status less frequently + async (no UI blocking)
+  useEffect(() => {
+    const refreshProcs = () => {
+      getProcessStatusAsync(repoRoot, (status) => setProcStatus(status));
+    };
+    refreshProcs();
+    const id = setInterval(refreshProcs, PROC_REFRESH_MS);
+    return () => clearInterval(id);
+  }, [repoRoot]);
 
   // Clear message after 5s
   useEffect(() => {

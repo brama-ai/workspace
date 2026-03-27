@@ -163,15 +163,31 @@ function getLastEvent(taskDir: string): { time: string; age: number } | null {
   }
 }
 
-// Check if git branch exists
+// Batch check which git branches exist (single git call instead of per-task)
+let _branchCache: { branches: Set<string>; ts: number } = { branches: new Set(), ts: 0 };
+const BRANCH_CACHE_TTL = 30_000; // 30s
+
+function refreshBranchCache(): Set<string> {
+  const now = Date.now();
+  if (now - _branchCache.ts < BRANCH_CACHE_TTL) return _branchCache.branches;
+  try {
+    const out = execSync("git branch -a --no-color 2>/dev/null", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+    const branches = new Set<string>();
+    for (const line of out.split("\n")) {
+      const name = line.replace(/^\*?\s+/, "").replace(/^remotes\/origin\//, "").trim();
+      if (name && !name.startsWith("HEAD")) branches.add(name);
+    }
+    _branchCache = { branches, ts: now };
+    return branches;
+  } catch {
+    return _branchCache.branches;
+  }
+}
+
 function checkBranchExists(branch: string | undefined): boolean {
   if (!branch) return false;
-  try {
-    execSync(`git rev-parse --verify "${branch}" 2>/dev/null`, { stdio: "pipe" });
-    return true;
-  } catch {
-    return false;
-  }
+  const branches = refreshBranchCache();
+  return branches.has(branch);
 }
 
 function readQAData(taskDir: string): QAData | undefined {

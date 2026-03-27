@@ -1,3 +1,0 @@
-{"timestamp": "2026-03-27T09:03:18.989891Z", "type": "task_created", "message": "Foundry task initialized"}
-{"timestamp": "2026-03-27T09:03:24.171843Z", "type": "run_started", "message": "Foundry run started", "step": "u-planner"}
-{"timestamp": "2026-03-27T09:16:13.042027Z", "type": "run_completed", "message": "Foundry run completed", "step": "u-summarizer"}

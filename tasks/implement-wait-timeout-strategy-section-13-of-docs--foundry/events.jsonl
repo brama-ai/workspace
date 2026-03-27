@@ -1,5 +1,0 @@
-{"timestamp": "2026-03-27T10:27:44.657736Z", "type": "task_created", "message": "Foundry task initialized"}
-{"timestamp": "2026-03-27T10:34:50.466079Z", "type": "run_started", "message": "Foundry run started", "step": "u-planner"}
-{"timestamp": "2026-03-27T10:47:44.098447Z", "type": "run_started", "message": "Foundry run started", "step": "u-validator"}
-{"timestamp": "2026-03-27T10:57:17.888093Z", "type": "run_started", "message": "Foundry run started", "step": "u-summarizer"}
-{"timestamp": "2026-03-27T11:07:29.066428Z", "type": "run_completed", "message": "Foundry run completed", "step": "u-summarizer"}

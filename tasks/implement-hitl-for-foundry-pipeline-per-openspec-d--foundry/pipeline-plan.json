@@ -1,7 +1,0 @@
-{
-  "profile": "standard",
-  "planned_agents": ["u-coder", "u-validator", "u-tester", "u-summarizer"],
-  "is_agent_task": false,
-  "timeout_overrides": {},
-  "model_overrides": {}
-}

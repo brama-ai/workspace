@@ -8,6 +8,24 @@ export interface AgentInfo {
     cost?: number;
     callCount?: number;
 }
+export interface QAQuestion {
+    id: string;
+    agent: string;
+    timestamp: string;
+    priority: "blocking" | "non-blocking";
+    category: string;
+    question: string;
+    context?: string;
+    options?: string[];
+    answer: string | null;
+    answered_at: string | null;
+    answered_by: string | null;
+    answer_source?: string | null;
+}
+export interface QAData {
+    version: number;
+    questions: QAQuestion[];
+}
 export interface TaskInfo {
     dir: string;
     workflow: "foundry" | "ultraworks";
@@ -28,10 +46,16 @@ export interface TaskInfo {
     branchExists?: boolean;
     attempt?: number;
     profile?: string;
+    qaData?: QAData;
+    waitingAgent?: string;
+    waitingSince?: string;
+    questionsCount?: number;
+    questionsAnswered?: number;
 }
 export interface TaskCounts {
     pending: number;
     in_progress: number;
+    waiting_answer: number;
     completed: number;
     failed: number;
     suspended: number;

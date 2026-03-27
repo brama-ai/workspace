@@ -53,6 +53,7 @@ Agent-facing index of all project documentation. Load this file first to underst
 
 - [Deploying to Kubernetes (K3s)](docs/deploy-to-kube.md) — Build, deploy, domain config (Cloudflare Tunnel), rollback
 - [Deployer agent](docs/pipeline/en/deployer-agent.md) — Pipeline Phase 8: automated deployment
+- [Dockerfile ownership guide](docs/guides/deployment/en/dockerfile-ownership.md) — Where agent Dockerfiles live, how Compose references them, Alpine PHP build note
 
 ---
 

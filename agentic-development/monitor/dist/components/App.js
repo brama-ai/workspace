@@ -1,14 +1,15 @@
 import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
 import React, { useState, useEffect } from "react";
 import { Box, Text, useInput, useApp, useStdout } from "ink";
-import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, existsSync, statSync, writeFileSync } from "node:fs";
 import { join, basename } from "node:path";
 import { execSync } from "node:child_process";
 import { readAllTasks } from "../lib/tasks.js";
 import { formatDuration, formatTokens, formatCost } from "../lib/format.js";
-import { startWorkers, stopWorkers, retryFailed, runAutotest, archiveTask, ultraworksLaunch, ultraworksAttach, ultraworksCleanup, findRepoRoot, cleanZombies, runDoctor, runDoctorTask, getProcessStatus, tailLog, } from "../lib/actions.js";
-const VERSION = "2.3.0";
+import { startWorkers, stopWorkers, retryFailed, runAutotest, archiveTask, ultraworksLaunch, ultraworksAttach, ultraworksCleanup, findRepoRoot, cleanZombies, runDoctor, runDoctorTask, getProcessStatusAsync, tailLog, } from "../lib/actions.js";
+const VERSION = "2.4.0";
 const REFRESH_MS = 3000;
+const PROC_REFRESH_MS = 15000; // Process status refresh — less frequent (was 3s, now 15s)
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const COMMANDS = [
     // Foundry
@@ -69,7 +70,7 @@ export function App({ tasksRoot }) {
     const [cmdIdx, setCmdIdx] = useState(0);
     const [view, setView] = useState("list");
     const [detailTab, setDetailTab] = useState("state");
-    const [data, setData] = useState({ tasks: [], counts: { pending: 0, in_progress: 0, completed: 0, failed: 0, suspended: 0, cancelled: 0 }, focusDir: null });
+    const [data, setData] = useState({ tasks: [], counts: { pending: 0, in_progress: 0, waiting_answer: 0, completed: 0, failed: 0, suspended: 0, cancelled: 0 }, focusDir: null });
     const [msg, setMsg] = useState("");
     const [lastAttachCmd, setLastAttachCmd] = useState("");
     const [tick, setTick] = useState(0);
@@ -85,19 +86,25 @@ export function App({ tasksRoot }) {
     const [procStatus, setProcStatus] = useState({ workers: [], zombies: [], lock: null });
     const [procIdx, setProcIdx] = useState(0);
     const [procLogLines, setProcLogLines] = useState([]);
-    // Refresh data periodically
+    // Refresh task data periodically (fast — pure file reads)
     useEffect(() => {
-        const refresh = () => {
+        const refreshTasks = () => {
             setData(readAllTasks(root));
-            setProcStatus(getProcessStatus(repoRoot));
-        };
-        refresh();
-        const id = setInterval(() => {
-            refresh();
             setTick((t) => t + 1);
-        }, REFRESH_MS);
+        };
+        refreshTasks();
+        const id = setInterval(refreshTasks, REFRESH_MS);
         return () => clearInterval(id);
     }, [root]);
+    // Refresh process status less frequently + async (no UI blocking)
+    useEffect(() => {
+        const refreshProcs = () => {
+            getProcessStatusAsync(repoRoot, (status) => setProcStatus(status));
+        };
+        refreshProcs();
+        const id = setInterval(refreshProcs, PROC_REFRESH_MS);
+        return () => clearInterval(id);
+    }, [repoRoot]);
     // Clear message after 5s
     useEffect(() => {
         if (!msg)
@@ -146,6 +153,8 @@ export function App({ tasksRoot }) {
                 setView("list");
             return;
         }
+        // QA view is handled by the QAView component itself via its own useInput
+        // but we need to handle Esc to go back (already handled above)
         // Numeric tab switching
         if (input === "1") {
             setTab(1);
@@ -265,6 +274,11 @@ export function App({ tasksRoot }) {
         }
         if (key.return) {
             if (selected) {
+                if (selected.status === "waiting_answer") {
+                    // Open Q&A view directly for waiting tasks
+                    setView("qa");
+                    return;
+                }
                 const isFinished = selected.status === "completed" || selected.status === "failed";
                 const isRunning = selected.status === "in_progress";
                 setDetailTab(isFinished ? "summary" : isRunning ? "agents" : "state");
@@ -349,16 +363,18 @@ export function App({ tasksRoot }) {
     // Footer hint per tab/view
     let footerHint = "";
     if (tab === 1 && view === "list")
-        footerHint = "  ↑/↓ select  Enter detail  [a] agents  [l] logs  [d] archive  [x] doctor  [s] start  [k] stop  [q] quit";
+        footerHint = "  ↑/↓ select  Enter detail/qa  [a] agents  [l] logs  [d] archive  [x] doctor  [s] start  [k] stop  [q] quit";
     if (tab === 1 && view === "detail")
         footerHint = "  ←/→ tabs  ↑/↓ scroll  PgUp/PgDn  [g] top  [G] end  [y] copy  [Esc] back  [q] quit";
-    if (tab === 1 && view !== "list" && view !== "detail")
+    if (tab === 1 && view === "qa")
+        footerHint = "  ↑/↓ select question  Tab switch panel  Esc save & back  Ctrl+S save  1-9 quick-select option";
+    if (tab === 1 && view !== "list" && view !== "detail" && view !== "qa")
         footerHint = "  [y] copy slug  [Esc] back  [q] quit";
     if (tab === 2)
         footerHint = "  ↑/↓ select  Enter run  ←/→ tabs  [q] quit";
     if (tab === 3)
         footerHint = "  ↑/↓ select process  [z] clean zombies  ←/→ tabs  [q] quit";
-    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time] })] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 }), _jsx(TabLabel, { n: 3, label: "Processes", active: tab === 3, hasAlert: procStatus.zombies.length > 0 || procStatus.lock?.zombie === true })] }), _jsx(Text, { children: " " }), tab === 1 && (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: cols, rows: rows, tick: tick, detailTab: detailTab, detailScrollOffsets: detailScrollOffsets, setDetailScrollOffsets: setDetailScrollOffsets, setMsg: setMsg })), tab === 2 && _jsx(CommandsTab, { cols: cols, selectedIdx: cmdIdx }), tab === 3 && (_jsx(ProcessesTab, { procStatus: procStatus, selectedIdx: procIdx, logLines: procLogLines, cols: cols, rows: rows, tick: tick })), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsx(Text, { dimColor: true, children: footerHint })] }));
+    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time] })] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 }), _jsx(TabLabel, { n: 3, label: "Processes", active: tab === 3, hasAlert: procStatus.zombies.length > 0 || procStatus.lock?.zombie === true })] }), _jsx(Text, { children: " " }), tab === 1 && (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: cols, rows: rows, tick: tick, detailTab: detailTab, detailScrollOffsets: detailScrollOffsets, setDetailScrollOffsets: setDetailScrollOffsets, setMsg: setMsg, setView: setView })), tab === 2 && _jsx(CommandsTab, { cols: cols, selectedIdx: cmdIdx }), tab === 3 && (_jsx(ProcessesTab, { procStatus: procStatus, selectedIdx: procIdx, logLines: procLogLines, cols: cols, rows: rows, tick: tick })), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsx(Text, { dimColor: true, children: footerHint })] }));
 }
 // ── Tab label ─────────────────────────────────────────────────────
 function TabLabel({ n, label, active, hasAlert }) {
@@ -366,17 +382,19 @@ function TabLabel({ n, label, active, hasAlert }) {
     return active ? (_jsxs(Text, { bold: true, inverse: true, color: hasAlert ? "red" : undefined, children: [" ", n, ":", label, badge, " "] })) : (_jsxs(Text, { dimColor: true, color: hasAlert ? "red" : undefined, children: [" ", n, ":", label, badge, " "] }));
 }
 // ── Tasks Tab ─────────────────────────────────────────────────────
-function TasksTab({ data, idx, view, selected, cols, rows, tick, detailTab, detailScrollOffsets, setDetailScrollOffsets, setMsg, }) {
+function TasksTab({ data, idx, view, selected, cols, rows, tick, detailTab, detailScrollOffsets, setDetailScrollOffsets, setMsg, setView, }) {
     if (view === "agents" && selected)
         return _jsx(AgentsView, { task: selected, cols: cols });
     if (view === "logs" && selected)
         return _jsx(LogsView, { task: selected, rows: rows, tick: tick });
+    if (view === "qa" && selected)
+        return _jsx(QAView, { task: selected, cols: cols, rows: rows, onBack: () => setView("list") });
     if (view === "detail" && selected)
         return _jsx(DetailView, { task: selected, rows: rows, cols: cols, tab: detailTab, scrollOffset: detailScrollOffsets[detailTab], setScrollOffset: (offset) => setDetailScrollOffsets((prev) => ({ ...prev, [detailTab]: offset })), tick: tick, setMsg: setMsg });
     const { tasks, counts } = data;
-    const total = counts.pending + counts.in_progress + counts.completed + counts.failed + counts.suspended;
+    const total = counts.pending + counts.in_progress + counts.waiting_answer + counts.completed + counts.failed + counts.suspended;
     const done = counts.completed + counts.failed;
-    return (_jsxs(Box, { flexDirection: "column", children: [_jsx(ProgressBar, { done: done, total: total, width: cols - 10 }), _jsx(Text, { children: " " }), _jsxs(Box, { gap: 2, children: [_jsx(Text, { children: "  " }), _jsxs(Text, { color: "blue", bold: true, children: ["Pending: ", counts.pending] }), _jsxs(Text, { color: "yellow", bold: true, children: ["Running: ", counts.in_progress] }), _jsxs(Text, { color: "green", bold: true, children: ["Done: ", counts.completed] }), _jsxs(Text, { color: "red", bold: true, children: ["Failed: ", counts.failed] }), counts.suspended > 0 && _jsxs(Text, { color: "magenta", bold: true, children: ["Suspended: ", counts.suspended] })] }), _jsx(Text, { children: " " }), _jsx(TaskList, { tasks: tasks, selectedIdx: idx, maxLines: rows - 12 })] }));
+    return (_jsxs(Box, { flexDirection: "column", children: [_jsx(ProgressBar, { done: done, total: total, width: cols - 10 }), _jsx(Text, { children: " " }), _jsxs(Box, { gap: 2, children: [_jsx(Text, { children: "  " }), _jsxs(Text, { color: "blue", bold: true, children: ["Pending: ", counts.pending] }), _jsxs(Text, { color: "yellow", bold: true, children: ["Running: ", counts.in_progress] }), counts.waiting_answer > 0 && _jsxs(Text, { color: "cyan", bold: true, children: ["Waiting: ", counts.waiting_answer, " \u2753"] }), _jsxs(Text, { color: "green", bold: true, children: ["Done: ", counts.completed] }), _jsxs(Text, { color: "red", bold: true, children: ["Failed: ", counts.failed] }), counts.suspended > 0 && _jsxs(Text, { color: "magenta", bold: true, children: ["Suspended: ", counts.suspended] })] }), _jsx(Text, { children: " " }), _jsx(TaskList, { tasks: tasks, selectedIdx: idx, maxLines: rows - 12 })] }));
 }
 // ── Processes Tab ─────────────────────────────────────────────────
 function ProcessesTab({ procStatus, selectedIdx, logLines, cols, rows, tick, }) {
@@ -431,6 +449,7 @@ function StatusHeader({ status }) {
     const base = status.split(":")[0];
     const labels = {
         in_progress: ["In Progress:", "yellow"],
+        waiting_answer: ["Waiting for Answers:", "cyan"],
         completed: ["Completed:", "green"],
         failed: ["Failed:", "red"],
         suspended: ["Suspended:", "magenta"],
@@ -440,8 +459,8 @@ function StatusHeader({ status }) {
     return _jsxs(Text, { bold: true, color: color, children: ["  ", label] });
 }
 function TaskLine({ task, cursor }) {
-    const icon = { in_progress: "▸", completed: "✓", failed: "✗", suspended: "⏸", pending: "○" }[task.status] ?? "○";
-    const color = { in_progress: "yellow", completed: "green", failed: "red", suspended: "magenta", pending: undefined }[task.status];
+    const icon = { in_progress: "▸", waiting_answer: "?", completed: "✓", failed: "✗", suspended: "⏸", pending: "○" }[task.status] ?? "○";
+    const color = { in_progress: "yellow", waiting_answer: "cyan", completed: "green", failed: "red", suspended: "magenta", pending: undefined }[task.status];
     const wfBadge = task.workflow === "ultraworks" ? "U" : "F";
     const wfColor = task.workflow === "ultraworks" ? "magenta" : "blue";
     const warnings = [];
@@ -464,6 +483,12 @@ function TaskLine({ task, cursor }) {
             suffix += ` ${task.workerId}`;
         if (task.sessionName)
             suffix += ` ${task.sessionName}`;
+    }
+    if (task.status === "waiting_answer") {
+        const answered = task.questionsAnswered ?? 0;
+        const total = task.questionsCount ?? (task.qaData?.questions.length ?? 0);
+        const agent = task.waitingAgent ?? "?";
+        suffix = ` ${agent}  ${answered}/${total} answered  [Enter to answer]`;
     }
     if (task.status === "completed" && task.startedAt && task.updatedAt) {
         const dur = Math.round((new Date(task.updatedAt).getTime() - new Date(task.startedAt).getTime()) / 1000);
@@ -729,4 +754,65 @@ function CommandsTab({ cols, selectedIdx }) {
 }
 function CmdLine({ k, desc, cursor, executable }) {
     return (_jsxs(Box, { children: [_jsx(Text, { color: "cyan", children: cursor ? "  ▶ " : "    " }), _jsx(Text, { bold: executable, dimColor: !executable, children: k.padEnd(8) }), _jsx(Text, { dimColor: !cursor, children: desc }), cursor && _jsx(Text, { color: "green", children: " \u23CE" })] }));
+}
+// ── Q&A View ──────────────────────────────────────────────────────
+function QAView({ task, cols, rows, onBack }) {
+    const questions = task.qaData?.questions ?? [];
+    const [selectedQ, setSelectedQ] = useState(0);
+    const [answers, setAnswers] = useState(() => {
+        const init = {};
+        for (const q of questions) {
+            if (q.answer)
+                init[q.id] = q.answer;
+        }
+        return init;
+    });
+    const [focusPanel, setFocusPanel] = useState("list");
+    const [answerText, setAnswerText] = useState("");
+    const [saved, setSaved] = useState(false);
+    const currentQ = questions[selectedQ];
+    // Sync answerText when question changes
+    useEffect(() => {
+        if (currentQ) {
+            setAnswerText(answers[currentQ.id] ?? "");
+        }
+    }, [selectedQ, currentQ?.id]);
+    const saveAnswers = () => {
+        if (!currentQ)
+            return;
+        const updated = { ...answers, [currentQ.id]: answerText };
+        setAnswers(updated);
+        // Write to qa.json
+        const qaPath = join(task.dir, "qa.json");
+        try {
+            const data = existsSync(qaPath) ? JSON.parse(readFileSync(qaPath, "utf-8")) : { version: 1, questions: [] };
+            for (const q of data.questions) {
+                if (updated[q.id] !== undefined && updated[q.id] !== "") {
+                    q.answer = updated[q.id];
+                    q.answered_at = new Date().toISOString();
+                    q.answered_by = "human";
+                    q.answer_source = "tui";
+                }
+            }
+            writeFileSync(qaPath, JSON.stringify(data, null, 2) + "\n", "utf-8");
+            setSaved(true);
+            setTimeout(() => setSaved(false), 2000);
+        }
+        catch { }
+    };
+    const leftW = Math.floor(cols * 0.45);
+    const rightW = cols - leftW - 3;
+    const listH = rows - 10;
+    if (questions.length === 0) {
+        return (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Text, { bold: true, color: "cyan", children: ["  Q&A: ", task.title.slice(0, 50)] }), _jsx(Text, { children: " " }), _jsx(Text, { dimColor: true, children: "  No questions found in qa.json" }), _jsx(Text, { children: " " }), _jsx(Text, { dimColor: true, children: "  Esc back" })] }));
+    }
+    return (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Q&A: " }), _jsx(Text, { children: task.title.slice(0, 40) }), saved && _jsx(Text, { color: "green", children: " \u2713 saved" })] }), _jsx(Text, { dimColor: true, children: "  " + "─".repeat(cols - 4) }), _jsxs(Box, { children: [_jsxs(Box, { flexDirection: "column", width: leftW, children: [_jsxs(Text, { bold: true, dimColor: true, children: ["  Questions (", questions.length, ")"] }), _jsxs(Text, { dimColor: true, children: ["  ", "─".repeat(leftW - 4)] }), questions.slice(0, listH).map((q, i) => {
+                                const isCurrent = i === selectedQ;
+                                const isAnswered = !!(answers[q.id] || q.answer);
+                                const isBlocking = q.priority === "blocking";
+                                const marker = isAnswered ? "✓" : isBlocking ? "*" : "·";
+                                const color = isAnswered ? "green" : isBlocking ? "red" : undefined;
+                                const agentShort = q.agent.replace("u-", "");
+                                return (_jsxs(Box, { children: [_jsx(Text, { color: "cyan", children: isCurrent ? "  ► " : "    " }), _jsxs(Text, { color: color, children: [marker, " "] }), _jsxs(Text, { bold: isCurrent, dimColor: !isCurrent && isAnswered, children: [q.id, " [", q.priority === "blocking" ? "B" : "N", "] ", agentShort] })] }, q.id));
+                            })] }), _jsx(Box, { flexDirection: "column", children: Array.from({ length: Math.min(listH + 3, rows - 6) }).map((_, i) => (_jsx(Text, { dimColor: true, children: "\u2502" }, i))) }), _jsx(Box, { flexDirection: "column", width: rightW, children: currentQ ? (_jsxs(_Fragment, { children: [_jsx(Text, { bold: true, children: " Q" + (selectedQ + 1) + " [" + currentQ.priority + "]" }), _jsx(Text, { dimColor: true, children: " " + "─".repeat(rightW - 2) }), _jsx(Text, { children: " " + currentQ.question.slice(0, rightW - 2) }), currentQ.context && _jsx(Text, { dimColor: true, children: " 📎 " + currentQ.context.slice(0, rightW - 5) }), currentQ.options && currentQ.options.length > 0 && (_jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { dimColor: true, children: " Options:" }), currentQ.options.map((opt, oi) => (_jsx(Text, { dimColor: true, children: `  ${oi + 1}. ${opt}` }, oi)))] })), _jsx(Text, { children: " " }), _jsx(Text, { bold: true, color: focusPanel === "editor" ? "cyan" : undefined, children: " Answer:" }), _jsx(Box, { borderStyle: focusPanel === "editor" ? "single" : undefined, borderColor: "cyan", children: _jsx(Text, { children: " " + (answerText || "(type your answer)") }) }), answers[currentQ.id] && (_jsx(Text, { color: "green", children: " ✓ Saved: " + answers[currentQ.id].slice(0, rightW - 12) }))] })) : (_jsx(Text, { dimColor: true, children: "  Select a question" })) })] }), _jsx(Text, { dimColor: true, children: "  " + "─".repeat(cols - 4) }), _jsx(Text, { dimColor: true, children: "  * = blocking  \u2713 = answered  \u25BA = selected  Tab: switch panel  Esc: save & back  Ctrl+S: save" })] }));
 }

@@ -10,7 +10,7 @@ RUN composer dump-autoload --optimize --no-dev
 FROM php:8.5-fpm-alpine
 
 RUN apk add --no-cache caddy libpq icu-libs libzip \
-    && apk add --no-cache --virtual .build-deps $PHPIZE_DEPS postgresql-dev icu-dev libzip-dev \
+    && apk add --no-cache --virtual .build-deps $PHPIZE_DEPS postgresql-dev icu-dev libzip-dev linux-headers \
     && docker-php-ext-install pdo_pgsql zip sockets \
     && docker-php-ext-configure intl && docker-php-ext-install intl \
     && pecl install redis && docker-php-ext-enable redis \

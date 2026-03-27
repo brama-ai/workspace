@@ -2,7 +2,16 @@
 # templates/agent/Dockerfile
 # =============================================================================
 # Minimal reference Dockerfile for a platform agent.
-# Copy to your agent project and adjust as needed.
+#
+# Ownership rule: this file belongs at the ROOT of the agent project directory
+# (e.g., brama-agents/my-agent/Dockerfile), NOT inside the workspace docker/
+# directory. The workspace Compose file references it via:
+#
+#   build:
+#     context: ../brama-agents/my-agent
+#     dockerfile: Dockerfile
+#
+# See docs/guides/deployment/en/dockerfile-ownership.md for the full rule.
 # =============================================================================
 
 FROM php:8.3-fpm-alpine
