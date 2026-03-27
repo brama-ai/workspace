@@ -3,10 +3,10 @@
   "workflow": "foundry",
   "started_at": "2026-03-27T10:27:44.536982Z",
   "attempt": 1,
-  "status": "in_progress",
-  "current_step": "u-summarizer",
-  "resume_from": "u-summarizer",
-  "updated_at": "2026-03-27T11:07:11.040547Z",
+  "status": "completed",
+  "current_step": null,
+  "resume_from": null,
+  "updated_at": "2026-03-27T11:07:28.989171Z",
   "task_file": "/workspaces/brama/tasks/implement-wait-timeout-strategy-section-13-of-docs--foundry/task.md",
   "branch": "pipeline/implement-wait-timeout-strategy-section-13-of-docs",
   "agents": [
@@ -14,12 +14,12 @@
       "agent": "u-summarizer",
       "status": "done",
       "model": "anthropic/claude-opus-4-6",
-      "duration_seconds": 259,
+      "duration_seconds": 593,
       "input_tokens": 24,
       "output_tokens": 9605,
       "cost": 2.1894,
       "call_count": 1,
-      "updated_at": "2026-03-27T11:07:11.040530Z"
+      "updated_at": "2026-03-27T11:07:11.690164Z"
     }
   ]
 }

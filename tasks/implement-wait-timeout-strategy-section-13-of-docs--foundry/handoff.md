@@ -63,3 +63,4 @@
 - **Recommendation**: Створити follow-up задачу «Відновити quality gate для Wait Timeout Strategy» — повторний запуск `u-validator` і `u-tester` після відновлення доступу до моделі або з fallback-провайдером
 - **Commit (u-coder)**: 279c238
 - **Total cost**: $2.92
+- **Commit (u-summarizer)**: 24c4fbf
