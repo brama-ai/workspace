@@ -1,5 +1,6 @@
 import { env } from "node:process";
 import { executeAgent, AgentConfig, AgentResult, getTimeout } from "../agents/executor.js";
+import { checkAndCompact, getSessionContextStatus } from "../agents/context-guard.js";
 import { emitEvent, initEventsLog, EventType } from "../state/events.js";
 
 const DEBUG = env.FOUNDRY_DEBUG === "true";
@@ -73,6 +74,21 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
   const logDir = `${repoRoot}/.opencode/pipeline/logs`;
 
   for (const agent of agents) {
+    // Check context size and auto-compact if needed (protects GLM, Kimi etc.)
+    if (completedAgents.length > 0) {
+      const ctxStatus = checkAndCompact();
+      if (ctxStatus.needsCompact) {
+        debug("auto-compact triggered before", agent, "context was", ctxStatus.lastContextSize);
+        emitEvent("CHECKPOINT", {
+          type: "auto_compact",
+          agent,
+          contextSize: ctxStatus.lastContextSize,
+          threshold: ctxStatus.threshold,
+          model: ctxStatus.model || "unknown",
+        });
+      }
+    }
+
     debug("running agent", agent);
 
     emitEvent("AGENT_START", { agent, task: taskMessage });
