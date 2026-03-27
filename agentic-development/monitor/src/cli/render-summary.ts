@@ -24,6 +24,7 @@ interface AgentRow {
   context: { skills?: string[]; mcp_tools?: Array<{ name: string; count: number }>; claude_commands?: string[] };
   cost: number;
   duration_seconds: number;
+  session_id?: string;
 }
 
 interface SessionExport {
@@ -148,6 +149,71 @@ function extractContext(data: SessionExport): AgentRow["context"] {
   };
 }
 
+interface CacheStats {
+  model: string;
+  messages: number;
+  avg_input: number;
+  avg_cache_read: number;
+  sum_input: number;
+  sum_cache_read: number;
+  sum_cache_write: number;
+  sum_output: number;
+  max_cache_read: number;
+  cache_hit_pct: number;
+}
+
+function queryCacheStats(sessionId?: string): CacheStats[] {
+  const sessionFilter = sessionId
+    ? `m.session_id = '${sessionId}'`
+    : `m.session_id = (SELECT id FROM session ORDER BY time_updated DESC LIMIT 1)`;
+
+  const sql = `
+    SELECT
+      json_extract(m.data, '$.providerID') || '/' || json_extract(m.data, '$.modelID') as model,
+      COUNT(*) as messages,
+      ROUND(AVG(json_extract(m.data, '$.tokens.input')), 0) as avg_input,
+      ROUND(AVG(json_extract(m.data, '$.tokens.cache.read')), 0) as avg_cache_read,
+      SUM(json_extract(m.data, '$.tokens.input')) as sum_input,
+      SUM(json_extract(m.data, '$.tokens.cache.read')) as sum_cache_read,
+      SUM(COALESCE(json_extract(m.data, '$.tokens.cache.write'), 0)) as sum_cache_write,
+      SUM(json_extract(m.data, '$.tokens.output')) as sum_output,
+      MAX(json_extract(m.data, '$.tokens.cache.read')) as max_cache_read,
+      CASE
+        WHEN SUM(json_extract(m.data, '$.tokens.input')) + SUM(json_extract(m.data, '$.tokens.cache.read')) > 0
+        THEN ROUND(100.0 * SUM(json_extract(m.data, '$.tokens.cache.read')) / (SUM(json_extract(m.data, '$.tokens.input')) + SUM(json_extract(m.data, '$.tokens.cache.read'))), 1)
+        ELSE 0
+      END as cache_hit_pct
+    FROM message m
+    WHERE ${sessionFilter}
+      AND json_extract(m.data, '$.role') = 'assistant'
+      AND (json_extract(m.data, '$.tokens.input') > 0 OR json_extract(m.data, '$.tokens.cache.read') > 0)
+    GROUP BY model
+    ORDER BY (SUM(json_extract(m.data, '$.tokens.input')) + SUM(json_extract(m.data, '$.tokens.cache.read'))) DESC
+  `.replace(/\n/g, " ");
+
+  try {
+    const result = exec(`opencode db "${sql}" --format json`);
+    if (!result) return [];
+    return JSON.parse(result) as CacheStats[];
+  } catch {
+    return [];
+  }
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return `${n}`;
+}
+
+function cacheGrade(hitPct: number, avgInput: number): { grade: string; emoji: string } {
+  if (hitPct >= 99 && avgInput <= 10) return { grade: "Excellent", emoji: "A+" };
+  if (hitPct >= 95) return { grade: "Good", emoji: "A" };
+  if (hitPct >= 85) return { grade: "Fair", emoji: "B" };
+  if (hitPct >= 70) return { grade: "Poor", emoji: "C" };
+  return { grade: "Bad", emoji: "D" };
+}
+
 function money(val: number): string {
   return `$${val.toFixed(4)}`;
 }
@@ -256,6 +322,65 @@ function renderTable(rows: AgentRow[], workflow: string): string {
   lines.push("");
   lines.push(`**Totals:** ${totalTokensStr} tokens | ${money(totalCost)} cost | ${dur(totalDuration)} duration`);
 
+  // Token Burn & Cache Efficiency (from opencode DB)
+  const cacheStats = queryCacheStats();
+  if (cacheStats.length > 0) {
+    lines.push("");
+    lines.push("## Token Burn & Cache Efficiency");
+    lines.push("");
+    lines.push("_Per-model breakdown of how tokens are consumed. Higher cache hit % = cheaper._");
+    lines.push("");
+    lines.push("| Model | Msgs | Avg Input | Avg Cache Read | Cache Hit % | Grade | Total Input | Total Cached |");
+    lines.push("|-------|-----:|----------:|---------------:|------------:|:-----:|------------:|-------------:|");
+
+    for (const stat of cacheStats) {
+      const { grade, emoji } = cacheGrade(stat.cache_hit_pct, stat.avg_input);
+      lines.push(
+        `| ${stat.model} | ${stat.messages} | ${formatTokens(stat.avg_input)} | ${formatTokens(stat.avg_cache_read)} ` +
+        `| ${stat.cache_hit_pct}% | ${emoji} ${grade} | ${formatTokens(stat.sum_input)} | ${formatTokens(stat.sum_cache_read)} |`
+      );
+    }
+
+    // Overall stats
+    const totalInput = cacheStats.reduce((s, c) => s + c.sum_input, 0);
+    const totalCached = cacheStats.reduce((s, c) => s + c.sum_cache_read, 0);
+    const totalBilled = totalInput + totalCached;
+    const overallHitPct = totalBilled > 0 ? (totalCached / totalBilled * 100).toFixed(1) : "0";
+
+    lines.push("");
+    lines.push(`**Overall cache hit rate:** ${overallHitPct}% (${formatTokens(totalCached)} cached / ${formatTokens(totalBilled)} total billed)`);
+
+    // Cache efficiency notes
+    lines.push("");
+    lines.push("**Cache pricing impact:**");
+    for (const stat of cacheStats) {
+      const pricing = getModelPricing(stat.model);
+      if (pricing.cache_read > 0 && pricing.cache_read < pricing.input) {
+        const discount = ((1 - pricing.cache_read / pricing.input) * 100).toFixed(0);
+        const savedTokens = stat.sum_cache_read;
+        const savedCost = (savedTokens / 1_000_000) * (pricing.input - pricing.cache_read);
+        lines.push(`- **${stat.model}**: cache is ${discount}% cheaper than input. Saved ~${money(savedCost)} on ${formatTokens(savedTokens)} cached tokens`);
+      } else if (pricing.cache_read === 0 && stat.sum_cache_read > 0) {
+        lines.push(`- **${stat.model}**: cache tokens billed at same rate as input (no discount). ${formatTokens(stat.sum_cache_read)} cached but no cost savings`);
+      }
+    }
+
+    // Warnings for poor cache performance
+    const poorModels = cacheStats.filter(s => s.cache_hit_pct < 85 || s.avg_input > 5000);
+    if (poorModels.length > 0) {
+      lines.push("");
+      lines.push("**Warnings:**");
+      for (const stat of poorModels) {
+        if (stat.avg_input > 5000) {
+          lines.push(`- ${stat.model}: high avg input (${formatTokens(stat.avg_input)}/msg) — possible cache eviction or large tool outputs`);
+        }
+        if (stat.cache_hit_pct < 85) {
+          lines.push(`- ${stat.model}: low cache hit rate (${stat.cache_hit_pct}%) — context may be re-sent as full-price input`);
+        }
+      }
+    }
+  }
+
   // Tools by agent
   lines.push("");
   lines.push("## Tools By Agent");
@@ -303,6 +428,22 @@ function renderTable(rows: AgentRow[], workflow: string): string {
       for (const f of row.files_read) lines.push(`- \`${f}\``);
     } else {
       lines.push("- none recorded");
+    }
+    lines.push("");
+  }
+
+  // Session IDs for post-mortem analysis
+  const hasSessionIds = rows.some(r => r.session_id && r.session_id !== "n/d");
+  if (hasSessionIds) {
+    lines.push("## Session IDs");
+    lines.push("");
+    lines.push("_Use `opencode export <session_id>` for detailed token/file analysis._");
+    lines.push("");
+    lines.push("| Agent | Session ID |");
+    lines.push("|-------|------------|");
+    for (const row of rows) {
+      const sid = row.session_id && row.session_id !== "n/d" ? `\`${row.session_id}\`` : "—";
+      lines.push(`| ${row.agent} | ${sid} |`);
     }
     lines.push("");
   }
@@ -408,6 +549,7 @@ function renderFoundry(slug: string): string {
         context: record.context || {},
         cost: record.cost || 0,
         duration_seconds: record.duration_seconds || 0,
+        session_id: record.session_id || "",
       });
     } catch { /* skip invalid */ }
   }

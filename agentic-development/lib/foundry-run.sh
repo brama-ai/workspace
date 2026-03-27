@@ -1842,7 +1842,7 @@ run_agent() {
     local agent_status_for_state="done"
     [[ $exit_code -ne 0 ]] && agent_status_for_state="failed"
     foundry_state_upsert_agent "$TASK_DIR" "$agent" "$agent_status_for_state" "$actual_model_used" \
-      "$(( agent_end_epoch - agent_start_epoch ))" "$in_tok" "$out_tok" "$agent_cost" "1"
+      "$(( agent_end_epoch - agent_start_epoch ))" "$in_tok" "$out_tok" "$agent_cost" "1" "$session_id"
 
     # Check result
     if [[ $exit_code -eq 0 ]]; then
@@ -1874,7 +1874,7 @@ run_agent() {
       # Update agent status in state.json
       if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
         foundry_state_upsert_agent "$TASK_DIR" "$agent" "waiting_answer" "$actual_model_used" \
-          "$agent_dur" "$in_tok" "$out_tok" "$agent_cost" "1"
+          "$agent_dur" "$in_tok" "$out_tok" "$agent_cost" "1" "$session_id"
       fi
 
       # Handle waiting_answer: validate qa.json, update state, check continue_on_wait
@@ -2783,7 +2783,7 @@ main() {
       _out_tok=$(echo "$agent_tokens" | jq -r '.output_tokens // 0' 2>/dev/null || echo 0)
       _cost=$(echo "$agent_tokens" | jq -r '.cost // 0' 2>/dev/null || echo 0)
       if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
-        foundry_state_upsert_agent "$TASK_DIR" "$agent" "done" "" "$agent_dur" "$_in_tok" "$_out_tok" "$_cost" "1"
+        foundry_state_upsert_agent "$TASK_DIR" "$agent" "done" "" "$agent_dur" "$_in_tok" "$_out_tok" "$_cost" "1" ""
       fi
 
       # Stage gate: verify coder produced actual code changes
@@ -2868,7 +2868,7 @@ main() {
       _out_tok=$(echo "$agent_tokens" | jq -r '.output_tokens // 0' 2>/dev/null || echo 0)
       _cost=$(echo "$agent_tokens" | jq -r '.cost // 0' 2>/dev/null || echo 0)
       if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
-        foundry_state_upsert_agent "$TASK_DIR" "$agent" "failed" "" "$agent_dur" "$_in_tok" "$_out_tok" "$_cost" "1"
+        foundry_state_upsert_agent "$TASK_DIR" "$agent" "failed" "" "$agent_dur" "$_in_tok" "$_out_tok" "$_cost" "1" ""
       fi
 
       failed=true
