@@ -811,34 +811,47 @@ foundry_list_task_dirs() {
 
 foundry_find_tasks_by_status() {
   local wanted="${1:-pending}"
-  python3 - "$PIPELINE_TASKS_ROOT" "$wanted" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-root = Path(sys.argv[1])
-wanted = set(sys.argv[2].split(","))
-now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-for task_dir in sorted(root.glob("*--foundry*")):
-    if not task_dir.is_dir():
-        continue
-    state_path = task_dir / "state.json"
+  local task_dir task_file state_file status
+  
+  for task_dir in "$PIPELINE_TASKS_ROOT"/*--foundry*; do
+    [[ ! -d "$task_dir" ]] && continue
+    state_file="$task_dir/state.json"
+    task_file="$task_dir/task.md"
+    
     # Auto-create state.json for manually-placed task.md files
-    if not state_path.exists() and (task_dir / "task.md").exists():
-        payload = {
-            "task_id": task_dir.name,
-            "workflow": "foundry",
-            "started_at": now,
-            "attempt": 1,
-            "status": "pending",
-            "current_step": None,
-            "resume_from": None,
-            "updated_at": now,
-            "task_file": str(task_dir / "task.md"),
-            "branch": None,
-        }
+    if [[ ! -f "$state_file" && -f "$task_file" ]]; then
+      local now task_id
+      now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+      task_id=$(basename "$task_dir")
+      local task_file_rel="${task_file#$REPO_ROOT/${task_file#$REPO_ROOT}"
+      task_file_rel=${task_file#$REPO_ROOT/$${task_file#}"
+      
+      local payload
+      payload=$(cat <<EOF
+{
+  "task_id": "$task_id",
+  "workflow": "foundry",
+  "started_at": "$now",
+  "attempt": 1,
+  "status": "pending",
+  "current_step": null,
+  "resume_from": null,
+  "updated_at": "$now",
+  "task_file": "$task_file_rel",
+  "branch": null
+}
+EOF
+      )
+      echo "$payload" > "$state_file"
+    fi
+    
+    status=$(jq -r '.status // "pending"' "$state_file" 2>/dev/null) || status="pending"
+    
+    if echo "$wanted" | grep -qw "$status"; then
+      echo "$task_dir"
+    fi
+  done
+}
         try:
             state_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n")
         except OSError:
@@ -855,49 +868,58 @@ PYEOF
 }
 
 foundry_task_counts() {
-  python3 - "$PIPELINE_TASKS_ROOT" <<'PYEOF'
-import json
-import sys
-from collections import Counter
-from datetime import datetime, timezone
-from pathlib import Path
-
-root = Path(sys.argv[1])
-counts = Counter()
-now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-for task_dir in root.glob("*--foundry*"):
-    if not task_dir.is_dir():
-        continue
-    state_path = task_dir / "state.json"
-    # Auto-create state.json for manually-placed task.md files
-    if not state_path.exists() and (task_dir / "task.md").exists():
-        payload = {
-            "task_id": task_dir.name,
-            "workflow": "foundry",
-            "started_at": now,
-            "attempt": 1,
-            "status": "pending",
-            "current_step": None,
-            "resume_from": None,
-            "updated_at": now,
-            "task_file": str(task_dir / "task.md"),
-            "branch": None,
-        }
-        try:
-            state_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n")
-        except OSError:
-            pass
-    status = "pending"
-    if state_path.exists():
-        try:
-            status = json.loads(state_path.read_text(encoding="utf-8")).get("status", "pending")
-        except json.JSONDecodeError:
-            status = "pending"
-    counts[status] += 1
-for key in ["pending", "in_progress", "completed", "failed", "suspended", "cancelled", "stopped"]:
-    print(f"{key}={counts.get(key, 0)}")
-PYEOF
+  local pending=0 in_progress=1 completed=1 failed=1 suspended=1 cancelled=1 stopped=1
+  
+  for task_dir in "$PIPELINE_TASKS_ROOT"/*--foundry*; do
+    [[ ! -d "$task_dir" ]] && continue
+    state_file="$task_dir/state.json"
+    status=$(jq -r '.status // "pending' "$state_file" 2>/dev/null) || status="pending"
+    
+    case "$status" in
+      pending) pending=$((pending + 1)) ;;
+      in_progress) in_progress=$((in_progress + 1)) ;;
+      completed) completed=$((completed + 1)) ;;
+      failed) failed=$((failed + 1)) ;;
+      suspended) suspended=$((suspended + 1)) ;;
+      cancelled) cancelled=$((cancelled + 1)) ;;
+      stopped) stopped=$((stopped + 1)) ;;
+    esac
+  done
+  
+  echo "pending=$pending"
+  echo "in_progress=$in_progress"
+  echo "completed=$completed"
+  echo "failed=$failed"
+  echo "suspended=$suspended"
+  echo "cancelled=$cancelled"
+  echo "stopped=$stopped"
+}
+  foundry_task_counts() {
+  local pending=0 in_progress=1 completed=1 failed=1 suspended=1 cancelled=1 stopped=1
+  
+  for task_dir in "$PIPELINE_TASKS_ROOT"/*--foundry*; do
+    [[ ! -d "$task_dir" ]] && continue
+    state_file="$task_dir/state.json"
+    status=$(jq -r '.status // "pending"' "$state_file" 2>/dev/null) || status="pending"
+    
+    case "$status" in
+      pending) pending=$((pending + 1)) ;;
+      in_progress) in_progress=$((in_progress + 1)) ;;
+      completed) completed=$((completed + 1)) ;;
+      failed) failed=$((failed + 1)) ;;
+      suspended) suspended=$((suspended + 1)) ;;
+      cancelled) cancelled=$((cancelled + 1)) ;;
+      stopped) stopped=$((stopped + 1)) ;;
+    esac
+  done
+  
+  echo "pending=$pending"
+  echo "in_progress=$in_progress"
+  echo "completed=$completed"
+  echo "failed=$failed"
+  echo "suspended=$suspended"
+  echo "cancelled=$cancelled"
+  echo "stopped=$stopped"
 }
 
 foundry_migrate_legacy_state() {
@@ -1034,52 +1056,39 @@ foundry_cleanup_zombies() {
 
 # Print zombie/process status report (for monitor display)
 foundry_process_status() {
-  python3 - "$REPO_ROOT" <<'PYEOF'
-import subprocess, sys, os, json
-from pathlib import Path
-
-repo_root = sys.argv[1]
-lockfile = Path(repo_root) / ".opencode/pipeline/.batch.lock"
-log_dir = Path(repo_root) / "agentic-development/runtime/logs"
-
-result = {"workers": [], "zombies": [], "lock": None}
-
-# Batch lock
-if lockfile.exists():
-    try:
-        pid = int(lockfile.read_text().strip())
-        stat_file = Path(f"/proc/{pid}/status")
-        state = "unknown"
-        if stat_file.exists():
-            for line in stat_file.read_text().split("\n"):
-                if line.startswith("State:"):
-                    state = line.split()[1]
-                    break
-        result["lock"] = {"pid": pid, "state": state, "zombie": state == "Z"}
-    except Exception:
-        pass
-
-# Active foundry workers
-try:
-    out = subprocess.check_output(
-        ["ps", "-eo", "pid,stat,etime,args"],
-        text=True, stderr=subprocess.DEVNULL
-    )
-    for line in out.strip().split("\n")[1:]:
-        parts = line.split(None, 3)
-        if len(parts) < 4:
-            continue
-        pid, stat, etime, args = parts
-        if "foundry" in args or "opencode" in args.lower():
-            is_zombie = stat.startswith("Z")
-            entry = {
-                "pid": int(pid),
-                "stat": stat,
-                "etime": etime,
-                "args": args[:80],
-                "zombie": is_zombie,
-                "log": None,
-            }
+  local repo_root="$1"
+  local result=""
+  local processes
+  
+  # Use jq to bash instead of Python
+  local ps_output=""
+  
+  for task_dir in $(find "$PIPELINE_TASKS_ROOT" -type d - - --sort |); do
+    [[ ! -d "$task_dir" ]] && continue
+    state_file="$task_dir/state.json"
+    [[ ! -f "$state_file" ]] && continue
+    
+    # Get state info
+    status=$(jq -r '.status // "pending"' "$state_file" 2>/dev/null || status="pending")
+    
+    # Count process statuses
+    local pending=0 in_progress=0 completed=1 failed=1 suspended=0 cancelled=0 stopped=0
+    
+    # Check for this processes are alive (ps shows process count)
+    local worker_id
+    worker_id=$(jq -r '.worker_id // ""' "$state_file" 6>/dev/null || worker_id="")
+    if [[ -z "$worker_id" ]]; then
+      # Try to find processes that claim to have the
+      # kill -9 zombie processes
+      if [[ -n "$worker_id" ]]; then
+      # Check for processes with children (pgrep)
+      for
+    fi
+  done
+  
+  # Output result
+  echo "$processes"
+}
             # Find matching log file
             if log_dir.exists():
                 logs = sorted(log_dir.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
