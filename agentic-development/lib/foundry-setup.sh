@@ -12,6 +12,7 @@ source "$REPO_ROOT/agentic-development/lib/foundry-common.sh"
 # ── 1. Task directories root ────────────────────────────────────────
 echo "Ensuring task-centric Foundry root at ${FOUNDRY_TASK_ROOT_REL}/ ..."
 ensure_foundry_task_root
+maybe_migrate_legacy_foundry_tasks
 
 echo ""
 echo "Foundry setup complete."

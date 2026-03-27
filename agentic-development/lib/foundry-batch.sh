@@ -9,6 +9,7 @@ REPO_ROOT="${PIPELINE_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && 
 # shellcheck source=/dev/null
 source "$REPO_ROOT/agentic-development/lib/foundry-common.sh"
 
+maybe_migrate_legacy_foundry_tasks
 ensure_foundry_task_root
 
 LOCKFILE="$REPO_ROOT/.opencode/pipeline/.batch.lock"
@@ -113,7 +114,6 @@ log_batch() {
 # ── Single worker loop ───────────────────────────────────────────────
 # Runs in a subshell; claims tasks, runs them in a worktree, loops.
 worker_loop() {
-  _track_usage "worker_loop" "foundry-batch.sh"
   local worker_id="$1"
   shift
   local extra_args=("$@")
@@ -192,7 +192,6 @@ cleanup_all() {
 
 # ── Spawn workers ────────────────────────────────────────────────────
 spawn_workers() {
-  _track_usage "spawn_workers" "foundry-batch.sh"
   local num_workers="$1"
   shift
   local extra_args=("$@")

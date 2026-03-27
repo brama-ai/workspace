@@ -8,6 +8,7 @@ REPO_ROOT="${PIPELINE_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && 
 # shellcheck source=/dev/null
 source "$REPO_ROOT/agentic-development/lib/foundry-common.sh"
 
+maybe_migrate_legacy_foundry_tasks
 ensure_foundry_task_root
 ensure_runtime_root
 
@@ -120,7 +121,6 @@ run_e2e_suite() {
 }
 
 parse_failures() {
-  _track_usage "parse_failures" "foundry-e2e.sh"
   local report_path="$1"
   python3 - "$report_path" "$LIMIT" <<'PYEOF'
 import json
@@ -190,7 +190,6 @@ PYEOF
 }
 
 create_fix_task() {
-  _track_usage "create_fix_task" "foundry-e2e.sh"
   local failure_json="$1"
   local report_path="$2"
   local task_text

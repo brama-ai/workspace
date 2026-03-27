@@ -74,7 +74,6 @@ is_critical_path() {
 # Returns 0 if clean, 1 if dirty
 # Outputs: dirty_files (JSON array), has_critical (bool)
 check_workspace_clean() {
-  _track_usage "check_workspace_clean" "foundry-preflight.sh"
   local workspace_dir="${1:-$REPO_ROOT}"
   python3 - "$workspace_dir" <<'PYEOF'
 import json
@@ -250,7 +249,6 @@ preflight_check_base_reference() {
 
 # 3. Workspace Safety Check
 preflight_check_workspace_safety() {
-  _track_usage "preflight_check_workspace_safety" "foundry-preflight.sh"
   local task_dir="$1"
   local workspace_type="${2:-default_branch}"  # default_branch | task_workspace | other
 
@@ -263,17 +261,17 @@ preflight_check_workspace_safety() {
     # Parse JSON result
     local is_clean
     local has_critical
-    is_clean=$(echo "$check_result" | jq -r '.clean // false')
-    has_critical=$(echo "$check_result" | jq -r '.has_critical // false')
+    is_clean=$(echo "$check_result" | python3 -c "import json,sys; print(json.load(sys.stdin).get('clean', False))")
+    has_critical=$(echo "$check_result" | python3 -c "import json,sys; print(json.load(sys.stdin).get('has_critical', False))")
 
-    if [[ "$has_critical" == "true" ]]; then
+    if [[ "$has_critical" == "True" ]]; then
       echo "Workspace has uncommitted changes in critical paths"
       echo "$check_result"
       return 1
     fi
 
     # If on main branch, any dirty state is critical
-    if is_on_main_branch && [[ "$is_clean" != "true" ]]; then
+    if is_on_main_branch && [[ "$is_clean" != "True" ]]; then
       echo "Default branch workspace is dirty"
       echo "$check_result"
       return 1
@@ -332,7 +330,6 @@ preflight_check_policy() {
 # Returns 0 if all checks pass, 1 otherwise
 # On failure, sets stop_reason and stop_details in state.json
 foundry_preflight_check() {
-  _track_usage "foundry_preflight_check" "foundry-preflight.sh"
   local task_dir="$1"
   local requested_base="${2:-default}"
 
@@ -413,7 +410,6 @@ foundry_preflight_check() {
 
 # Stop a task with detailed reasoning
 foundry_stop_task_with_reason() {
-  _track_usage "foundry_stop_task_with_reason" "foundry-preflight.sh"
   local task_dir="$1"
   local stop_reason="$2"
   local stopped_by="$3"
@@ -423,30 +419,56 @@ foundry_stop_task_with_reason() {
   # Update state.json with extended stop information
   foundry_repair_state_file "$task_dir"
 
-  local state_file="$task_dir/state.json"
-  local ts
-  ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  local tmp="${state_file}.tmp"
-  
-  # Parse stop_details, fallback to raw if invalid JSON
-  if ! echo "$stop_details_json" | jq -e . >/dev/null 2>&1; then
-    stop_details_json="{\"raw\":\"$stop_details_json\"}"
-  fi
-  
-  jq --arg status "stopped" \
-     --arg reason "$stop_reason" \
-     --arg by "$stopped_by" \
-     --arg ts "$ts" \
-     --arg msg "$message" \
-     --argjson details "$stop_details_json" '
-    .status = $status |
-    .stop_reason = $reason |
-    .stopped_by = $by |
-    .stopped_at = $ts |
-    .updated_at = $ts |
-    .message = $msg |
-    .stop_details = ((.stop_details // {}) * $details)
-  ' "$state_file" > "$tmp" && mv "$tmp" "$state_file"
+  python3 - "$task_dir" "$stop_reason" "$stopped_by" "$message" "$stop_details_json" <<'PYEOF'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+task_dir = Path(sys.argv[1])
+stop_reason = sys.argv[2]
+stopped_by = sys.argv[3]
+message = sys.argv[4]
+stop_details_raw = sys.argv[5]
+
+state_path = task_dir / "state.json"
+now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+# Load existing state
+data = {}
+if state_path.exists():
+    try:
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            data = {}
+    except (json.JSONDecodeError, OSError):
+        data = {}
+
+# Parse stop_details
+try:
+    stop_details = json.loads(stop_details_raw)
+except json.JSONDecodeError:
+    stop_details = {"raw": stop_details_raw}
+
+# Update state
+data["status"] = "stopped"
+data["stop_reason"] = stop_reason
+data["stopped_by"] = stopped_by
+data["stopped_at"] = now
+data["updated_at"] = now
+data["message"] = message
+
+# Merge stop_details, handling potential existing details
+if "stop_details" in data and isinstance(data["stop_details"], dict):
+    data["stop_details"].update(stop_details)
+else:
+    data["stop_details"] = stop_details
+
+# Write state
+with open(state_path, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, ensure_ascii=True, indent=2)
+    fh.write("\n")
+PYEOF
 
   # Log event
   pipeline_task_append_event "$task_dir" "task_stopped" "$message" "$stop_reason"
@@ -480,11 +502,11 @@ EOF
   case "$stop_reason" in
     "$STOP_REASON_DIRTY_DEFAULT_WORKSPACE")
       cat >> "$handoff_file" <<'EOF'
-- **Action**: Commit uncommitted changes (never stash — stash pop conflicts lose work)
+- **Action**: Commit or stash uncommitted changes in the main branch
 - **Commands**:
   ```bash
   git status  # Review changes
-  git add -A && git commit -m "WIP: save changes before pipeline run"
+  git stash save "WIP: manual changes"  # or commit them
   ```
 EOF
       ;;
@@ -524,7 +546,6 @@ EOF
 
 # Resume a stopped task (reset to pending)
 foundry_resume_stopped_task() {
-  _track_usage "foundry_resume_stopped_task" "foundry-preflight.sh"
   local task_dir="$1"
   local current_status
   current_status=$(foundry_state_field "$task_dir" status 2>/dev/null || echo "")
@@ -535,18 +556,32 @@ foundry_resume_stopped_task() {
   fi
 
   # Clear stop fields and reset to pending
-  local state_file="$task_dir/state.json"
-  [[ -f "$state_file" ]] || { echo "state.json does not exist"; return 1; }
-  
-  local ts
-  ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  local tmp="${state_file}.tmp"
-  
-  jq --arg ts "$ts" '
-    .status = "pending" |
-    .updated_at = $ts |
-    del(.stop_reason, .stopped_by, .stopped_at, .stop_details, .message)
-  ' "$state_file" > "$tmp" && mv "$tmp" "$state_file"
+  python3 - "$task_dir" <<'PYEOF'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+task_dir = Path(sys.argv[1])
+state_path = task_dir / "state.json"
+now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+if not state_path.exists():
+    print("state.json does not exist")
+    sys.exit(1)
+
+data = json.loads(state_path.read_text(encoding="utf-8"))
+data["status"] = "pending"
+data["updated_at"] = now
+
+# Clear stop-specific fields
+for key in ["stop_reason", "stopped_by", "stopped_at", "stop_details", "message"]:
+    data.pop(key, None)
+
+with open(state_path, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, ensure_ascii=True, indent=2)
+    fh.write("\n")
+PYEOF
 
   pipeline_task_append_event "$task_dir" "task_resumed" "Task resumed from stopped state" ""
   echo "Task resumed and set to pending"

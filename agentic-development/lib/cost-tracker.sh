@@ -7,6 +7,7 @@ set -euo pipefail
 : "${REPO_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 # shellcheck source=/dev/null
 source "$REPO_ROOT/agentic-development/lib/foundry-common.sh"
+maybe_migrate_legacy_foundry_tasks
 ensure_foundry_task_root
 
 strip_export_json() {
@@ -63,22 +64,23 @@ calculate_cost_from_values() {
 }
 
 calculate_step_cost() {
-  _track_usage "calculate_step_cost" "cost-tracker.sh"
   local meta_file="$1"
-  local tokens model
-  tokens=$(jq -c '.tokens // {}' "$meta_file" 2>/dev/null || echo "{}")
-  model=$(jq -r '.model // ""' "$meta_file" 2>/dev/null || echo "")
-  
-  local input_tokens output_tokens cache_read
-  input_tokens=$(echo "$tokens" | jq -r '.input_tokens // 0')
-  output_tokens=$(echo "$tokens" | jq -r '.output_tokens // 0')
-  cache_read=$(echo "$tokens" | jq -r '.cache_read // 0')
-  
-  calculate_cost_from_values "$model" "$input_tokens" "$output_tokens" "$cache_read"
+  python3 - "$meta_file" <<'PYEOF'
+import json, subprocess, sys
+with open(sys.argv[1], 'r') as f:
+    data = json.load(f)
+tokens = data.get('tokens', {})
+model = data.get('model', '')
+cmd = [
+    'bash', '-lc',
+    f'. "{sys.argv[1].rsplit("/", 3)[0]}/../../agentic-development/lib/cost-tracker.sh" >/dev/null 2>&1; '
+    f'calculate_cost_from_values "{model}" "{tokens.get("input_tokens", 0)}" "{tokens.get("output_tokens", 0)}" "{tokens.get("cache_read", 0)}"'
+]
+print(subprocess.check_output(cmd, text=True).strip())
+PYEOF
 }
 
 summarize_export_tokens() {
-  _track_usage "summarize_export_tokens" "cost-tracker.sh"
   local export_file="$1"
   jq '{
     input_tokens: [.messages[].info.tokens.input // 0] | add,
@@ -89,7 +91,6 @@ summarize_export_tokens() {
 }
 
 extract_export_model() {
-  _track_usage "extract_export_model" "cost-tracker.sh"
   local export_file="$1"
   jq -r '
     [
@@ -103,7 +104,6 @@ extract_export_model() {
 }
 
 extract_session_tools() {
-  _track_usage "extract_session_tools" "cost-tracker.sh"
   local export_file="$1"
   jq '
     [
@@ -124,59 +124,104 @@ extract_session_tools() {
 # - agent prompt file (which .md was loaded as identity)
 # Standard file operations (read/edit/write/bash) are excluded.
 extract_session_context() {
-  _track_usage "extract_session_context" "cost-tracker.sh"
   local export_file="$1"
-  jq '
-    {
-      skills: [
-        .messages[].parts[]?
-        | select(.type == "tool" and .tool == "skill")
-        | (.state.input // {}) as $inp
-        | {name: ($inp.name // $inp.skill // ""), loaded: ((.state.output // "") | contains("<skill_content"))}
-        | select(.name != "")
-      ],
-      mcp_tools: [
-        [
-          .messages[].parts[]?
-          | select(.type == "tool" and (.tool | startswith("mcp__")))
-          | .tool
-        ]
-        | group_by(.)
-        | .[]
-        | {name: .[0], count: length}
-        | select(.name != "")
-      ] | sort_by(.name),
-      claude_commands: [
-        .messages[].parts[]?
-        | select(.type == "tool" and .tool == "slash_command")
-        | (.state.input // {}) as $inp
-        | ($inp.command // $inp.name // "")
-        | select(. != "")
-      ]
-    }
-  ' "$export_file" 2>/dev/null
+  python3 - "$export_file" <<'PYEOF'
+import json, sys
+
+with open(sys.argv[1], 'r') as f:
+    data = json.load(f)
+
+skills = []
+mcp_tools = {}
+agent_prompt = None
+claude_commands = []
+
+for message in data.get("messages", []):
+    for part in message.get("parts", []):
+        if part.get("type") != "tool":
+            continue
+        tool = part.get("tool", "")
+        state = part.get("state", {}) or {}
+        inp = state.get("input", {}) or {}
+        output = state.get("output", "") or ""
+
+        # Skills: inject instructions/persona into agent
+        if tool == "skill":
+            name = inp.get("name", inp.get("skill", ""))
+            if name:
+                entry = {"name": name}
+                # Extract skill type from output if available
+                if "<skill_content" in output:
+                    entry["loaded"] = True
+                skills.append(entry)
+
+        # MCP tools: external capability servers
+        elif tool.startswith("mcp__"):
+            mcp_tools[tool] = mcp_tools.get(tool, 0) + 1
+
+        # Claude commands / slash commands
+        elif tool == "slash_command":
+            cmd = inp.get("command", inp.get("name", ""))
+            if cmd:
+                claude_commands.append(cmd)
+
+result = {
+    "skills": skills,
+    "mcp_tools": [{"name": k, "count": v} for k, v in sorted(mcp_tools.items())],
+    "claude_commands": claude_commands,
+}
+print(json.dumps(result))
+PYEOF
 }
 
 extract_session_files_read() {
-  _track_usage "extract_session_files_read" "cost-tracker.sh"
   local export_file="$1"
-  jq '
-    [
-      .messages[].parts[]?
-      | select(.type == "tool")
-      | . as $part
-      | ($part.state.input // {}) as $inp
-      | if ($part.tool | IN("read","grep","glob","list","edit")) then
-          ([$inp.filePath, $inp.path] | map(select(. != null and . != "")) | .[])
-        elif $part.tool == "bash" then
-          ($inp.command // "" | scan("[A-Za-z0-9_./-]+\\.[A-Za-z0-9._-]+") | .[])
-        else
-          empty
-        end
-    ]
-    | unique
-    | sort
-  ' "$export_file" 2>/dev/null
+  python3 - "$export_file" <<'PYEOF'
+import json, os, re, sys
+
+read_like = {"read", "grep", "glob", "list", "edit"}
+repo_root = os.path.abspath(os.getcwd())
+paths = set()
+
+with open(sys.argv[1], 'r') as f:
+    data = json.load(f)
+
+for message in data.get("messages", []):
+    for part in message.get("parts", []):
+        if part.get("type") != "tool":
+            continue
+        tool = part.get("tool", "")
+        state = part.get("state", {}) or {}
+        inp = state.get("input", {}) or {}
+        if tool in read_like:
+            for key in ("filePath", "path"):
+                value = inp.get(key)
+                if isinstance(value, str) and value:
+                    paths.add(value)
+            value = inp.get("paths")
+            if isinstance(value, list):
+                for item in value:
+                    if isinstance(item, str) and item:
+                        paths.add(item)
+            if tool == "bash":
+                cmd = inp.get("command", "")
+                for match in re.findall(r'([A-Za-z0-9_./-]+\.[A-Za-z0-9._-]+)', cmd):
+                    paths.add(match)
+        elif tool == "bash":
+            cmd = inp.get("command", "")
+            if any(token in cmd for token in ("cat ", "sed ", "rg ", "grep ", "awk ", "jq ", "less ", "head ", "tail ")):
+                for match in re.findall(r'([A-Za-z0-9_./-]+\.[A-Za-z0-9._-]+)', cmd):
+                    paths.add(match)
+
+normalized = []
+for item in sorted(paths):
+    if item.startswith(repo_root + "/"):
+        normalized.append(os.path.relpath(item, repo_root))
+    else:
+        normalized.append(item)
+
+print(json.dumps(normalized))
+PYEOF
 }
 
 format_duration_human() {
@@ -189,50 +234,42 @@ format_duration_human() {
 }
 
 write_telemetry_record() {
-  _track_usage "write_telemetry_record" "cost-tracker.sh"
   local out_file="$1" workflow="$2" agent="$3" model="$4" duration_seconds="$5" exit_code="$6" session_id="$7" tokens_json="$8" tools_json="$9" files_json="${10}" step_cost="${11}" context_json="${12:-{}}"
-  
-  # Validate JSON inputs with fallbacks
-  echo "$tokens_json" | jq -e . >/dev/null 2>&1 || tokens_json='{}'
-  echo "$tools_json" | jq -e . >/dev/null 2>&1 || tools_json='[]'
-  echo "$files_json" | jq -e . >/dev/null 2>&1 || files_json='[]'
-  echo "$context_json" | jq -e . >/dev/null 2>&1 || context_json='{}'
-  
-  jq -n \
-    --arg workflow "$workflow" \
-    --arg agent "$agent" \
-    --arg model "$model" \
-    --argjson dur "${duration_seconds:-0}" \
-    --argjson exit_code "${exit_code:-0}" \
-    --arg session_id "$session_id" \
-    --argjson tokens "$tokens_json" \
-    --argjson tools "$tools_json" \
-    --argjson files "$files_json" \
-    --argjson context "$context_json" \
-    --argjson cost "${step_cost:-0}" \
-    '{
-      workflow: $workflow,
-      agent: $agent,
-      model: $model,
-      duration_ms: ($dur * 1000),
-      duration_seconds: $dur,
-      exit_code: $exit_code,
-      session_id: $session_id,
-      tokens: {
-        input_tokens: ($tokens.input_tokens // 0),
-        output_tokens: ($tokens.output_tokens // 0),
-        cache_read: ($tokens.cache_read // 0),
-        cache_write: ($tokens.cache_write // 0)
-      },
-      tools: $tools,
-      files_read: $files,
-      context: $context,
-      cost: $cost
-    }' > "$out_file"
+  python3 - "$out_file" "$workflow" "$agent" "$model" "$duration_seconds" "$exit_code" "$session_id" "$tokens_json" "$tools_json" "$files_json" "$step_cost" "$context_json" <<'PYEOF'
+import json, sys
+out_file, workflow, agent, model, duration_seconds, exit_code, session_id, tokens_raw, tools_raw, files_raw, step_cost, context_raw = sys.argv[1:13]
+tokens = json.loads(tokens_raw)
+tools = json.loads(tools_raw)
+files_read = json.loads(files_raw)
+try:
+    context = json.loads(context_raw)
+except (json.JSONDecodeError, TypeError):
+    context = {}
+payload = {
+    "workflow": workflow,
+    "agent": agent,
+    "model": model,
+    "duration_ms": int(duration_seconds) * 1000,
+    "duration_seconds": int(duration_seconds),
+    "exit_code": int(exit_code),
+    "session_id": session_id,
+    "tokens": {
+        "input_tokens": int(tokens.get("input_tokens", 0)),
+        "output_tokens": int(tokens.get("output_tokens", 0)),
+        "cache_read": int(tokens.get("cache_read", 0)),
+        "cache_write": int(tokens.get("cache_write", 0)),
+    },
+    "tools": tools,
+    "files_read": files_read,
+    "context": context,
+    "cost": float(step_cost),
+}
+with open(out_file, "w") as f:
+    json.dump(payload, f, indent=2)
+PYEOF
 }
 
 render_builder_summary_block() {
-  _track_usage "render_builder_summary_block" "cost-tracker.sh"
   local slug="$1"
   local task_dir
   task_dir=$(foundry_task_dir_for_slug "$slug" 2>/dev/null || true)
@@ -241,108 +278,113 @@ render_builder_summary_block() {
   local checkpoint_file="$artifacts_dir/checkpoint.json"
   local telemetry_dir="$artifacts_dir/telemetry"
 
-  [[ -f "$checkpoint_file" ]] || { echo "_No checkpoint found._"; return 0; }
+  python3 - "$checkpoint_file" "$telemetry_dir" <<'PYEOF'
+import json, os, sys
 
-  local workflow
-  workflow=$(jq -r '(.workflow // "builder") | if . == "" then "builder" else . end | split("") | .[0] |= ascii_upcase | join("")' "$checkpoint_file" 2>/dev/null || echo "Builder")
-  echo "**Workflow:** $workflow"
-  echo ""
-  echo "## Telemetry"
-  echo ""
-  echo "| Agent | Model | Input | Output | Price | Time |"
-  echo "|-------|-------|------:|-------:|------:|-----:|"
+checkpoint_file, telemetry_dir = sys.argv[1:3]
+with open(checkpoint_file, 'r') as f:
+    checkpoint = json.load(f)
 
-  local total_input=0 total_output=0 total_cost=0
+rows = []
+for name in sorted(os.listdir(telemetry_dir)):
+    if not name.endswith('.json'):
+        continue
+    with open(os.path.join(telemetry_dir, name), 'r') as f:
+        rows.append(json.load(f))
 
-  if [[ -d "$telemetry_dir" ]]; then
-    for tfile in "$telemetry_dir"/*.json; do
-      [[ -f "$tfile" ]] || continue
-      local agent model input output cost dur_s dur_fmt
-      agent=$(jq -r '.agent // "—"' "$tfile")
-      model=$(jq -r '.model // "—"' "$tfile")
-      input=$(jq -r '.tokens.input_tokens // 0' "$tfile")
-      output=$(jq -r '.tokens.output_tokens // 0' "$tfile")
-      cost=$(jq -r '.cost // 0' "$tfile")
-      dur_s=$(jq -r '.duration_seconds // 0' "$tfile")
-      dur_fmt=$(format_duration_human "$dur_s")
-      local price_fmt
-      price_fmt=$(printf '$%.4f' "$cost")
-      echo "| $agent | $model | $input | $output | $price_fmt | $dur_fmt |"
-      total_input=$((total_input + input))
-      total_output=$((total_output + output))
-      total_cost=$(awk "BEGIN { printf \"%.4f\", $total_cost + $cost }")
-    done
-  fi
+workflow = (checkpoint.get('workflow') or 'builder').capitalize()
 
-  echo ""
-  echo "## Моделі"
-  echo ""
-  echo "| Model | Agents | Input | Output | Price |"
-  echo "|-------|--------|------:|-------:|------:|"
+def money(val):
+    return f"${val:.4f}"
 
-  if [[ -d "$telemetry_dir" ]]; then
-    # Aggregate by model using jq
-    local all_rows="[]"
-    for tfile in "$telemetry_dir"/*.json; do
-      [[ -f "$tfile" ]] || continue
-      all_rows=$(echo "$all_rows" | jq --slurpfile r "$tfile" '. + $r')
-    done
-    echo "$all_rows" | jq -r '
-      group_by(.model)
-      | .[]
-      | {
-          model: .[0].model,
-          agents: [.[].agent] | join(", "),
-          input: [.[].tokens.input_tokens] | add,
-          output: [.[].tokens.output_tokens] | add,
-          price: [.[].cost] | add
-        }
-      | "| \(.model) | \(.agents) | \(.input) | \(.output) | $\(.price | tostring | split(".") | .[0] + "." + (.[1] + "0000")[0:4]) |"
-    ' 2>/dev/null
-  fi
+def dur(seconds):
+    seconds = int(seconds)
+    if seconds >= 60:
+        return f"{seconds // 60}m {seconds % 60:02d}s"
+    return f"{seconds}s"
 
-  echo ""
-  echo "## Tools By Agent"
-  echo ""
-  if [[ -d "$telemetry_dir" ]]; then
-    for tfile in "$telemetry_dir"/*.json; do
-      [[ -f "$tfile" ]] || continue
-      local agent
-      agent=$(jq -r '.agent // "unknown"' "$tfile")
-      echo "### $agent"
-      local tools_count
-      tools_count=$(jq '.tools | length' "$tfile" 2>/dev/null || echo "0")
-      if [[ "$tools_count" -gt 0 ]]; then
-        jq -r '.tools[] | "- `\(.name // "unknown")` x \(.count // 0)"' "$tfile"
-      else
-        echo "- none recorded"
-      fi
-      echo ""
-    done
-  fi
+print(f"**Workflow:** {workflow}")
+print("")
+print("## Telemetry")
+print("")
+print("| Agent | Model | Input | Output | Price | Time |")
+print("|-------|-------|------:|-------:|------:|-----:|")
+for row in rows:
+    t = row.get("tokens", {})
+    print(f"| {row.get('agent','—')} | {row.get('model','—')} | {t.get('input_tokens',0)} | {t.get('output_tokens',0)} | {money(float(row.get('cost',0)))} | {dur(row.get('duration_seconds',0))} |")
 
-  echo "## Files Read By Agent"
-  echo ""
-  if [[ -d "$telemetry_dir" ]]; then
-    for tfile in "$telemetry_dir"/*.json; do
-      [[ -f "$tfile" ]] || continue
-      local agent
-      agent=$(jq -r '.agent // "unknown"' "$tfile")
-      echo "### $agent"
-      local files_count
-      files_count=$(jq '.files_read | length' "$tfile" 2>/dev/null || echo "0")
-      if [[ "$files_count" -gt 0 ]]; then
-        jq -r '.files_read[] | "- `\(.)`"' "$tfile"
-      else
-        echo "- none recorded"
-      fi
-      echo ""
-    done
-  fi
+model_totals = {}
+for row in rows:
+    model = row.get("model", "unknown")
+    item = model_totals.setdefault(model, {"agents": [], "input": 0, "output": 0, "price": 0.0})
+    item["agents"].append(row.get("agent", "unknown"))
+    item["input"] += int(row.get("tokens", {}).get("input_tokens", 0))
+    item["output"] += int(row.get("tokens", {}).get("output_tokens", 0))
+    item["price"] += float(row.get("cost", 0))
+
+print("")
+print("## Моделі")
+print("")
+print("| Model | Agents | Input | Output | Price |")
+print("|-------|--------|------:|-------:|------:|")
+for model, item in sorted(model_totals.items()):
+    print(f"| {model} | {', '.join(item['agents'])} | {item['input']} | {item['output']} | {money(item['price'])} |")
+
+print("")
+print("## Context Modifiers By Agent")
+print("")
+print("_Skills, MCP tools, and commands that influenced LLM behavior._")
+print("")
+has_context = False
+for row in rows:
+    ctx = row.get("context", {})
+    skills = ctx.get("skills", [])
+    mcp = ctx.get("mcp_tools", [])
+    cmds = ctx.get("claude_commands", [])
+    if skills or mcp or cmds:
+        has_context = True
+        print(f"### {row.get('agent','unknown')}")
+        if skills:
+            for s in skills:
+                print(f"- **Skill:** `{s.get('name', '?')}`")
+        if mcp:
+            for m in mcp:
+                print(f"- **MCP:** `{m.get('name', '?')}` x{m.get('count', 0)}")
+        if cmds:
+            for c in cmds:
+                print(f"- **Command:** `/{c}`")
+        print("")
+if not has_context:
+    print("_No context modifiers detected (no skills, MCP tools, or commands used)._")
+    print("")
+
+print("## Tools By Agent")
+print("")
+for row in rows:
+    print(f"### {row.get('agent','unknown')}")
+    tools = row.get("tools", [])
+    if tools:
+        for tool in tools:
+            print(f"- `{tool.get('name','unknown')}` x {tool.get('count', 0)}")
+    else:
+        print("- none recorded")
+    print("")
+
+print("## Files Read By Agent")
+print("")
+for row in rows:
+    print(f"### {row.get('agent','unknown')}")
+    files_read = row.get("files_read", [])
+    if files_read:
+        for file_path in files_read:
+            print(f"- `{file_path}`")
+    else:
+        print("- none recorded")
+    print("")
+PYEOF
 }
 
 render_ultraworks_summary_block() {
-  _track_usage "render_ultraworks_summary_block" "cost-tracker.sh"
   local session_id="${1:-}"
   python3 - "$session_id" <<'PYEOF'
 import json, os, subprocess, sys, tempfile
