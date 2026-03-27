@@ -4,44 +4,22 @@
   "started_at": "2026-03-27T10:27:44.536982Z",
   "attempt": 1,
   "status": "in_progress",
-  "current_step": "u-validator",
-  "resume_from": "u-validator",
-  "updated_at": "2026-03-27T10:48:01.421250Z",
+  "current_step": "u-summarizer",
+  "resume_from": "u-summarizer",
+  "updated_at": "2026-03-27T11:07:11.040547Z",
   "task_file": "/workspaces/brama/tasks/implement-wait-timeout-strategy-section-13-of-docs--foundry/task.md",
   "branch": "pipeline/implement-wait-timeout-strategy-section-13-of-docs",
   "agents": [
     {
-      "agent": "u-validator",
-      "status": "done",
-      "model": "opencode-go/kimi-k2.5",
-      "duration_seconds": 11,
-      "input_tokens": 0,
-      "output_tokens": 0,
-      "cost": 0.0,
-      "call_count": 1,
-      "updated_at": "2026-03-27T10:48:01.421225Z"
-    },
-    {
-      "agent": "u-tester",
-      "status": "pending",
-      "model": "",
-      "duration_seconds": 0,
-      "input_tokens": 0,
-      "output_tokens": 0,
-      "cost": 0,
-      "call_count": 0,
-      "updated_at": ""
-    },
-    {
       "agent": "u-summarizer",
-      "status": "pending",
-      "model": "",
-      "duration_seconds": 0,
-      "input_tokens": 0,
-      "output_tokens": 0,
-      "cost": 0,
-      "call_count": 0,
-      "updated_at": ""
+      "status": "done",
+      "model": "anthropic/claude-opus-4-6",
+      "duration_seconds": 259,
+      "input_tokens": 24,
+      "output_tokens": 9605,
+      "cost": 2.1894,
+      "call_count": 1,
+      "updated_at": "2026-03-27T11:07:11.040530Z"
     }
   ]
 }

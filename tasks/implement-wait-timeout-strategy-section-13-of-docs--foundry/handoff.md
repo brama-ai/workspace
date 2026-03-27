@@ -51,10 +51,15 @@
 
 ## Summarizer
 
-- **Status**: pending
-- **Summary file**: —
-- **Next task recommendation**: —
+- **Status**: done (retry — попередня спроба gpt-5.4 завершилась з exit 2)
+- **Summary file**: `/workspaces/brama/tasks/implement-wait-timeout-strategy-section-13-of-docs--foundry/summary.md`
+- **Anomalies**: 🔴 validator fail (Insufficient balance), 🟡 cost $2.92 (>$2.00), 🟡 summarizer stall
+- **Next task recommendation**: Відновити quality gate для Wait Timeout Strategy — прогнати `u-validator` і `u-tester` для коміту `279c238`
 
 ---
 
+- **Final Status**: FAIL (`PIPELINE INCOMPLETE`)
+- **Final Summary**: `/workspaces/brama/tasks/implement-wait-timeout-strategy-section-13-of-docs--foundry/summary.md`
+- **Recommendation**: Створити follow-up задачу «Відновити quality gate для Wait Timeout Strategy» — повторний запуск `u-validator` і `u-tester` після відновлення доступу до моделі або з fallback-провайдером
 - **Commit (u-coder)**: 279c238
+- **Total cost**: $2.92
