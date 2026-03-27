@@ -1,7 +1,11 @@
 import { spawnSync, spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { join, dirname, basename } from "node:path";
+import { fileURLToPath } from "node:url";
 import { env } from "node:process";
+import { fileURLToPath } from "node:url";
 
 const DEBUG = env.FOUNDRY_DEBUG === "true";
 
@@ -253,7 +257,8 @@ export function slugifyBranch(text: string): string {
     .slice(0, 50);
 }
 
-if (require.main === module) {
+const isMain = import.meta.url === `file://${process.argv[1]}`;
+if (isMain) {
   const [cmd, ...args] = process.argv.slice(2);
   const cwd = env.REPO_ROOT || process.cwd();
 

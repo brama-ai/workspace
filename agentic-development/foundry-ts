@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+#
+# foundry-ts - TypeScript pipeline wrapper
+# Calls the TypeScript CLI directly via tsx
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+
+export REPO_ROOT
+export PIPELINE_TASKS_ROOT="${PIPELINE_TASKS_ROOT:-$REPO_ROOT/tasks}"
+
+exec npx tsx "$SCRIPT_DIR/monitor/src/cli/foundry.ts" "$@"

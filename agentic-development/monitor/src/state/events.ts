@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { env } from "node:process";
+import { fileURLToPath } from "node:url";
 
 export type EventType =
   | "AGENT_START"
@@ -88,7 +89,9 @@ export function parseEventLine(line: string): PipelineEvent | null {
   return { ts, epoch, type: type as EventType, details };
 }
 
-if (env.NODE_ENV === "test" || require.main === module) {
+const isMain = import.meta.url === `file://${process.argv[1]}`;
+
+if (isMain || env.NODE_ENV === "test") {
   const args = process.argv.slice(2);
   if (args[0] === "emit" && args[1] && args[2]) {
     const pipelineDir = env.PIPELINE_DIR || process.cwd();

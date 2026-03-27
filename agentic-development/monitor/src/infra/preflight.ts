@@ -1,7 +1,11 @@
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { env } from "node:process";
+import { fileURLToPath } from "node:url";
 
 const DEBUG = env.FOUNDRY_DEBUG === "true";
 
@@ -291,7 +295,8 @@ export function renderEnvCheckReport(result: EnvCheckResult): string {
   return lines.join("\n");
 }
 
-if (require.main === module) {
+const isMain = import.meta.url === `file://${process.argv[1]}`;
+if (isMain) {
   const [cmd, ...args] = process.argv.slice(2);
   const repoRoot = env.REPO_ROOT || process.cwd();
 

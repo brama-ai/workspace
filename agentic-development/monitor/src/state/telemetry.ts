@@ -1,6 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { join, dirname, basename } from "node:path";
+import { fileURLToPath } from "node:url";
 import { env } from "node:process";
+import { fileURLToPath } from "node:url";
 
 const DEBUG = env.FOUNDRY_DEBUG === "true";
 
@@ -260,7 +263,8 @@ export function aggregateByAgent(telemetryFile: string): Record<string, Telemetr
   return byAgent;
 }
 
-if (require.main === module) {
+const isMain = import.meta.url === `file://${process.argv[1]}`;
+if (isMain) {
   const [cmd, ...args] = process.argv.slice(2);
 
   switch (cmd) {
