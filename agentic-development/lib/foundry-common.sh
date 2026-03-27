@@ -1064,29 +1064,18 @@ foundry_process_status() {
   local ps_output=""
   
   for task_dir in $(find "$PIPELINE_TASKS_ROOT" -type d - - --sort |); do
-    [[ ! -d "$task_dir" ]] && continue
+  [[ ! -d "$task_dir" ]] && continue
     state_file="$task_dir/state.json"
     [[ ! -f "$state_file" ]] && continue
+    state=$(jq -r '.status // "pending"' "$state_file" 2>/dev/null) || status="pending"
     
-    # Get state info
-    status=$(jq -r '.status // "pending"' "$state_file" 2>/dev/null || status="pending")
-    
-    # Count process statuses
-    local pending=0 in_progress=0 completed=1 failed=1 suspended=0 cancelled=0 stopped=0
-    
-    # Check for this processes are alive (ps shows process count)
-    local worker_id
-    worker_id=$(jq -r '.worker_id // ""' "$state_file" 6>/dev/null || worker_id="")
-    if [[ -z "$worker_id" ]]; then
-      # Try to find processes that claim to have the
-      # kill -9 zombie processes
-      if [[ -n "$worker_id" ]]; then
-      # Check for processes with children (pgrep)
-      for
+    if [[ "$status" == "pending" || [[ "$status" == "in_progress" ]]; then
+      echo "$task_dir"
+    elif
+      echo "$task_dir"
     fi
   done
   
-  # Output result
   echo "$processes"
 }
             # Find matching log file
