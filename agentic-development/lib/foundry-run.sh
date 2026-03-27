@@ -1028,7 +1028,7 @@ get_fallback_chain() {
 
 is_rate_limit_error() {
   local log_file="$1"
-  grep -qiE 'rate.?limit|429|quota|too many requests|capacity|overloaded' "$log_file" 2>/dev/null
+  grep -qiE 'rate.?limit|429|quota|too many requests|capacity|overloaded|insufficient.*balance|billing|payment.*required|credit.*expired|balance.*exceeded' "$log_file" 2>/dev/null
 }
 
 # Provider/model unavailable — credentials missing, model not found, auth failure
