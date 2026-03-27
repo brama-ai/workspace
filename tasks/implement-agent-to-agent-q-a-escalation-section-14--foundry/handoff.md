@@ -29,9 +29,11 @@
 
 ## Validator
 
-- **Status**: pending
-- **PHPStan**: —
-- **CS-check**: —
+- **Status**: completed
+- **PHPStan**:
+  - No changed validation-target app detected from handoff context; modified files were `agentic-development/lib/foundry-common.sh` and `agentic-development/lib/foundry-run.sh`, which are outside the requested app validation matrix.
+- **CS-check**:
+  - No changed validation-target app detected from handoff context; no app-specific CS check was applicable.
 - **Files fixed**: —
 
 ## Tester
@@ -62,3 +64,4 @@
 - **Next task recommendation**: —
 
 ---
+- **Commit (u-coder)**: b8cce65
