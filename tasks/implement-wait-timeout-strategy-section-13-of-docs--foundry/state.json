@@ -1,0 +1,58 @@
+{
+  "task_id": "implement-wait-timeout-strategy-section-13-of-docs--foundry",
+  "workflow": "foundry",
+  "started_at": "2026-03-27T10:27:44.536982Z",
+  "attempt": 1,
+  "status": "in_progress",
+  "current_step": "u-coder",
+  "resume_from": "u-coder",
+  "updated_at": "2026-03-27T10:41:38.682127Z",
+  "task_file": "/workspaces/brama/tasks/implement-wait-timeout-strategy-section-13-of-docs--foundry/task.md",
+  "branch": "pipeline/implement-wait-timeout-strategy-section-13-of-docs",
+  "agents": [
+    {
+      "agent": "u-coder",
+      "status": "done",
+      "model": "anthropic/claude-sonnet-4-6",
+      "duration_seconds": 308,
+      "input_tokens": 34,
+      "output_tokens": 13713,
+      "cost": 1.24,
+      "call_count": 1,
+      "updated_at": "2026-03-27T10:41:38.682027Z"
+    },
+    {
+      "agent": "u-validator",
+      "status": "pending",
+      "model": "",
+      "duration_seconds": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost": 0,
+      "call_count": 0,
+      "updated_at": ""
+    },
+    {
+      "agent": "u-tester",
+      "status": "pending",
+      "model": "",
+      "duration_seconds": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost": 0,
+      "call_count": 0,
+      "updated_at": ""
+    },
+    {
+      "agent": "u-summarizer",
+      "status": "pending",
+      "model": "",
+      "duration_seconds": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost": 0,
+      "call_count": 0,
+      "updated_at": ""
+    }
+  ]
+}
