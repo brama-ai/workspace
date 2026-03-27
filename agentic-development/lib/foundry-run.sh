@@ -1607,6 +1607,178 @@ verify_coder_output() {
   return 0
 }
 
+# ── Agent-to-Agent Q&A Escalation (Section 14) ───────────────────────
+#
+# When an agent exits with code 75 (waiting_answer), the orchestrator
+# first tries to resolve questions via u-architect in qa-responder mode
+# (short timeout, cheaper model) before escalating to human.
+#
+# Returns:
+#   0  — all blocking questions resolved by u-architect; pipeline may continue
+#   75 — questions remain unanswered; pipeline must pause for human input
+
+handle_waiting_answer() {
+  local agent="$1"
+  local task_dir="${2:-$TASK_DIR}"
+
+  local qa_file="${task_dir}/qa.json"
+
+  # Validate qa.json exists and has unanswered questions
+  if [[ ! -f "$qa_file" ]]; then
+    echo -e "  ${YELLOW}⚠ Agent '${agent}' exited 75 but qa.json not found — treating as failure${NC}"
+    return 1
+  fi
+
+  local unanswered
+  unanswered=$(foundry_qa_unanswered_count "$task_dir")
+
+  if [[ "$unanswered" -eq 0 ]]; then
+    echo -e "  ${YELLOW}⚠ Agent '${agent}' exited 75 but no unanswered questions in qa.json — treating as failure${NC}"
+    return 1
+  fi
+
+  local progress
+  progress=$(foundry_qa_progress "$task_dir")
+  echo -e "  ${CYAN}Agent '${agent}' is waiting for answers (${unanswered} unanswered, progress: ${progress})${NC}"
+
+  # Update state.json to reflect waiting_answer
+  foundry_set_waiting_answer "$task_dir" "$agent" "$unanswered"
+  pipeline_task_append_event "$task_dir" "waiting_answer" \
+    "Agent ${agent} has ${unanswered} unanswered question(s)" "$agent"
+  emit_event "AGENT_WAITING" "agent=${agent}|unanswered=${unanswered}"
+
+  # ── Step 1: Agent-to-Agent resolution via u-architect ──────────────
+  # Only attempt if the asking agent is NOT u-architect itself
+  # (avoids infinite recursion) and qa.json has blocking questions.
+  local blocking_unanswered
+  blocking_unanswered=$(foundry_qa_blocking_unanswered_count "$task_dir")
+
+  if [[ "$agent" != "u-architect" && "$blocking_unanswered" -gt 0 ]]; then
+    echo -e "  ${CYAN}Attempting agent-to-agent Q&A resolution via u-architect (qa-responder mode)...${NC}"
+
+    # Build a focused prompt for u-architect acting as Q&A responder.
+    # Short, cheap: read qa.json + task spec, answer what you can.
+    local qa_prompt
+    qa_prompt=$(cat << QAEOF
+You are acting as a Q&A responder for the pipeline.
+
+Agent '${agent}' has paused with unanswered questions in:
+  ${qa_file}
+
+## Your Task
+
+1. Read the qa.json file above — it contains questions from '${agent}'
+2. Read the original task spec and handoff.md for context
+3. For each question you CAN answer based on the spec/codebase:
+   - Fill in the "answer" field with a clear, concise answer
+   - Set "answered_by" to "u-architect"
+   - Set "answered_at" to current ISO8601 timestamp
+   - Set "answer_source" to "agent"
+4. For questions you CANNOT answer (require human judgment or external info):
+   - Leave "answer" as null
+5. Write the updated qa.json back to: ${qa_file}
+
+## Rules
+
+- Answer ONLY from information available in the codebase, spec, and handoff
+- Do NOT invent answers or make assumptions beyond what the spec says
+- Do NOT ask follow-up questions — either answer or leave null
+- Keep answers concise and actionable
+- If ALL questions are outside your knowledge, write qa.json unchanged and exit 0
+
+## Context Files
+
+- Task qa.json: ${qa_file}
+- Handoff: .opencode/pipeline/handoff.md
+- Task description: read from handoff.md Task field
+QAEOF
+)
+
+    # Run u-architect in qa-responder mode:
+    # - Short timeout (5 min): this is a quick lookup, not a full architect run
+    # - Use a cheaper model override if PIPELINE_QA_RESPONDER_MODEL is set
+    local qa_responder_timeout="${PIPELINE_QA_RESPONDER_TIMEOUT:-300}"  # 5 min default
+    local qa_responder_model="${PIPELINE_QA_RESPONDER_MODEL:-}"
+    local original_architect_model
+    original_architect_model=$(get_current_model "u-architect")
+
+    # Temporarily swap to cheaper model if configured
+    if [[ -n "$qa_responder_model" && "$qa_responder_model" != "$original_architect_model" ]]; then
+      echo -e "  ${YELLOW}  Using cheaper model for qa-responder: ${qa_responder_model}${NC}"
+      swap_agent_model "u-architect" "$qa_responder_model"
+    fi
+
+    local qa_log_file="$LOG_DIR/${TIMESTAMP}_${agent}_qa-responder.log"
+    local qa_exit_code=0
+
+    echo -e "  ${BLUE}  Running u-architect as qa-responder (timeout: ${qa_responder_timeout}s)...${NC}"
+
+    local qa_run_cmd="opencode run --agent u-architect $(printf '%q' "$qa_prompt")"
+    if command -v timeout &>/dev/null; then
+      qa_run_cmd="timeout ${qa_responder_timeout} ${qa_run_cmd}"
+    fi
+
+    if command -v script &>/dev/null; then
+      (cd "$REPO_ROOT" && script -qc "$qa_run_cmd" /dev/null) \
+        < /dev/null 2>&1 | tee "$qa_log_file" &
+    else
+      (cd "$REPO_ROOT" && eval "$qa_run_cmd") \
+        < /dev/null 2>&1 | tee "$qa_log_file" &
+    fi
+    local qa_pid=$!
+    wait "$qa_pid" 2>/dev/null || qa_exit_code=$?
+
+    # Restore original architect model
+    restore_agent_model "u-architect" "$original_architect_model"
+
+    if [[ $qa_exit_code -ne 0 && $qa_exit_code -ne 75 ]]; then
+      echo -e "  ${YELLOW}  u-architect qa-responder exited with code ${qa_exit_code} — checking qa.json anyway${NC}"
+    fi
+
+    # Check if all blocking questions are now answered
+    local still_blocking_unanswered
+    still_blocking_unanswered=$(foundry_qa_blocking_unanswered_count "$task_dir")
+
+    if [[ "$still_blocking_unanswered" -eq 0 ]]; then
+      # All blocking questions resolved by u-architect!
+      local total_answered
+      total_answered=$(foundry_qa_progress "$task_dir")
+      echo -e "  ${GREEN}✓ u-architect resolved all blocking questions (${total_answered} answered)${NC}"
+      pipeline_task_append_event "$task_dir" "agent_qa_resolved" \
+        "u-architect answered all blocking questions from ${agent}" "$agent"
+      emit_event "AGENT_QA_RESOLVED" "asking=${agent}|resolver=u-architect|progress=${total_answered}"
+
+      # Restore state to in_progress so pipeline can continue
+      foundry_set_state_status "$task_dir" "in_progress" "$agent" "$agent"
+
+      return 0  # Continue pipeline — answers are in qa.json for agent to read on resume
+    fi
+
+    # Partial or no resolution
+    local now_answered
+    now_answered=$(foundry_qa_progress "$task_dir")
+    echo -e "  ${YELLOW}  u-architect could not resolve all blocking questions (${now_answered} answered, ${still_blocking_unanswered} blocking remain)${NC}"
+    pipeline_task_append_event "$task_dir" "agent_qa_partial" \
+      "u-architect answered some questions, ${still_blocking_unanswered} blocking remain — escalating to human" "$agent"
+    emit_event "AGENT_QA_PARTIAL" "asking=${agent}|resolver=u-architect|blocking_remain=${still_blocking_unanswered}"
+  fi
+
+  # ── Step 2: Escalate to human ───────────────────────────────────────
+  echo -e "  ${YELLOW}Pipeline paused — waiting for human answers${NC}"
+  echo -e "  ${BLUE}Questions in: ${qa_file}${NC}"
+  echo -e "  ${BLUE}Resume with: ./agentic-development/foundry.sh resume-qa $(basename "$task_dir" | sed 's/--foundry.*//')${NC}"
+
+  # Ensure state reflects waiting_answer (may have been partially updated above)
+  local final_unanswered
+  final_unanswered=$(foundry_qa_unanswered_count "$task_dir")
+  foundry_set_waiting_answer "$task_dir" "$agent" "$final_unanswered"
+  pipeline_task_append_event "$task_dir" "agent_qa_escalated" \
+    "Questions from ${agent} escalated to human (${final_unanswered} unanswered)" "$agent"
+  emit_event "AGENT_QA_ESCALATED" "agent=${agent}|unanswered=${final_unanswered}"
+
+  return 75
+}
+
 # ── Run a single agent with timeout and retry ─────────────────────────
 
 run_agent() {
@@ -1834,7 +2006,11 @@ run_agent() {
 
     # Update state.json with agent telemetry
     local agent_status_for_state="done"
-    [[ $exit_code -ne 0 ]] && agent_status_for_state="failed"
+    if [[ $exit_code -ne 0 && $exit_code -ne 75 ]]; then
+      agent_status_for_state="failed"
+    elif [[ $exit_code -eq 75 ]]; then
+      agent_status_for_state="waiting_answer"
+    fi
     foundry_state_upsert_agent "$TASK_DIR" "$agent" "$agent_status_for_state" "$actual_model_used" \
       "$(( agent_end_epoch - agent_start_epoch ))" "$in_tok" "$out_tok" "$agent_cost" "1"
 
@@ -1856,6 +2032,46 @@ run_agent() {
         return 1
       fi
       return 0
+    elif [[ $exit_code -eq 75 ]]; then
+      # Agent is waiting for answers (Human-in-the-Loop protocol, Section 14)
+      local agent_dur=$(( agent_end_epoch - agent_start_epoch ))
+      emit_event "AGENT_DONE" "agent=${agent}|model=${actual_model_used}|status=waiting_answer|duration=${agent_dur}s"
+
+      echo ""
+      echo -e "${YELLOW}⏸ Agent '${agent}' is waiting for answers (exit 75)${NC}"
+      restore_agent_model "$agent" "$original_model"
+
+      # Attempt agent-to-agent resolution, then escalate to human if needed
+      local wa_result=0
+      handle_waiting_answer "$agent" "${TASK_DIR:-}" || wa_result=$?
+
+      if [[ $wa_result -eq 0 ]]; then
+        # u-architect resolved all blocking questions — resume agent with answers
+        echo -e "  ${GREEN}✓ Questions resolved by u-architect — resuming '${agent}' with answers${NC}"
+        emit_event "AGENT_RESUME" "agent=${agent}|reason=qa_resolved_by_architect"
+
+        # Build a resume prompt that tells the agent to read qa.json answers
+        local resume_message
+        resume_message="${message}
+
+## RESUME CONTEXT
+
+You are RESUMING after your questions were answered by u-architect.
+Read $(foundry_qa_file "${TASK_DIR:-}") for the answers.
+Continue your work incorporating the answers.
+Do NOT re-ask answered questions.
+Your previous work is preserved in handoff.md and git history."
+
+        # Reset attempt counter so the resume counts as a fresh run
+        attempt=$((attempt - 1))
+        # Update message for the next loop iteration
+        message="$resume_message"
+        continue
+      else
+        # Escalated to human — pipeline must pause
+        echo -e "  ${RED}Pipeline paused — human input required${NC}"
+        return 75
+      fi
     elif [[ $exit_code -eq 124 ]]; then
       emit_event "AGENT_DONE" "agent=${agent}|status=timeout|duration=${timeout_min}m"
       echo -e "${RED}✗ Agent '${agent}' timed out after ${timeout_min} min${NC}"
@@ -2667,7 +2883,10 @@ main() {
     # Log file for this agent run
     local agent_log="$LOG_DIR/${TIMESTAMP}_${agent}.log"
 
-    if run_agent "$agent" "$prompt"; then
+    local run_agent_exit=0
+    run_agent "$agent" "$prompt" || run_agent_exit=$?
+
+    if [[ $run_agent_exit -eq 0 ]]; then
       local agent_dur=$(( $(date +%s) - agent_start ))
 
       send_telegram "✅ <b>${agent}</b> completed (${agent_dur}s)
@@ -2716,6 +2935,38 @@ main() {
       fi
 
       echo ""
+    elif [[ $run_agent_exit -eq 75 ]]; then
+      # Agent escalated to human — pipeline pauses here
+      local agent_dur=$(( $(date +%s) - agent_start ))
+
+      # Commit any partial work the agent may have produced before pausing
+      commit_agent_work "$agent" "$task_slug"
+      local commit_hash
+      commit_hash=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo "")
+
+      local agent_tokens
+      agent_tokens=$(get_agent_tokens "$agent")
+      write_checkpoint "$agent" "waiting_answer" "$agent_dur" "$commit_hash" "$agent_tokens"
+      save_agent_artifact "$agent" "$agent_log"
+
+      local _in_tok _out_tok _cost
+      _in_tok=$(echo "$agent_tokens" | jq -r '.input_tokens // 0' 2>/dev/null || echo 0)
+      _out_tok=$(echo "$agent_tokens" | jq -r '.output_tokens // 0' 2>/dev/null || echo 0)
+      _cost=$(echo "$agent_tokens" | jq -r '.cost // 0' 2>/dev/null || echo 0)
+      if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
+        foundry_state_upsert_agent "$TASK_DIR" "$agent" "waiting_answer" "" "$agent_dur" "$_in_tok" "$_out_tok" "$_cost" "1"
+      fi
+
+      failed=true
+      failed_agent="$agent (waiting_answer)"
+
+      send_telegram "⏸ <b>${agent}</b> WAITING FOR ANSWERS
+📋 <i>${TASK_MESSAGE}</i>
+❓ Human input required. Resume with: <code>./agentic-development/foundry.sh resume-qa $(basename "${TASK_DIR:-task}")</code>"
+
+      echo -e "${YELLOW}Pipeline paused at agent: ${agent} (waiting for human answers)${NC}"
+      echo -e "${BLUE}Resume with: ./agentic-development/foundry.sh resume-qa $(basename "${TASK_DIR:-task}" | sed 's/--foundry.*//')${NC}"
+      break
     else
       local agent_dur=$(( $(date +%s) - agent_start ))
 

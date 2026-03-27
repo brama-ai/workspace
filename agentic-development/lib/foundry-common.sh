@@ -1260,3 +1260,110 @@ foundry_cancel_in_progress_tasks() {
     fi
   done
 }
+
+# ── Q&A helpers (Human-in-the-Loop protocol) ────────────────────────
+
+# Return the path to the qa.json file for a task directory.
+foundry_qa_file() {
+  echo "$1/qa.json"
+}
+
+# Count unanswered questions in qa.json.
+# Prints the count (0 if file missing or no questions).
+foundry_qa_unanswered_count() {
+  local task_dir="$1"
+  local qa_file
+  qa_file=$(foundry_qa_file "$task_dir")
+  [[ -f "$qa_file" ]] || { echo 0; return; }
+  python3 - "$qa_file" <<'PYEOF'
+import json, sys
+try:
+    data = json.loads(open(sys.argv[1]).read())
+    questions = data.get("questions", [])
+    count = sum(1 for q in questions if q.get("answer") is None)
+    print(count)
+except Exception:
+    print(0)
+PYEOF
+}
+
+# Count unanswered BLOCKING questions in qa.json.
+# Prints the count (0 if file missing or no blocking questions).
+foundry_qa_blocking_unanswered_count() {
+  local task_dir="$1"
+  local qa_file
+  qa_file=$(foundry_qa_file "$task_dir")
+  [[ -f "$qa_file" ]] || { echo 0; return; }
+  python3 - "$qa_file" <<'PYEOF'
+import json, sys
+try:
+    data = json.loads(open(sys.argv[1]).read())
+    questions = data.get("questions", [])
+    count = sum(1 for q in questions
+                if q.get("priority") == "blocking" and q.get("answer") is None)
+    print(count)
+except Exception:
+    print(0)
+PYEOF
+}
+
+# Count total questions and answered questions in qa.json.
+# Prints "answered/total" (e.g. "1/3").
+foundry_qa_progress() {
+  local task_dir="$1"
+  local qa_file
+  qa_file=$(foundry_qa_file "$task_dir")
+  [[ -f "$qa_file" ]] || { echo "0/0"; return; }
+  python3 - "$qa_file" <<'PYEOF'
+import json, sys
+try:
+    data = json.loads(open(sys.argv[1]).read())
+    questions = data.get("questions", [])
+    total = len(questions)
+    answered = sum(1 for q in questions if q.get("answer") is not None)
+    print(f"{answered}/{total}")
+except Exception:
+    print("0/0")
+PYEOF
+}
+
+# Mark state.json fields for waiting_answer status.
+# Sets: status=waiting_answer, waiting_agent, waiting_since, questions_count, questions_answered.
+foundry_set_waiting_answer() {
+  local task_dir="$1"
+  local waiting_agent="$2"
+  local questions_count="${3:-0}"
+  foundry_repair_state_file "$task_dir"
+  python3 - "$task_dir" "$waiting_agent" "$questions_count" <<'PYEOF'
+import json, sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+task_dir = Path(sys.argv[1])
+waiting_agent = sys.argv[2]
+questions_count = int(sys.argv[3])
+state_path = task_dir / "state.json"
+
+data = {}
+if state_path.exists():
+    try:
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            data = {}
+    except (json.JSONDecodeError, OSError):
+        data = {}
+
+now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+data["status"] = "waiting_answer"
+data["waiting_agent"] = waiting_agent
+data["waiting_since"] = now
+data["questions_count"] = questions_count
+data["questions_answered"] = 0
+data["resume_from"] = waiting_agent
+data["updated_at"] = now
+
+with open(state_path, "w", encoding="utf-8") as fh:
+    json.dump(data, fh, ensure_ascii=True, indent=2)
+    fh.write("\n")
+PYEOF
+}
