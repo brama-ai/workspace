@@ -42,23 +42,11 @@ TASK_NAME=$(grep -m1 'Task' "$HANDOFF" | head -1 | sed 's/.*Task[^:]*: *//' | tr
 TIMESTAMP=$(date +%Y%m%d)
 
 # Sanitize for filename
-SLUG=$(python3 - "$PIPELINE_ID" "$TASK_NAME" <<'PYEOF'
-import re
-import sys
-
-pipeline_id = sys.argv[1].strip()
-task_name = sys.argv[2].strip()
-
-def slugify(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
-
-slug = slugify(pipeline_id)
-if not slug or slug == "unknown":
-    slug = slugify(task_name)
-
-print((slug or "postmortem")[:50])
-PYEOF
-)
+SLUG=$(pipeline_slugify "$PIPELINE_ID")
+if [[ -z "$SLUG" || "$SLUG" == "unknown" ]]; then
+  SLUG=$(pipeline_slugify "$TASK_NAME")
+fi
+SLUG="${SLUG:0:50}"
 if [[ -z "$SUMMARY_FILE" ]]; then
     ensure_pipeline_tasks_root
     SUMMARY_DIR="$PIPELINE_TASKS_ROOT/${SLUG}--ultraworks"

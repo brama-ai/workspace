@@ -443,7 +443,6 @@ fi
 # ── Pre-flight checks ────────────────────────────────────────────────
 
 preflight() {
-  _track_usage "preflight" "foundry-run.sh"
   echo -e "${BOLD}Pre-flight checks...${NC}"
   local errors=0
 
@@ -523,7 +522,6 @@ preflight() {
 # ── Environment check ────────────────────────────────────────────────
 
 env_check() {
-  _track_usage "env_check" "foundry-run.sh"
   if [[ "$SKIP_ENV_CHECK" == true ]]; then
     echo -e "${YELLOW}⚠ Environment check skipped (--skip-env-check)${NC}"
     return 0
@@ -665,7 +663,6 @@ get_agents_to_run() {
 # ── Git branch setup ──────────────────────────────────────────────────
 
 setup_branch() {
-  _track_usage "setup_branch" "foundry-run.sh"
   if [[ -n "$BRANCH_NAME" ]]; then
     echo "$BRANCH_NAME"
   else
@@ -688,7 +685,6 @@ get_timeout() {
 # ── Commit agent work ─────────────────────────────────────────────────
 
 commit_agent_work() {
-  _track_usage "commit_agent_work" "foundry-run.sh"
   local agent="$1"
   local task_slug="$2"
 
@@ -791,7 +787,6 @@ CHECKPOINT_EOF
 }
 
 set_planned_agents() {
-  _track_usage "set_planned_agents" "foundry-run.sh"
   [[ -f "$CHECKPOINT_FILE" ]] || return 0
   local agents_json
   agents_json=$(printf '%s\n' "$@" | jq -R . | jq -s .)
@@ -800,7 +795,6 @@ set_planned_agents() {
 }
 
 write_checkpoint() {
-  _track_usage "write_checkpoint" "foundry-run.sh"
   local agent="$1"
   local status="$2"
   local duration="$3"
@@ -859,7 +853,6 @@ save_agent_artifact() {
 }
 
 get_resume_agent() {
-  _track_usage "get_resume_agent" "foundry-run.sh"
   [[ -f "$CHECKPOINT_FILE" ]] || return
   
   local planned
@@ -879,7 +872,6 @@ get_resume_agent() {
 }
 
 print_checkpoint_summary() {
-  _track_usage "print_checkpoint_summary" "foundry-run.sh"
   [[ -f "$CHECKPOINT_FILE" ]] || return
   
   local agents
@@ -957,7 +949,6 @@ send_telegram() {
 # ── Run migrations if needed ──────────────────────────────────────────
 
 run_migrations() {
-  _track_usage "run_migrations" "foundry-run.sh"
   echo -e "  ${BLUE}Checking for new migrations...${NC}"
 
   local has_migrations=false
@@ -1611,187 +1602,6 @@ verify_coder_output() {
   return 0
 }
 
-# ── Agent-to-Agent Q&A Resolution (Section 14) ────────────────────────
-# Runs u-architect in Q&A responder mode to try answering questions
-# from another agent before escalating to human.
-# Echoes: "resolved" | "partial" | "failed"
-# Side effects: updates qa.json with agent answers, emits events.
-try_agent_qa_resolution() {
-  local asking_agent="$1"
-  local task_dir="$2"
-  local qa_file
-  qa_file=$(foundry_qa_file "$task_dir")
-
-  if [[ ! -f "$qa_file" ]]; then
-    echo "failed"
-    return 0
-  fi
-
-  local unanswered_blocking
-  unanswered_blocking=$(python3 -c "
-import json, sys
-data = json.loads(open(sys.argv[1]).read())
-print(sum(1 for q in data.get('questions', [])
-         if q.get('priority') == 'blocking' and q.get('answer') is None))
-" "$qa_file" 2>/dev/null || echo "0")
-
-  if [[ "$unanswered_blocking" -eq 0 ]]; then
-    echo "resolved"
-    return 0
-  fi
-
-  echo -e "${CYAN}  🤖 Attempting agent-to-agent Q&A resolution via u-architect...${NC}" >&2
-  emit_event "AGENT_QA_ATTEMPT" "asking=${asking_agent}|responder=u-architect|blocking=${unanswered_blocking}"
-  debug_log "hitl" "Agent-to-agent Q&A attempt" "asking=$asking_agent" "blocking=$unanswered_blocking"
-
-  # Build Q&A prompt for u-architect
-  local qa_prompt
-  qa_prompt=$(cat <<QAPROMPT
-## Q&A Responder Mode
-
-You are running in Q&A responder mode. Agent **${asking_agent}** has questions that are blocking the pipeline.
-
-### Instructions
-
-1. Read the questions in \`${qa_file}\`
-2. Read the task spec and handoff at \`${task_dir}/handoff.md\`
-3. For each question where \`answer\` is \`null\`:
-   - If you can answer confidently based on the spec, codebase, or architectural knowledge: fill in the answer
-   - If you cannot answer confidently: leave \`answer\` as \`null\`
-4. For every question you answer, also set:
-   - \`"answered_by": "u-architect"\`
-   - \`"answer_source": "agent"\`
-   - \`"answered_at": "<current ISO timestamp>"\`
-
-### Important
-
-- Only answer questions you are confident about. Wrong answers are worse than no answers.
-- Do NOT modify any source code. Only update \`qa.json\`.
-- Do NOT create new files or change handoff.md.
-- Read the original task spec and relevant code to inform your answers.
-- Exit with code 0 when done (even if you couldn't answer all questions).
-QAPROMPT
-)
-
-  # Run u-architect with short timeout (5 min) in Q&A responder mode
-  local qa_log="$LOG_DIR/${TIMESTAMP}_u-architect-qa.log"
-  local qa_timeout=300  # 5 minutes
-  local qa_exit=0
-  local qa_start_epoch
-  qa_start_epoch=$(date +%s)
-
-  # Save and override u-architect timeout for this short Q&A run
-  local current_model
-  current_model=$(get_current_model "u-architect")
-  local run_cmd="opencode run --agent u-architect $(printf '%q' "$qa_prompt")"
-  if command -v timeout &>/dev/null; then
-    run_cmd="timeout ${qa_timeout} ${run_cmd}"
-  fi
-
-  debug_log "hitl" "Spawning u-architect Q&A" "timeout=${qa_timeout}s" "log=$qa_log"
-
-  if command -v script &>/dev/null; then
-    (cd "$REPO_ROOT" && script -qc "$run_cmd" /dev/null) \
-      < /dev/null 2>&1 | tee "$qa_log" &
-  else
-    (cd "$REPO_ROOT" && eval "$run_cmd") \
-      < /dev/null 2>&1 | tee "$qa_log" &
-  fi
-  local qa_pid=$!
-  wait "$qa_pid" || qa_exit=$?
-
-  local qa_end_epoch
-  qa_end_epoch=$(date +%s)
-  local qa_dur=$(( qa_end_epoch - qa_start_epoch ))
-
-  debug_log "hitl" "u-architect Q&A finished" "exit=$qa_exit" "duration=${qa_dur}s"
-
-  # Track u-architect Q&A cost
-  local qa_tokens
-  qa_tokens=$(get_agent_tokens "u-architect" 2>/dev/null || echo '{}')
-  local qa_in_tok qa_out_tok qa_cost
-  qa_in_tok=$(echo "$qa_tokens" | jq -r '.input_tokens // 0' 2>/dev/null || echo 0)
-  qa_out_tok=$(echo "$qa_tokens" | jq -r '.output_tokens // 0' 2>/dev/null || echo 0)
-  qa_cost=$(echo "$qa_tokens" | jq -r '.cost // 0' 2>/dev/null || echo 0)
-
-  if [[ "$TASK_LIFECYCLE" == true && -n "$task_dir" ]]; then
-    foundry_state_upsert_agent "$task_dir" "u-architect-qa" "done" "$current_model" \
-      "$qa_dur" "$qa_in_tok" "$qa_out_tok" "$qa_cost" "1"
-  fi
-
-  # If u-architect failed or timed out, treat as "failed"
-  if [[ $qa_exit -ne 0 ]]; then
-    echo -e "${YELLOW}  u-architect Q&A exited with code ${qa_exit}${NC}" >&2
-    emit_event "AGENT_QA_FAILED" "asking=${asking_agent}|responder=u-architect|exit=${qa_exit}|duration=${qa_dur}s"
-    pipeline_task_append_event "$task_dir" "agent_qa_escalated" \
-      "u-architect Q&A failed (exit $qa_exit), escalating to human" "$asking_agent"
-    echo "failed"
-    return 0
-  fi
-
-  # Check how many blocking questions are now answered
-  local still_unanswered
-  still_unanswered=$(python3 -c "
-import json, sys
-data = json.loads(open(sys.argv[1]).read())
-print(sum(1 for q in data.get('questions', [])
-         if q.get('priority') == 'blocking' and q.get('answer') is None))
-" "$qa_file" 2>/dev/null || echo "0")
-
-  local total_q answered_q
-  total_q=$(python3 -c "
-import json, sys
-data = json.loads(open(sys.argv[1]).read())
-print(len(data.get('questions', [])))
-" "$qa_file" 2>/dev/null || echo "0")
-  answered_q=$(python3 -c "
-import json, sys
-data = json.loads(open(sys.argv[1]).read())
-print(sum(1 for q in data.get('questions', []) if q.get('answer') is not None))
-" "$qa_file" 2>/dev/null || echo "0")
-
-  emit_event "AGENT_QA_RESULT" "asking=${asking_agent}|answered=${answered_q}/${total_q}|still_blocking=${still_unanswered}"
-
-  if [[ "$still_unanswered" -eq 0 ]]; then
-    # All blocking questions resolved by u-architect
-    pipeline_task_append_event "$task_dir" "agent_qa_resolved" \
-      "u-architect answered all blocking questions from $asking_agent ($answered_q/$total_q)" "$asking_agent"
-
-    # Sync answers to handoff.md
-    foundry_sync_qa_to_handoff "$task_dir"
-
-    # Update state back to in_progress
-    foundry_set_state_status "$task_dir" "in_progress" "$asking_agent" "$asking_agent"
-    foundry_update_state_field "$task_dir" "questions_answered" "$answered_q"
-
-    # Send Telegram notification for agent resolution
-    if [[ -f "$REPO_ROOT/agentic-development/lib/foundry-telegram.sh" ]]; then
-      source "$REPO_ROOT/agentic-development/lib/foundry-telegram.sh"
-      send_telegram_hitl_agent_resolved "u-architect" "$asking_agent" "${TASK_SLUG:-task}"
-    fi
-
-    echo "resolved"
-  elif [[ "$answered_q" -gt 0 ]]; then
-    # Partial resolution — some answered, some still need human
-    pipeline_task_append_event "$task_dir" "agent_qa_partial" \
-      "u-architect answered $answered_q/$total_q questions, escalating rest to human" "$asking_agent"
-
-    # Sync partial answers to handoff.md
-    foundry_sync_qa_to_handoff "$task_dir"
-    foundry_update_state_field "$task_dir" "questions_answered" "$answered_q"
-
-    echo "partial"
-  else
-    # No questions answered
-    pipeline_task_append_event "$task_dir" "agent_qa_escalated" \
-      "u-architect could not answer any questions from $asking_agent" "$asking_agent"
-
-    echo "failed"
-  fi
-
-  return 0
-}
-
 # ── Run a single agent with timeout and retry ─────────────────────────
 
 run_agent() {
@@ -2072,24 +1882,6 @@ run_agent() {
         hitl_result=75
       fi
 
-      # ── Agent-to-Agent Q&A Escalation (Section 14) ──────────────────
-      # Try u-architect as first responder before escalating to human.
-      # Skip if: the asking agent IS u-architect, or no TASK_DIR.
-      if [[ -n "$TASK_DIR" && "$agent" != "u-architect" ]]; then
-        local qa_resolution_result
-        qa_resolution_result=$(try_agent_qa_resolution "$agent" "$TASK_DIR")
-
-        if [[ "$qa_resolution_result" == "resolved" ]]; then
-          # All blocking questions answered by u-architect — signal re-run
-          echo -e "${GREEN}  ✓ u-architect resolved all blocking questions${NC}"
-          return 76  # Special code: Q&A resolved, caller should re-run agent
-        elif [[ "$qa_resolution_result" == "partial" ]]; then
-          echo -e "${YELLOW}  ⚠ u-architect partially resolved questions — escalating to human${NC}"
-        else
-          echo -e "${YELLOW}  u-architect could not resolve questions — escalating to human${NC}"
-        fi
-      fi
-
       # Send Telegram notification (if configured)
       if [[ -f "$REPO_ROOT/agentic-development/lib/foundry-telegram.sh" ]]; then
         # shellcheck source=/dev/null
@@ -2097,24 +1889,7 @@ run_agent() {
         local qa_count
         qa_count=$(foundry_state_field "$TASK_DIR" "questions_count" 2>/dev/null || echo "?")
         local task_slug_short="${TASK_SLUG:-task}"
-
-        if [[ -n "$TASK_DIR" && "$agent" != "u-architect" ]]; then
-          # Agent-to-agent was attempted — use escalation notification
-          local total_q answered_q
-          total_q=$(python3 -c "
-import json, sys
-data = json.loads(open(sys.argv[1]).read())
-print(len(data.get('questions', [])))
-" "$(foundry_qa_file "$TASK_DIR")" 2>/dev/null || echo "?")
-          answered_q=$(python3 -c "
-import json, sys
-data = json.loads(open(sys.argv[1]).read())
-print(sum(1 for q in data.get('questions', []) if q.get('answer') is not None))
-" "$(foundry_qa_file "$TASK_DIR")" 2>/dev/null || echo "0")
-          send_telegram_hitl_escalated "$agent" "$task_slug_short" "$answered_q" "$total_q"
-        else
-          send_telegram_hitl_waiting "$agent" "$task_slug_short" "$qa_count"
-        fi
+        send_telegram_hitl_waiting "$agent" "$task_slug_short" "$qa_count"
       fi
 
       if [[ $hitl_result -eq 0 ]]; then
@@ -3030,79 +2805,8 @@ main() {
       fi
 
       echo ""
-    elif [[ $run_exit -eq 76 ]]; then
-      # HITL: Agent Q&A was resolved by u-architect — re-run agent with answers
-      local agent_dur=$(( $(date +%s) - agent_start ))
-      echo -e "${CYAN}🔄 Re-running '${agent}' with u-architect's answers...${NC}"
-
-      # Auto-commit partial work before re-run
-      commit_agent_work "$agent" "$task_slug"
-
-      write_checkpoint "$agent" "qa_resolved_rerun" "$agent_dur" "" "$(get_agent_tokens "$agent")"
-
-      # Re-run the same agent — it will read answered qa.json and continue
-      agent_start=$(date +%s)
-      prompt=$(build_prompt "$agent")
-      run_exit=0
-      run_agent "$agent" "$prompt" || run_exit=$?
-
-      # Handle re-run result the same as a normal run
-      if [[ $run_exit -eq 0 ]]; then
-        agent_dur=$(( $(date +%s) - agent_start ))
-        send_telegram "✅ <b>${agent}</b> completed after Q&A resolution (${agent_dur}s)
-📋 <i>${TASK_MESSAGE}</i>"
-        commit_agent_work "$agent" "$task_slug"
-        local commit_hash
-        commit_hash=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo "")
-        local agent_tokens
-        agent_tokens=$(get_agent_tokens "$agent")
-        write_checkpoint "$agent" "done" "$agent_dur" "$commit_hash" "$agent_tokens"
-        save_agent_artifact "$agent" "$agent_log"
-        local _in_tok _out_tok _cost
-        _in_tok=$(echo "$agent_tokens" | jq -r '.input_tokens // 0' 2>/dev/null || echo 0)
-        _out_tok=$(echo "$agent_tokens" | jq -r '.output_tokens // 0' 2>/dev/null || echo 0)
-        _cost=$(echo "$agent_tokens" | jq -r '.cost // 0' 2>/dev/null || echo 0)
-        if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
-          foundry_state_upsert_agent "$TASK_DIR" "$agent" "done" "" "$agent_dur" "$_in_tok" "$_out_tok" "$_cost" "1"
-        fi
-        if [[ "$agent" == "u-coder" ]]; then
-          if ! verify_coder_output; then
-            failed=true
-            failed_agent="$agent (no code produced after Q&A)"
-            break
-          fi
-          run_migrations
-        fi
-        echo ""
-      else
-        # Re-run also failed or paused — fall through to normal failure handling
-        agent_dur=$(( $(date +%s) - agent_start ))
-        if [[ $run_exit -eq 75 ]]; then
-          # Still waiting for answers after re-run (new questions or same unresolved)
-          commit_agent_work "$agent" "$task_slug"
-          local commit_hash
-          commit_hash=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo "")
-          write_checkpoint "$agent" "waiting_answer" "$agent_dur" "$commit_hash" "$(get_agent_tokens "$agent")"
-          save_agent_artifact "$agent" "$agent_log"
-          emit_event "TASK_WAITING" "agent=${agent}|duration=${agent_dur}s|note=after_qa_rerun"
-          if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
-            foundry_set_state_status "$TASK_DIR" "waiting_answer" "$agent" "$agent"
-          fi
-          echo -e "${YELLOW}Pipeline paused at agent: ${agent} (still waiting for answers after Q&A re-run)${NC}"
-          echo -e "${YELLOW}Answer questions: ./agentic-development/foundry.sh answer ${TASK_SLUG:-<slug>}${NC}"
-          echo -e "${YELLOW}Resume pipeline:  ./agentic-development/foundry.sh resume-qa ${TASK_SLUG:-<slug>}${NC}"
-          break
-        else
-          failed=true
-          failed_agent="$agent"
-          send_telegram "❌ <b>${agent}</b> FAILED after Q&A re-run (${agent_dur}s)
-📋 <i>${TASK_MESSAGE}</i>"
-          echo -e "${RED}Pipeline stopped at agent: ${agent} (failed after Q&A re-run)${NC}"
-          break
-        fi
-      fi
     elif [[ $run_exit -eq 75 ]]; then
-      # HITL: Agent is waiting for answers — pipeline paused (escalated to human)
+      # HITL: Agent is waiting for answers — pipeline paused
       local agent_dur=$(( $(date +%s) - agent_start ))
 
       # Auto-commit agent's partial work

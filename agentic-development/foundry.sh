@@ -6,7 +6,6 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=/dev/null
 source "$REPO_ROOT/agentic-development/lib/foundry-common.sh"
 
-maybe_migrate_legacy_foundry_tasks
 ensure_foundry_task_root
 ensure_runtime_root
 auto_cleanup
@@ -41,6 +40,14 @@ Commands:
   status               Show current Foundry worker status
   list                 List available top-level Foundry commands
 
+HITL (Human-in-the-Loop) Commands:
+  answer <slug> [--question <id> --answer <text>]
+                       Answer questions for a waiting task (interactive TUI or CLI)
+  resume-qa <slug>     Resume pipeline after all blocking questions are answered
+  waiting              List all tasks waiting for human answers
+  telegram-qa start    Start the Telegram Q&A bot (for bidirectional Q&A)
+  telegram-qa stop     Stop the Telegram Q&A bot
+
 Task pool:
   Foundry uses ${FOUNDRY_TASK_ROOT_REL}/<slug>--foundry/ as its queue/state store.
   A task is pending when task.md exists and state.json is missing or has status=pending.
@@ -63,6 +70,10 @@ Examples:
   ./agentic-development/foundry.sh run --task-file task.md      # run single task
   ./agentic-development/foundry.sh batch --watch --workers 3    # 3 parallel workers
   FOUNDRY_WORKERS=2 ./agentic-development/foundry.sh headless   # headless mode
+  ./agentic-development/foundry.sh waiting                      # list waiting tasks
+  ./agentic-development/foundry.sh answer my-task               # answer questions (TUI)
+  ./agentic-development/foundry.sh answer my-task --question q-001 --answer "Use edge-auth"
+  ./agentic-development/foundry.sh resume-qa my-task            # resume after answering
 EOF
 }
 
@@ -158,11 +169,12 @@ foundry_stop_headless() {
 }
 
 foundry_status() {
-  local pending=0 in_progress=0 completed=0 failed=0 suspended=0 cancelled=0
+  local pending=0 in_progress=0 waiting_answer=0 completed=0 failed=0 suspended=0 cancelled=0
   while IFS='=' read -r key value; do
     case "$key" in
       pending) pending="$value" ;;
       in_progress) in_progress="$value" ;;
+      waiting_answer) waiting_answer="$value" ;;
       completed) completed="$value" ;;
       failed) failed="$value" ;;
       suspended) suspended="$value" ;;
@@ -178,6 +190,11 @@ foundry_status() {
   fi
   echo "Pending: ${pending}"
   echo "In progress: ${in_progress}"
+  if [[ "$waiting_answer" -gt 0 ]]; then
+    echo "Waiting for answers: ${waiting_answer}  ← use: foundry.sh waiting"
+  else
+    echo "Waiting for answers: ${waiting_answer}"
+  fi
   echo "Completed: ${completed}"
   echo "Failed: ${failed}"
   echo "Suspended: ${suspended}"
@@ -283,6 +300,140 @@ run_command() {
     e2e-autofix|autotest)
       runtime_log foundry "command=$cmd args=$*"
       exec "$REPO_ROOT/agentic-development/lib/foundry-e2e.sh" "$@"
+      ;;
+    answer)
+      # HITL: Answer questions for a waiting task
+      if [[ $# -eq 0 ]]; then
+        echo "Error: task slug required"
+        echo "Usage: ./agentic-development/foundry.sh answer <task-slug> [--question <id> --answer <text>]"
+        exit 1
+      fi
+      local answer_slug="$1"
+      shift
+      local answer_task_dir
+      answer_task_dir=$(foundry_task_dir_for_slug "$answer_slug" 2>/dev/null || true)
+      if [[ -z "$answer_task_dir" ]]; then
+        echo "Error: task not found: $answer_slug"
+        exit 1
+      fi
+      # Check for CLI mode (--question / --answer flags)
+      local cli_question="" cli_answer=""
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --question) cli_question="$2"; shift 2 ;;
+          --answer)   cli_answer="$2";   shift 2 ;;
+          *) shift ;;
+        esac
+      done
+      if [[ -n "$cli_question" && -n "$cli_answer" ]]; then
+        # Non-interactive CLI answer
+        foundry_answer_question "$answer_task_dir" "$cli_question" "$cli_answer" "human"
+      else
+        # Interactive TUI Q&A view
+        local monitor_dir="$REPO_ROOT/agentic-development/monitor"
+        if [[ -f "$monitor_dir/dist/index.js" ]]; then
+          exec node "$monitor_dir/dist/index.js" "$FOUNDRY_TASK_ROOT" --qa "$answer_slug"
+        else
+          exec "$monitor_dir/node_modules/.bin/tsx" "$monitor_dir/src/index.tsx" "$FOUNDRY_TASK_ROOT" --qa "$answer_slug"
+        fi
+      fi
+      ;;
+    resume-qa)
+      # HITL: Resume pipeline after Q&A answers
+      if [[ $# -eq 0 ]]; then
+        echo "Error: task slug required"
+        echo "Usage: ./agentic-development/foundry.sh resume-qa <task-slug>"
+        exit 1
+      fi
+      local rqa_slug="$1"
+      local rqa_task_dir
+      rqa_task_dir=$(foundry_task_dir_for_slug "$rqa_slug" 2>/dev/null || true)
+      if [[ -z "$rqa_task_dir" ]]; then
+        echo "Error: task not found: $rqa_slug"
+        exit 1
+      fi
+      if foundry_resume_qa "$rqa_task_dir"; then
+        echo "✓ Task $rqa_slug is ready to resume"
+        echo "  Start workers: ./agentic-development/foundry.sh headless"
+        echo "  Or run directly: ./agentic-development/foundry.sh run --task-file $rqa_task_dir/task.md --from $(foundry_state_field "$rqa_task_dir" resume_from 2>/dev/null || echo 'unknown')"
+      else
+        echo "✗ Cannot resume: blocking questions still unanswered"
+        exit 1
+      fi
+      ;;
+    waiting)
+      # HITL: List tasks waiting for answers
+      runtime_log foundry "command=waiting"
+      local waiting_tasks
+      waiting_tasks=$(foundry_list_waiting_tasks)
+      if [[ -z "$waiting_tasks" ]]; then
+        echo "No tasks waiting for answers."
+      else
+        echo "Tasks waiting for answers:"
+        while IFS= read -r task_dir; do
+          local slug
+          slug=$(foundry_task_slug_from_dir "$task_dir")
+          local qa_file="$task_dir/qa.json"
+          local q_count="?"
+          if [[ -f "$qa_file" ]] && command -v python3 &>/dev/null; then
+            q_count=$(python3 -c "
+import json, sys
+data = json.loads(open(sys.argv[1]).read())
+total = len(data.get('questions', []))
+answered = sum(1 for q in data.get('questions', []) if q.get('answer') is not None)
+print(f'{answered}/{total}')
+" "$qa_file" 2>/dev/null || echo "?/?")
+          fi
+          local waiting_since
+          waiting_since=$(foundry_state_field "$task_dir" "waiting_since" 2>/dev/null || echo "unknown")
+          echo "  ? ${slug}  (${q_count} answered)  since ${waiting_since}"
+          echo "    Answer: ./agentic-development/foundry.sh answer ${slug}"
+        done <<< "$waiting_tasks"
+      fi
+      ;;
+    telegram-qa)
+      # HITL: Telegram Q&A bot management
+      local tqa_cmd="${1:-start}"
+      shift || true
+      local tqa_dir="$REPO_ROOT/agentic-development/telegram-qa"
+      if [[ ! -d "$tqa_dir" ]]; then
+        echo "Error: telegram-qa directory not found: $tqa_dir"
+        echo "Run: cd $tqa_dir && npm install"
+        exit 1
+      fi
+      case "$tqa_cmd" in
+        start)
+          runtime_log foundry "command=telegram-qa start"
+          if [[ ! -f "$tqa_dir/node_modules/.bin/tsx" && ! -f "$tqa_dir/dist/bot.js" ]]; then
+            echo "Error: telegram-qa not installed. Run: cd $tqa_dir && npm install"
+            exit 1
+          fi
+          echo "Starting Telegram Q&A bot..."
+          if [[ -f "$tqa_dir/dist/bot.js" ]]; then
+            nohup node "$tqa_dir/dist/bot.js" \
+              --tasks-root "$FOUNDRY_TASK_ROOT" \
+              --foundry-sh "$REPO_ROOT/agentic-development/foundry.sh" \
+              > "$REPO_ROOT/agentic-development/runtime/logs/telegram-qa.log" 2>&1 &
+          else
+            nohup "$tqa_dir/node_modules/.bin/tsx" "$tqa_dir/src/bot.ts" \
+              --tasks-root "$FOUNDRY_TASK_ROOT" \
+              --foundry-sh "$REPO_ROOT/agentic-development/foundry.sh" \
+              > "$REPO_ROOT/agentic-development/runtime/logs/telegram-qa.log" 2>&1 &
+          fi
+          echo "Telegram Q&A bot started (PID $!)"
+          echo "Log: $REPO_ROOT/agentic-development/runtime/logs/telegram-qa.log"
+          ;;
+        stop)
+          runtime_log foundry "command=telegram-qa stop"
+          pkill -f 'telegram-qa.*bot' 2>/dev/null || true
+          echo "Telegram Q&A bot stopped."
+          ;;
+        *)
+          echo "Unknown telegram-qa command: $tqa_cmd"
+          echo "Usage: foundry.sh telegram-qa [start|stop]"
+          exit 1
+          ;;
+      esac
       ;;
     list)
       show_help

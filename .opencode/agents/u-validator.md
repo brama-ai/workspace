@@ -1,6 +1,6 @@
 ---
 description: "Validator (unified): runs static analysis and code style checks with minimal production fixes"
-model: openai/gpt-5.4
+model: opencode-go/kimi-k2.5
 temperature: 0
 tools:
   edit: true
@@ -28,6 +28,45 @@ Follow `.opencode/agents/CONTEXT-CONTRACT.md`.
 - Validate only the apps, files, or scopes defined in the prompt context.
 - Do NOT modify test files unless the caller explicitly asks for that.
 - If you find pre-existing issues outside scope, report them instead of broadening the fix.
+
+## Human-in-the-Loop Protocol
+
+When you encounter a situation where you cannot proceed without human input:
+
+1. Write your question(s) to `qa.json` in the task directory (`tasks/<slug>--foundry/qa.json`):
+   - Use priority `blocking` only if you truly cannot continue
+   - Use priority `non-blocking` for preferences or optimizations
+   - Provide `options` when possible to make answering easier
+   - Format: `{"version":1,"questions":[{"id":"q-001","agent":"u-validator","timestamp":"<ISO>","priority":"blocking","category":"clarification","question":"...","options":["..."],"answer":null,"answered_at":null,"answered_by":null}]}`
+
+2. Update your section in `handoff.md` with status `waiting_answer` and Q&A summary
+
+3. Exit with code 75
+
+4. On resume: read answers from `qa.json`, continue work, do NOT re-ask answered questions
+
+## Summary Artifacts
+
+Before completing (exit 0), write `artifacts/u-validator/result.json`:
+```json
+{
+  "agent": "u-validator",
+  "status": "done",
+  "confidence": 0.95,
+  "assessment": {
+    "what_went_well": [],
+    "what_went_wrong": [],
+    "improvement_suggestions": [],
+    "blocked_by": [],
+    "deviations_from_spec": []
+  },
+  "metrics": {
+    "files_modified": 0,
+    "phpstan_errors_fixed": 0,
+    "cs_violations_fixed": 0
+  }
+}
+```
 
 ## Output
 

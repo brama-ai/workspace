@@ -23,9 +23,6 @@
 | `foundry_task_dir_from_file` → Bash | ✅ Done | -1 Python call |
 | `foundry-run.sh` checkpoint functions → jq | ✅ Done | -9 Python calls (всі) |
 | `foundry-preflight.sh` stop/resume → jq | ✅ Done | -4 Python calls |
-| `cost-tracker.sh` 5/6 functions → jq/bash | ✅ Done | -5 Python calls |
-| `foundry_state_set_planned_agents` → jq | ✅ Done | -1 Python call |
-| Usage tracking: 67 bash + 14 TS functions | ✅ Done | `FOUNDRY_USAGE_TRACKING=true` |
 
 ---
 
@@ -229,60 +226,34 @@ Telegram Q&A залишається як опціональний функціо
 
 | Категорія | Було | Стало | Δ |
 |-----------|------|-------|---|
-| Bash scripts (lib/) | ~3500 | ~2500 | -1000 |
-| Python calls | 45 | **16** | **-29 (-64%)** |
+| Bash scripts (lib/) | ~3500 | ~2600 | -900 |
+| Python calls | 45 | **22** | **-23** |
 | TypeScript (monitor/) | ~500 | ~1450 | +950 |
-| Tracked functions | 0 | **81** | instrumented |
+| **Всього** | ~4000 | ~4050 | **+50** (net) |
 
 ---
 
 ## 🎯 Висновок
 
 **Рефакторинг завершено:**
-- ✅ Python calls зменшено з **45 → 16** (-64%)
+- ✅ Python calls зменшено з **45 → 35** (-10)
 - ✅ `ultraworks-monitor.sh` → Ink TUI
 - ✅ Legacy migration code видалено
 - ✅ `normalize-summary.py` → TypeScript
 - ✅ `task-state.ts` з 29 тестами
 - ✅ TUI використовує TS напряму (без execSync для state)
 - ✅ State functions використовують `jq` (швидше за Python)
-- ✅ Usage tracking для 81 функції
 
-**Залишок Python calls (16):**
+**Залишок Python calls (22):**
 | Файл | Calls | Призначення |
 |------|-------|-------------|
-| `foundry-common.sh` | 11 | repair_state, claim (fcntl), write_state, HITL Q&A, process_status |
-| `cost-tracker.sh` | 1 | `render_ultraworks_summary_block` (session export) |
-| `foundry-preflight.sh` | 1 | `check_workspace_clean` (git status parsing) |
-| `foundry-e2e.sh` | 2 | E2E test report parsing |
-| `env-check.sh` | 1 | Python version check |
+| `foundry-common.sh` | 12 | repair_state, claim, HITL Q&A, process status |
+| `cost-tracker.sh` | 6 | token/cost tracking JSON |
+| `foundry-e2e.sh` | 2 | E2E reporting |
+| `foundry-preflight.sh` | 1 | workspace clean check (складна логіка) |
+| `env-check.sh` | 1 | env check |
 
-**`foundry-run.sh`: 0 Python calls**
-**`foundry-batch.sh`: 0 Python calls**
-
-## Usage Tracking
-
-Увімкнення:
-```bash
-# В .env.local або перед командою
-FOUNDRY_USAGE_TRACKING=true ./agentic-development/foundry.sh headless
-```
-
-Лог: `agentic-development/runtime/logs/usage-tracker.jsonl`
-
-Формат:
-```json
-{"ts":"2026-03-26T20:40:25Z","fn":"foundry_task_counts","src":"foundry-common.sh","pid":3930}
-```
-
-Аналіз (після кількох днів):
-```bash
-# Які функції не використовуються?
-jq -r '.fn' runtime/logs/usage-tracker.jsonl | sort | uniq -c | sort -rn
-
-# HITL Q&A функції використовуються?
-jq -r 'select(.fn | startswith("foundry_")) | .fn' runtime/logs/usage-tracker.jsonl | sort | uniq -c
-```
+**`foundry-run.sh`: 0 Python calls (всі замінені на jq)**
 
 **Архітектура тепер:**
 - Один TUI (React/Ink) для Foundry та Ultraworks

@@ -1,0 +1,361 @@
+{
+  "$schema": "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/oh-my-opencode.schema.json",
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Model routing policy
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  //
+  // Tier policy:
+  //   tier1 = long-horizon / hardest agentic work
+  //   tier2 = strong balanced workhorse
+  //   fast  = low-latency / high-volume checks
+  //   free  = OpenCode Zen free + OpenRouter free last-resort continuity
+  //
+  // Distribution goal:
+  // - spread primaries across providers to avoid hitting one provider's short limit
+  // - keep cross-provider fallbacks semantically close
+  // - final fallback chain includes OpenCode Zen free models and OpenRouter free models
+  //
+  // Core provider set (active):
+  //   1. anthropic (direct)        — TTFO 6-7s
+  //   2. google (direct)           — TTFO 6s
+  //   3. opencode-go               — TTFO 8s
+  //   4. opencode zen              — TTFO 12-19s
+  //   5. openrouter (ONLY free)    — TTFO varies
+  //
+  // Temporarily disabled:
+  //   - openai (direct) — rate limits exhausted until 2026-03-29
+  //   - minimax (direct) — subscription routing issue, to be investigated
+  //
+  // NEVER use openrouter/anthropic/*, openrouter/openai/* — paid via middleman.
+  // Google exception: avoid Gemini as primary for long-running / high-fanout phases.
+  // See: docs/foundry-models/ for full policy.
+  //
+  // Measured TTFO (2026-03-26):
+  //   anthropic/claude-sonnet-4-6: 6s
+  //   anthropic/claude-opus-4-6:   7s
+  //   google/gemini-2.5-flash:     6s
+  //   opencode-go/kimi-k2.5:       8s
+  //   opencode-go/glm-5:           8s
+  //   opencode/big-pickle:         12s
+  //   opencode/gpt-5-nano:         19s
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Sisyphus orchestrator
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  "agents": {
+    "sisyphus": {
+      "model": "opencode-go/glm-5",
+      "variant": "max",
+      "fallback_models": [
+        "anthropic/claude-opus-4-6",
+        "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
+        "opencode/big-pickle",
+        "openrouter/free"
+      ],
+      "prompt_append": "## OpenSpec Pipeline Orchestration\n\nYou orchestrate the AI Community Platform pipeline.\n\n### Context routing\nYOU are the only one who reads handoff.md. Subagents do NOT read it.\n- Before each delegation: read handoff.md, extract relevant context\n- Pass context in the delegation prompt CONTEXT section\n- Tell each agent: \"Append results to handoff.md (your section only)\"\n- Between phases: re-read handoff.md to see what agents wrote\nException: u-summarizer reads handoff.md (its job is to summarize everything).\n\n### Pipeline phases\n\n**Phase 1 — Spec** (SKIP if tasks.md exists):\n- delegate_task(agent='u-architect', category='spec-writing')\n- Optionally delegate Explore in parallel for codebase research\n\n**Phase 2 — Implement:**\n- delegate_task(agent='u-coder', category='deep')\n\n**Phase 3 — Improvement pass:**\n- delegate_task(agent='u-reviewer', category='code-review')\n- Reviewer may refactor for SOLID, DRY, KISS, clean code, and safe stack-appropriate patterns\n\n**Phase 4 — Quality (PARALLEL):**\n- delegate_task(agent='u-validator', category='quick', run_in_background=true)\n- delegate_task(agent='u-tester', category='testing', run_in_background=true)\n- Wait for BOTH. Re-read handoff.md.\n- u-tester MUST check CUJ matrix (docs/agent-requirements/e2e-cuj-matrix.md) for UI changes and write E2E tests if missing\n\n**Phase 4b — E2E (OPTIONAL, if UI was changed):**\n- ONLY if tester wrote E2E tests or change touches admin UI\n- delegate_task(agent='u-tester', category='testing') with E2E focus\n- Task: run `make e2e-prepare && make e2e` if Docker is available\n- If Docker unavailable: SKIP with note in handoff\n\n**Phase 5 — Audit loop (ONLY if is_agent_task, max 3 iterations):**\n- delegate_task(agent='u-auditor', category='review') → read-only, writes report\n- Auditor checks E2E Coverage (E) section — missing CUJ = WARN (non-blocking)\n- If FAIL: generate fix tasks, delegate_task(agent='u-coder', category='deep') → delegate_task(agent='u-reviewer', category='code-review') → re-audit\n- If PASS or WARN on re-audit: proceed\n- After max 3 iterations: document remaining issues, let human decide\n\n**Phase 5b — Security review (OPTIONAL, if security-sensitive changes):**\n- ONLY if change touches auth, session, access control, input handling, file ops, or external HTTP calls\n- delegate_task(agent='u-security-review', category='security-review') → read-only, writes report\n- Advisory: WARN findings do not block. CRITICAL findings flagged for human review.\n- If CRITICAL found: note in handoff, optionally delegate fix to u-coder\n\n**Phase 6 — Documentation:**\n- delegate_task(agent='u-documenter', category='writing')\n\n**Phase 6b — Translation (OPTIONAL, if i18n/docs changed):**\n- ONLY if change touches translations/*.yaml, *.html.twig with trans filter, or docs/**/*.md\n- delegate_task(agent='u-translater', category='translation')\n- Translater syncs missing translations and mirrors docs between UA/EN\n\n**Phase 7 — Summarize:**\n- delegate_task(agent='u-summarizer', category='analysis')\n- Summarizer MUST write task-local `summary.md` in `tasks/<slug>--ultraworks/` on both success and failure\n\n**Phase 8 — Deploy (OPTIONAL, only if deploy: true in task metadata):**\n- ONLY if task metadata contains `deploy: true` AND all phases 1-7 passed\n- delegate_task(agent='u-deployer', category='deployment')\n- Deployer defaults to dry-run unless `dry_run: false` is explicitly configured\n- NEVER run if any previous phase failed\n- Deployer appends result to handoff.md (Deployer section)\n\n### Resilience rules\n\n1. **Subagent failure**: if a delegate_task fails or returns an error, update handoff.md with status=failed and reason, then CONTINUE to the next phase. Never get stuck waiting.\n2. **Parallel timeout**: if one parallel task finishes but the other is still running, wait max ~2 minutes. If still not done, mark it as status=timeout in handoff and proceed.\n3. **Always finalize**: Phase 6 (summarizer) MUST run even if earlier phases failed. Write summary with whatever results exist.\n4. **Handoff is truth**: after EVERY phase, update handoff.md immediately. If you crash, the next /finish run can resume from handoff state.\n5. **Budget awareness**: you have limited tokens. If you've completed 4+ phases, prioritize summarizer over remaining optional phases.\n\n### Shortcuts\n- 'ulw' / 'ultrawork' → full pipeline (phases 1-6)\n- '/implement <change-id>' → phases 2-6\n- '/validate' → phase 4 only\n- '/audit' → phase 5 only\n- '/finish' → resume from handoff.md state\n\n### Delegation template\nEvery delegation MUST follow:\n```\nTASK: <atomic goal>\nEXPECTED OUTCOME: <deliverables>\nREQUIRED TOOLS: <whitelist>\nMUST DO:\n  - <requirements>\n  - Append results to .opencode/pipeline/handoff.md (your section only)\nMUST NOT DO:\n  - Do NOT read handoff.md\n  - <forbidden actions>\nCONTEXT:\n  - Apps: <from handoff.md>\n  - Changed files: <from previous phase>\n  - Spec: <path>\n```"
+    },
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // Subagent model overrides + fallbacks
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    //
+    // Rule: spread primaries across 6 providers. Fallback order = fastest TTFO first.
+    // Measured TTFO (2026-03-26):
+    //   anthropic 6-7s | google 6s | minimax-coding-plan 7s | opencode-go 8s | openai may-stall | opencode/free 12-19s
+    "u-architect": {
+      "model": "anthropic/claude-opus-4-6",
+      "fallback_models": [
+        "google/gemini-2.5-flash",                    // 6s
+        "minimax-coding-plan/MiniMax-M2.7",           // 7s
+        "opencode-go/glm-5",                          // 8s
+        "openai/gpt-5.4",                             // may stall
+        "opencode/big-pickle",                        // 12s
+        "openrouter/free"
+      ]
+    },
+    "u-coder": {
+      "model": "anthropic/claude-sonnet-4-6",
+      "fallback_models": [
+        "minimax-coding-plan/MiniMax-M2.7",           // 7s
+        "opencode-go/glm-5",                          // 8s
+        "google/gemini-2.5-flash",                    // 6s
+        "openai/gpt-5.3-codex",                       // may stall
+        "opencode/big-pickle",                        // 12s
+        "openrouter/qwen/qwen3-coder:free"
+      ]
+    },
+    "u-reviewer": {
+      "model": "minimax-coding-plan/MiniMax-M2.7",
+      "fallback_models": [
+        "anthropic/claude-sonnet-4-6",                // 6s
+        "opencode-go/glm-5",                          // 8s
+        "google/gemini-2.5-flash",                    // 6s
+        "openai/gpt-5.4",                             // may stall
+        "opencode/big-pickle",                        // 12s
+        "openrouter/qwen/qwen3-coder:free"
+      ]
+    },
+    "u-validator": {
+      "model": "opencode-go/kimi-k2.5",
+      "fallback_models": [
+        "minimax-coding-plan/MiniMax-M2.7",           // 7s
+        "google/gemini-2.5-flash",                    // 6s
+        "anthropic/claude-sonnet-4-6",                // 6s
+        "openai/gpt-5.2",                             // may stall
+        "opencode/big-pickle",                        // 12s
+        "openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free"
+      ]
+    },
+    "u-tester": {
+      "model": "opencode-go/kimi-k2.5",
+      "fallback_models": [
+        "minimax-coding-plan/MiniMax-M2.7",           // 7s
+        "anthropic/claude-sonnet-4-6",                // 6s
+        "google/gemini-2.5-flash",                    // 6s
+        "openai/gpt-5.3-codex",                       // may stall
+        "opencode/big-pickle",                        // 12s
+        "openrouter/qwen/qwen3-coder:free"
+      ]
+    },
+    "u-auditor": {
+      "model": "anthropic/claude-opus-4-6",
+      "fallback_models": [
+        "minimax-coding-plan/MiniMax-M2.7",           // 7s
+        "opencode-go/glm-5",                          // 8s
+        "google/gemini-2.5-flash",                    // 6s
+        "openai/gpt-5.4",                             // may stall
+        "opencode/big-pickle",                        // 12s
+        "openrouter/free"
+      ]
+    },
+    "u-documenter": {
+      "model": "google/gemini-2.5-flash",
+      "fallback_models": [
+        "anthropic/claude-sonnet-4-6",                // 6s
+        "minimax-coding-plan/MiniMax-M2.7",           // 7s
+        "opencode-go/kimi-k2.5",                      // 8s
+        "openai/gpt-5.4",                             // may stall
+        "opencode/big-pickle",                        // 12s
+        "openrouter/free"
+      ]
+    },
+    "u-summarizer": {
+      "model": "openai/gpt-5.4",
+      "fallback_models": [
+        "anthropic/claude-sonnet-4-6",                // 6s
+        "minimax-coding-plan/MiniMax-M2.7",           // 7s
+        "google/gemini-2.5-flash",                    // 6s
+        "opencode-go/glm-5",                          // 8s
+        "opencode/big-pickle",                        // 12s
+        "openrouter/deepseek/deepseek-r1-0528:free"
+      ]
+    },
+    "u-translater": {
+      "model": "google/gemini-2.5-flash",
+      "fallback_models": [
+        "minimax-coding-plan/MiniMax-M2.5",           // 7s
+        "opencode-go/kimi-k2.5",                      // 8s
+        "anthropic/claude-sonnet-4-6",                // 6s
+        "opencode/big-pickle",                        // 12s
+        "openrouter/free"
+      ]
+    },
+    "u-security-review": {
+      "model": "anthropic/claude-opus-4-6",
+      "fallback_models": [
+        "opencode-go/glm-5",
+        "google/gemini-2.5-flash",
+        "opencode/big-pickle",
+        "openrouter/free"
+      ]
+    },
+    "u-deployer": {
+      "model": "anthropic/claude-sonnet-4-6",
+      "fallback_models": [
+        "google/gemini-2.5-flash",
+        "opencode-go/glm-5",
+        "opencode/big-pickle",
+        "openrouter/free"
+      ]
+    },
+    "u-infra-validator": {
+      "model": "anthropic/claude-sonnet-4-6",
+      "fallback_models": [
+        "google/gemini-2.5-flash",
+        "opencode-go/glm-5",
+        "opencode/big-pickle",
+        "openrouter/deepseek/deepseek-v3-0324:free"
+      ]
+    }
+  },
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Custom categories for pipeline delegation
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  "categories": {
+    "spec-writing": {
+      "model": "anthropic/claude-opus-4-6",
+      "fallback_models": [
+        "opencode-go/glm-5",
+        "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
+        "opencode/big-pickle",
+        "openrouter/free"
+      ],
+      "prompt_append": "Load the openspec skill. Follow OpenSpec conventions."
+    },
+    "deep": {
+      "model": "anthropic/claude-sonnet-4-6",
+      "fallback_models": [
+        "opencode-go/glm-5",
+        "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
+        "opencode/big-pickle",
+        "openrouter/qwen/qwen3-coder:free"
+      ],
+      "prompt_append": "Load the coding skill for per-app targets."
+    },
+    "code-review": {
+      "model": "opencode-go/glm-5",
+      "fallback_models": [
+        "anthropic/claude-sonnet-4-6",
+        "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
+        "opencode/big-pickle",
+        "openrouter/qwen/qwen3-coder:free"
+      ],
+      "prompt_append": "Review and improve code for SOLID, DRY, KISS, clean code, and stack-appropriate patterns. Apply only safe, low-regression improvements."
+    },
+    "testing": {
+      "model": "opencode-go/kimi-k2.5",
+      "fallback_models": [
+        "anthropic/claude-sonnet-4-6",
+        "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
+        "opencode/big-pickle",
+        "openrouter/qwen/qwen3-coder:free"
+      ],
+      "prompt_append": "Load the testing skill. Iterate until all green."
+    },
+    "review": {
+      "model": "anthropic/claude-opus-4-6",
+      "fallback_models": [
+        "opencode-go/glm-5",
+        "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
+        "opencode/big-pickle",
+        "openrouter/free"
+      ],
+      "tools": {
+        "edit": "deny",
+        "write": "deny"
+      },
+      "prompt_append": "Load the auditing skill. Read-only — do NOT modify files."
+    },
+    "writing": {
+      "model": "google/gemini-2.5-flash",
+      "fallback_models": [
+        "anthropic/claude-sonnet-4-6",
+        "opencode-go/kimi-k2.5",
+        "openai/gpt-5.4",
+        "opencode/big-pickle",
+        "openrouter/free"
+      ],
+      "prompt_append": "Load the documentation skill."
+    },
+    "quick": {
+      "model": "opencode-go/kimi-k2.5",
+      "fallback_models": [
+        "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
+        "anthropic/claude-sonnet-4-6",
+        "opencode/big-pickle",
+        "openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free"
+      ]
+    },
+    "analysis": {
+      "model": "anthropic/claude-sonnet-4-6",
+      "fallback_models": [
+        "anthropic/claude-opus-4-6",
+        "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
+        "opencode-go/glm-5",
+        "opencode/big-pickle",
+        "openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free"
+      ]
+    },
+    "translation": {
+      "model": "google/gemini-2.5-flash",
+      "fallback_models": [
+        "opencode-go/kimi-k2.5",
+        "anthropic/claude-sonnet-4-6",
+        "openai/gpt-5.4",
+        "opencode/big-pickle",
+        "openrouter/free"
+      ],
+      "prompt_append": "Load the translater skill. Translate by context, maintain term consistency."
+    },
+    "security-review": {
+      "model": "anthropic/claude-opus-4-6",
+      "fallback_models": [
+        "opencode-go/glm-5",
+        "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
+        "opencode/big-pickle",
+        "openrouter/free"
+      ],
+      "tools": {
+        "edit": "deny",
+        "write": "deny"
+      },
+      "prompt_append": "Load the security-review skill. Read-only — do NOT modify files."
+    },
+    "deployment": {
+      "model": "anthropic/claude-sonnet-4-6",
+      "fallback_models": [
+        "google/gemini-2.5-flash",
+        "openai/gpt-5.4",
+        "opencode-go/glm-5",
+        "opencode/big-pickle",
+        "openrouter/free"
+      ],
+      "prompt_append": "Load the deployer skill. Default to dry-run. Verify all previous pipeline stages passed before deploying."
+    }
+  },
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Background concurrency
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  "background_task": {
+    "defaultConcurrency": 5,
+    "staleTimeoutMs": 300000,
+    "providerConcurrency": {
+      "opencode-go": 3,
+      "anthropic": 3,
+      "openai": 4,
+      "minimax-coding-plan": 4,
+      "google": 2,
+      "opencode": 3,
+      "openrouter": 6
+    },
+    "modelConcurrency": {
+      "anthropic/claude-opus-4-6": 2,
+      "anthropic/claude-sonnet-4-6": 3,
+      "minimax-coding-plan/MiniMax-M2.7": 3,
+      "opencode-go/kimi-k2.5": 4,
+      "opencode-go/glm-5": 3,
+      "opencode-go/kimi-k2.5": 3,
+      "google/gemini-2.5-flash": 3,
+      "openai/gpt-5.4": 2
+    }
+  },
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Tmux live monitoring
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  "tmux": {
+    "enabled": true,
+    "layout": "main-vertical",
+    "main_pane_size": 55
+  },
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Runtime fallback on rate limits
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  "model_fallback": true
+}

@@ -648,7 +648,7 @@ cat > "$SUMMARY_FILE_NORMALIZE" << 'EOF'
 > **Auto-generated post-mortem**
 EOF
 
-normalize_output=$(PIPELINE_REPO_ROOT="$NORMALIZE_ROOT" python3 "$REPO_ROOT/agentic-development/lib/normalize-summary.py" --workflow ultraworks --summary-file "$SUMMARY_FILE_NORMALIZE" --handoff-file "$NORMALIZE_ROOT/.opencode/pipeline/handoff.md" 2>/dev/null || true)
+normalize_output=$(PIPELINE_REPO_ROOT="$NORMALIZE_ROOT" npx tsx "$REPO_ROOT/agentic-development/monitor/src/lib/normalize-summary.ts" --workflow ultraworks --summary-file "$SUMMARY_FILE_NORMALIZE" --handoff-file "$NORMALIZE_ROOT/.opencode/pipeline/handoff.md" 2>/dev/null || true)
 
 assert_eq "normalize rewrites title from handoff task" "true" "$(grep -q '^# Add Translater Agent$' "$SUMMARY_FILE_NORMALIZE" && echo true || echo false)"
 assert_eq "normalize adds workflow header" "true" "$(grep -q '\*\*Workflow:\*\* Ultraworks' "$SUMMARY_FILE_NORMALIZE" && echo true || echo false)"

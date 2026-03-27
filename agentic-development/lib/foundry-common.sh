@@ -7,35 +7,49 @@
 FOUNDRY_HOME="${REPO_ROOT}/agentic-development"
 RUNTIME_ROOT="${FOUNDRY_HOME}/runtime"
 RUNTIME_LOG_DIR="${RUNTIME_ROOT}/logs"
-LEGACY_FOUNDRY_TASK_ROOT="${FOUNDRY_HOME}/tasks"
-LEGACY_FOUNDRY_QUEUE_ROOT="${FOUNDRY_HOME}/foundry-tasks"
 PIPELINE_TASKS_ROOT="${PIPELINE_TASKS_ROOT:-${REPO_ROOT}/tasks}"
 FOUNDRY_TASK_ROOT="${PIPELINE_TASKS_ROOT}"
 FOUNDRY_TASK_ROOT_REL="${FOUNDRY_TASK_ROOT#"$REPO_ROOT"/}"
 
+TASK_STATE_TS="$REPO_ROOT/agentic-development/monitor/src/lib/task-state.ts"
+
+_task_state() {
+  local cmd="$1"
+  shift
+  PIPELINE_TASKS_ROOT="$PIPELINE_TASKS_ROOT" FOUNDRY_DEBUG="${FOUNDRY_DEBUG:-}" npx tsx "$TASK_STATE_TS" "$cmd" "$@" 2>/dev/null
+}
+
+_state_json() {
+  local task_dir="$1"
+  echo "$task_dir/state.json"
+}
+
+_iso_timestamp() {
+  date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
 pipeline_slugify() {
   local text="${1:-unknown}"
-  python3 - "$text" <<'PYEOF'
-import re
-import sys
-
-text = sys.argv[1]
-title = ""
-for line in text.splitlines():
-    stripped = line.strip()
-    if stripped.startswith("# "):
-        title = stripped[2:].strip()
-        break
-    if stripped and not stripped.startswith("<!--"):
-        title = stripped
-        break
-
-if not title:
-    title = "unknown"
-
-slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
-print((slug or "unknown")[:60])
-PYEOF
+  local title=""
+  local line
+  
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [[ -z "$line" ]] && continue
+    if [[ "$line" == \#\ * ]]; then
+      title="${line#\# }"
+      break
+    fi
+    [[ "$line" != \<\!--* ]] && { title="$line"; break; }
+  done <<< "$text"
+  
+  [[ -z "$title" ]] && title="unknown"
+  
+  local slug
+  slug=$(echo "$title" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//;s/-$//')
+  [[ -z "$slug" ]] && slug="unknown"
+  echo "${slug:0:60}"
 }
 
 ensure_pipeline_tasks_root() {
@@ -70,6 +84,10 @@ runtime_log() {
 
 # ── Debug logging ──────────────────────────────────────────────────
 # Enable with FOUNDRY_DEBUG=true in .env.local
+# Writes timestamped debug entries to runtime/logs/foundry-debug.log
+# Usage: debug_log "category" "message" ["key=value" ...]
+
+# Load FOUNDRY_DEBUG from .env.local (unless already set in environment)
 if [[ "${FOUNDRY_DEBUG:-}" != "true" && -f "$REPO_ROOT/.env.local" ]]; then
   if grep -qm1 '^FOUNDRY_DEBUG=true' "$REPO_ROOT/.env.local" 2>/dev/null; then
     FOUNDRY_DEBUG=true
@@ -89,11 +107,21 @@ _init_debug_log() {
 debug_log() {
   [[ "$FOUNDRY_DEBUG" != "true" ]] && return 0
   [[ -z "$FOUNDRY_DEBUG_LOG" ]] && _init_debug_log
-  local category="$1"; shift || true
-  local message="$1"; shift || true
+  local category="$1"
+  shift || true
+  local message="$1"
+  shift || true
+  # Extra key=value pairs
   local extras=""
-  while [[ $# -gt 0 ]]; do extras="${extras} $1"; shift; done
-  printf '[%s] [%s] %s%s\n' "$(date '+%Y-%m-%d %H:%M:%S.%3N')" "$category" "$message" "$extras" >> "$FOUNDRY_DEBUG_LOG" 2>/dev/null
+  while [[ $# -gt 0 ]]; do
+    extras="${extras} $1"
+    shift
+  done
+  printf '[%s] [%s] %s%s\n' \
+    "$(date '+%Y-%m-%d %H:%M:%S.%3N')" \
+    "$category" \
+    "$message" \
+    "$extras" >> "$FOUNDRY_DEBUG_LOG" 2>/dev/null
 }
 
 foundry_worker_config_file() {
@@ -167,24 +195,13 @@ pipeline_task_append_event() {
   local step="${4:-}"
   local event_file="$task_dir/events.jsonl"
   mkdir -p "$task_dir"
-  python3 - "$event_file" "$event_type" "$message" "$step" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-
-path, event_type, message, step = sys.argv[1:5]
-event = {
-    "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-    "type": event_type,
-}
-if message:
-    event["message"] = message
-if step:
-    event["step"] = step
-
-with open(path, "a", encoding="utf-8") as fh:
-    fh.write(json.dumps(event, ensure_ascii=True) + "\n")
-PYEOF
+  local ts
+  ts=$(_iso_timestamp)
+  local event="{\"timestamp\":\"$ts\",\"type\":\"$event_type\""
+  [[ -n "$message" ]] && event="$event,\"message\":\"$message\""
+  [[ -n "$step" ]] && event="$event,\"step\":\"$step\""
+  event="$event}"
+  echo "$event" >> "$event_file"
 }
 
 foundry_task_dir_for_slug() {
@@ -200,20 +217,23 @@ foundry_task_dir_for_slug() {
 foundry_task_dir_from_file() {
   local path="$1"
   [[ -n "$path" ]] || return 1
-  python3 - "$PIPELINE_TASKS_ROOT" "$path" <<'PYEOF'
-from pathlib import Path
-import sys
-
-root = Path(sys.argv[1]).resolve()
-path = Path(sys.argv[2]).resolve()
-for parent in [path] + list(path.parents):
-    if parent == root:
-        break
-    if parent.parent == root and "--foundry" in parent.name:
-        print(parent)
-        raise SystemExit(0)
-raise SystemExit(1)
-PYEOF
+  local resolved
+  resolved=$(cd "$(dirname "$path")" && pwd)/$(basename "$path") 2>/dev/null || resolved="$path"
+  local dir="$resolved"
+  while [[ -n "$dir" && "$dir" != "/" ]]; do
+    local base
+    base=$(basename "$dir")
+    if [[ "$base" == *--foundry* && -d "$dir" ]]; then
+      local parent
+      parent=$(dirname "$dir")
+      if [[ "$parent" == "$PIPELINE_TASKS_ROOT" ]]; then
+        echo "$dir"
+        return 0
+      fi
+    fi
+    dir=$(dirname "$dir")
+  done
+  return 1
 }
 
 foundry_state_path() { echo "$1/state.json"; }
@@ -371,34 +391,16 @@ foundry_update_state_field() {
   local task_dir="$1"
   local key="$2"
   local value="$3"
+  local state_file
+  state_file="$(_state_json "$task_dir")"
   foundry_repair_state_file "$task_dir"
-  python3 - "$task_dir" "$key" "$value" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-key = sys.argv[2]
-value = sys.argv[3]
-state_path = task_dir / "state.json"
-data = {}
-if state_path.exists():
-    try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            data = {}
-    except (json.JSONDecodeError, OSError, TypeError, ValueError):
-        data = {}
-if value == "__NULL__":
-    data[key] = None
-else:
-    data[key] = value
-data["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
+  local ts
+  ts=$(_iso_timestamp)
+  if [[ "$value" == "__NULL__" ]]; then
+    jq --arg k "$key" --arg ts "$ts" '.[$k] = null | .updated_at = $ts' "$state_file" > "${state_file}.tmp" && mv "${state_file}.tmp" "$state_file"
+  else
+    jq --arg k "$key" --arg v "$value" --arg ts "$ts" '.[$k] = $v | .updated_at = $ts' "$state_file" > "${state_file}.tmp" && mv "${state_file}.tmp" "$state_file"
+  fi
 }
 
 foundry_set_state_status() {
@@ -407,90 +409,36 @@ foundry_set_state_status() {
   local current_step="${3:-}"
   local resume_from="${4:-}"
   foundry_repair_state_file "$task_dir"
-  python3 - "$task_dir" "$status" "$current_step" "$resume_from" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-status = sys.argv[2]
-current_step = sys.argv[3] or None
-resume_from = sys.argv[4] or None
-state_path = task_dir / "state.json"
-if state_path.exists():
-    try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            data = {}
-    except (json.JSONDecodeError, OSError, TypeError, ValueError):
-        data = {}
-else:
-    data = {
-        "task_id": task_dir.name,
-        "workflow": "foundry",
-        "started_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "attempt": 1,
-    }
-data["status"] = status
-data["current_step"] = current_step
-data["resume_from"] = resume_from
-data["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
+  local state_file
+  state_file="$(_state_json "$task_dir")"
+  local ts
+  ts=$(_iso_timestamp)
+  local updates=".status = \$status | .updated_at = \$ts"
+  [[ -n "$current_step" ]] && updates="$updates | .current_step = \$step"
+  [[ -n "$resume_from" ]] && updates="$updates | .resume_from = \$resume"
+  jq --arg status "$status" --arg ts "$ts" --arg step "$current_step" --arg resume "$resume_from" \
+    "$updates" "$state_file" > "${state_file}.tmp" && mv "${state_file}.tmp" "$state_file"
 }
 
 foundry_increment_attempt() {
   local task_dir="$1"
   foundry_repair_state_file "$task_dir"
-  python3 - "$task_dir" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-state_path = task_dir / "state.json"
-data = {}
-if state_path.exists():
-    try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            data = {}
-    except (json.JSONDecodeError, OSError, TypeError, ValueError):
-        data = {}
-data["attempt"] = int(data.get("attempt", 1)) + 1
-data["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
+  local state_file
+  state_file="$(_state_json "$task_dir")"
+  local ts
+  ts=$(_iso_timestamp)
+  local result
+  result=$(jq --arg ts "$ts" '.attempt = ((.attempt // 1) + 1) | .updated_at = $ts' "$state_file" > "${state_file}.tmp" && mv "${state_file}.tmp" "$state_file" && jq -r '.attempt' "$state_file")
+  echo "$result"
 }
 
 foundry_state_field() {
   local task_dir="$1"
   local key="$2"
-  python3 - "$task_dir" "$key" <<'PYEOF'
-import json
-import sys
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-key = sys.argv[2]
-state_path = task_dir / "state.json"
-if not state_path.exists():
-    raise SystemExit(0)
-try:
-    data = json.loads(state_path.read_text(encoding="utf-8"))
-except json.JSONDecodeError:
-    raise SystemExit(0)
-value = data.get(key)
-if value is None:
-    raise SystemExit(0)
-print(value)
-PYEOF
+  local state_file
+  state_file="$(_state_json "$task_dir")"
+  [[ -f "$state_file" ]] || return 0
+  jq -r --arg k "$key" '.[$k] // empty' "$state_file" 2>/dev/null || true
 }
 
 # ── Atomic task claiming for parallel workers ───────────────────────
@@ -792,80 +740,7 @@ foundry_state_upsert_agent() {
   local cost="${8:-}"
   local call_count="${9:-1}"
   foundry_repair_state_file "$task_dir"
-  python3 - "$task_dir" "$agent" "$status" "$model" "$duration_seconds" "$input_tokens" "$output_tokens" "$cost" "$call_count" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-agent, status, model = sys.argv[2], sys.argv[3], sys.argv[4]
-duration_seconds = sys.argv[5]
-input_tokens = sys.argv[6]
-output_tokens = sys.argv[7]
-cost = sys.argv[8]
-call_count = sys.argv[9]
-
-state_path = task_dir / "state.json"
-data = {}
-if state_path.exists():
-    try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            data = {}
-    except (json.JSONDecodeError, OSError):
-        data = {}
-
-agents = data.get("agents", [])
-if not isinstance(agents, list):
-    agents = []
-
-# Find existing agent entry or create new
-entry = None
-for a in agents:
-    if a.get("agent") == agent:
-        entry = a
-        break
-if entry is None:
-    entry = {"agent": agent}
-    agents.append(entry)
-
-entry["status"] = status
-
-def set_int(key, val):
-    if val:
-        try:
-            entry[key] = int(float(val))
-            return
-        except (ValueError, TypeError):
-            pass
-    entry.setdefault(key, "n/d")
-
-def set_float(key, val):
-    if val:
-        try:
-            entry[key] = round(float(val), 4)
-            return
-        except (ValueError, TypeError):
-            pass
-    entry.setdefault(key, "n/d")
-
-entry["model"] = model if model else entry.get("model", "n/d")
-set_int("duration_seconds", duration_seconds)
-set_int("input_tokens", input_tokens)
-set_int("output_tokens", output_tokens)
-set_float("cost", cost)
-set_int("call_count", call_count)
-
-entry["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-data["agents"] = agents
-data["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
+  _task_state record-agent "$task_dir" "$agent" "$status" "$model" "$duration_seconds" "$input_tokens" "$output_tokens" "$cost" "$call_count"
 }
 
 # Write all planned agents to state.json as "pending" + set profile
@@ -876,54 +751,41 @@ foundry_state_set_planned_agents() {
   shift 2
   local agents=("$@")
   foundry_repair_state_file "$task_dir"
-  python3 - "$task_dir" "$profile" "${agents[@]}" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-profile = sys.argv[2]
-planned_agents = sys.argv[3:]
-
-state_path = task_dir / "state.json"
-data = {}
-if state_path.exists():
-    try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            data = {}
-    except (json.JSONDecodeError, OSError):
-        data = {}
-
-# Preserve existing agent entries (planner may already be "done")
-existing = {a["agent"]: a for a in data.get("agents", []) if isinstance(a, dict)}
-
-agents = []
-for name in planned_agents:
-    if name in existing:
-        agents.append(existing[name])
-    else:
-        agents.append({
-            "agent": name,
-            "status": "pending",
-            "model": "",
-            "duration_seconds": 0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "cost": 0,
-            "call_count": 0,
-            "updated_at": ""
-        })
-
-data["agents"] = agents
-data["profile"] = profile
-data["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
+  
+  local state_file
+  state_file="$(_state_json "$task_dir")"
+  local ts
+  ts=$(_iso_timestamp)
+  
+  # Build agents array preserving existing entries
+  local agents_json="[]"
+  local existing_agents
+  existing_agents=$(jq -c '.agents // []' "$state_file" 2>/dev/null || echo "[]")
+  
+  for name in "${agents[@]}"; do
+    # Check if agent already exists
+    local existing
+    existing=$(echo "$existing_agents" | jq -c --arg n "$name" '.[] | select(.agent == $n)' 2>/dev/null || true)
+    
+    if [[ -n "$existing" ]]; then
+      # Keep existing entry
+      agents_json=$(echo "$agents_json" | jq -c --argjson e "$existing" '. + [$e]')
+    else
+      # Create new pending entry
+      local new_entry
+      new_entry=$(jq -c -n \
+        --arg name "$name" \
+        '{agent: $name, status: "pending", model: "", duration_seconds: 0, input_tokens: 0, output_tokens: 0, cost: 0, call_count: 0, updated_at: ""}')
+      agents_json=$(echo "$agents_json" | jq -c --argjson e "$new_entry" '. + [$e]')
+    fi
+  done
+  
+  local tmp="${state_file}.tmp"
+  jq --argjson agents "$agents_json" \
+     --arg profile "$profile" \
+     --arg ts "$ts" \
+     '.agents = $agents | .profile = $profile | .updated_at = $ts' \
+     "$state_file" > "$tmp" && mv "$tmp" "$state_file"
 }
 
 foundry_create_task_dir() {
@@ -967,174 +829,246 @@ foundry_list_task_dirs() {
 
 foundry_find_tasks_by_status() {
   local wanted="${1:-pending}"
-  python3 - "$PIPELINE_TASKS_ROOT" "$wanted" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-root = Path(sys.argv[1])
-wanted = set(sys.argv[2].split(","))
-now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-for task_dir in sorted(root.glob("*--foundry*")):
-    if not task_dir.is_dir():
-        continue
-    state_path = task_dir / "state.json"
-    # Auto-create state.json for manually-placed task.md files
-    if not state_path.exists() and (task_dir / "task.md").exists():
-        payload = {
-            "task_id": task_dir.name,
-            "workflow": "foundry",
-            "started_at": now,
-            "attempt": 1,
-            "status": "pending",
-            "current_step": None,
-            "resume_from": None,
-            "updated_at": now,
-            "task_file": str(task_dir / "task.md"),
-            "branch": None,
-        }
-        try:
-            state_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n")
-        except OSError:
-            pass
-    status = "pending"
-    if state_path.exists():
-        try:
-            status = json.loads(state_path.read_text(encoding="utf-8")).get("status", "pending")
-        except json.JSONDecodeError:
-            status = "pending"
-    if status in wanted:
-        print(task_dir)
-PYEOF
+  _task_state find-by-status "$wanted"
 }
+
+# ── HITL: Q&A file path helper ───────────────────────────────────────
+foundry_qa_file() { echo "$1/qa.json"; }
+foundry_qa_draft_file() { echo "$1/qa-draft.json"; }
 
 foundry_task_counts() {
-  python3 - "$PIPELINE_TASKS_ROOT" <<'PYEOF'
+  local counts
+  counts=$(_task_state counts)
+  [[ -n "$counts" ]] || return 0
+  echo "$counts" | jq -r 'to_entries | .[] | "\(.key)=\(.value)"'
+}
+
+# ── HITL: Handle waiting_answer state ───────────────────────────────
+# Called when an agent exits with code 75.
+# Validates qa.json, updates state.json, emits event.
+# Returns 0 if pipeline may continue (continue_on_wait=true), 75 to pause.
+foundry_handle_waiting_answer() {
+  local agent="$1"
+  local task_dir="$2"
+  local qa_file
+  qa_file=$(foundry_qa_file "$task_dir")
+
+  if [[ ! -f "$qa_file" ]]; then
+    echo "Warning: Agent $agent exited 75 but qa.json not found at $qa_file" >&2
+    return 1
+  fi
+
+  local unanswered
+  unanswered=$(python3 -c "
+import json, sys
+data = json.loads(open(sys.argv[1]).read())
+print(sum(1 for q in data.get('questions', []) if q.get('answer') is None))
+" "$qa_file" 2>/dev/null || echo "0")
+
+  if [[ "$unanswered" -eq 0 ]]; then
+    echo "Warning: Agent $agent exited 75 but no unanswered questions in qa.json" >&2
+    return 1
+  fi
+
+  # Update state.json
+  foundry_update_state_field "$task_dir" "status" "waiting_answer"
+  foundry_update_state_field "$task_dir" "waiting_agent" "$agent"
+  foundry_update_state_field "$task_dir" "waiting_since" "$(date -u +%FT%TZ)"
+  foundry_update_state_field "$task_dir" "questions_count" "$unanswered"
+  foundry_update_state_field "$task_dir" "questions_answered" "0"
+
+  # Emit event
+  pipeline_task_append_event "$task_dir" "waiting_answer" \
+    "Agent $agent has $unanswered unanswered question(s)" "$agent"
+
+  # Check if profile allows continuing
+  local continue_on_wait="false"
+  local plan_file="$task_dir/pipeline-plan.json"
+  if [[ -f "$plan_file" ]] && command -v jq &>/dev/null; then
+    continue_on_wait=$(jq -r '.continue_on_wait // false' "$plan_file" 2>/dev/null || echo "false")
+  fi
+
+  if [[ "$continue_on_wait" == "true" ]]; then
+    echo "Profile allows continuation — skipping to next agent" >&2
+    foundry_update_state_field "$task_dir" "resume_from" "$agent"
+    return 0  # Continue pipeline
+  fi
+
+  # Default: pause pipeline
+  echo "Pipeline paused — waiting for human answers" >&2
+  return 75
+}
+
+# ── HITL: Sync qa.json answers back to handoff.md ───────────────────
+foundry_sync_qa_to_handoff() {
+  local task_dir="$1"
+  local qa_file
+  qa_file=$(foundry_qa_file "$task_dir")
+  local handoff_file="$task_dir/handoff.md"
+
+  [[ -f "$qa_file" ]] || return 0
+  [[ -f "$handoff_file" ]] || return 0
+
+  python3 - "$qa_file" "$handoff_file" <<'PYEOF'
 import json
 import sys
-from collections import Counter
-from datetime import datetime, timezone
 from pathlib import Path
 
-root = Path(sys.argv[1])
-counts = Counter()
-now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+qa_path = Path(sys.argv[1])
+handoff_path = Path(sys.argv[2])
 
-for task_dir in root.glob("*--foundry*"):
-    if not task_dir.is_dir():
-        continue
-    state_path = task_dir / "state.json"
-    # Auto-create state.json for manually-placed task.md files
-    if not state_path.exists() and (task_dir / "task.md").exists():
-        payload = {
-            "task_id": task_dir.name,
-            "workflow": "foundry",
-            "started_at": now,
-            "attempt": 1,
-            "status": "pending",
-            "current_step": None,
-            "resume_from": None,
-            "updated_at": now,
-            "task_file": str(task_dir / "task.md"),
-            "branch": None,
-        }
-        try:
-            state_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n")
-        except OSError:
-            pass
-    status = "pending"
-    if state_path.exists():
-        try:
-            status = json.loads(state_path.read_text(encoding="utf-8")).get("status", "pending")
-        except json.JSONDecodeError:
-            status = "pending"
-    counts[status] += 1
-for key in ["pending", "in_progress", "completed", "failed", "suspended", "cancelled", "stopped"]:
-    print(f"{key}={counts.get(key, 0)}")
+try:
+    data = json.loads(qa_path.read_text(encoding="utf-8"))
+except (json.JSONDecodeError, OSError):
+    raise SystemExit(0)
+
+questions = data.get("questions", [])
+if not questions:
+    raise SystemExit(0)
+
+# Build Q&A markdown block
+lines = ["", "### Q&A", ""]
+for i, q in enumerate(questions, 1):
+    priority = q.get("priority", "non-blocking")
+    agent = q.get("agent", "unknown")
+    question_text = q.get("question", "")
+    options = q.get("options", [])
+    answer = q.get("answer")
+    answered_by = q.get("answered_by", "")
+    answer_source = q.get("answer_source", "")
+
+    lines.append(f"> **Q{i}** [{priority}] {question_text} (asked by {agent})")
+    for opt in options:
+        checked = "x" if answer == opt else " "
+        lines.append(f"> - [{checked}] {opt}")
+    if answer:
+        by_info = f" (by {answered_by}" + (f" via {answer_source}" if answer_source else "") + ")"
+        lines.append(f">")
+        lines.append(f"> **A{i}**{by_info}: {answer}")
+    else:
+        lines.append(f">")
+        lines.append(f"> **A{i}**: —")
+    lines.append("")
+
+qa_block = "\n".join(lines)
+
+# Update or append Q&A section in handoff.md
+content = handoff_path.read_text(encoding="utf-8")
+
+# Remove existing Q&A block if present
+import re
+content = re.sub(r'\n### Q&A\n.*?(?=\n## |\Z)', '', content, flags=re.DOTALL)
+
+# Append new Q&A block
+content = content.rstrip() + "\n" + qa_block + "\n"
+handoff_path.write_text(content, encoding="utf-8")
 PYEOF
 }
 
-foundry_migrate_legacy_state() {
-  local queue_root="$1"
-  local status="$2"
-  local src_dir="$queue_root/$status"
-  [[ -d "$src_dir" ]] || return 0
-  local file task_dir slug cleaned
-  for file in "$src_dir"/*.md; do
-    [[ -f "$file" ]] || continue
-    slug=$(basename "$file" .md)
-    task_dir=$(foundry_task_dir_for_slug "$slug" || true)
-    if [[ -z "$task_dir" ]]; then
-      cleaned=$(sed '/^<!-- batch:.*-->$/d;/^<!-- suspended:.*-->$/d' "$file")
-      task_dir=$(foundry_create_task_dir "$cleaned" "$slug")
-    fi
-    if [[ ! -f "$task_dir/task.md" || ! -s "$task_dir/task.md" ]]; then
-      sed '/^<!-- batch:.*-->$/d;/^<!-- suspended:.*-->$/d' "$file" > "$task_dir/task.md"
-    fi
-    case "$status" in
-      todo) foundry_set_state_status "$task_dir" "pending" "" "" ;;
-      in-progress) foundry_set_state_status "$task_dir" "in_progress" "" "" ;;
-      done|archive) foundry_set_state_status "$task_dir" "completed" "" "" ;;
-      failed) foundry_set_state_status "$task_dir" "failed" "" "" ;;
-      suspended) foundry_set_state_status "$task_dir" "suspended" "" "" ;;
-      stopped) foundry_set_state_status "$task_dir" "stopped" "" "" ;;
-    esac
-  done
-}
+# ── HITL: Resume pipeline after Q&A answers ─────────────────────────
+# Validates all blocking questions are answered, then resumes pipeline.
+foundry_resume_qa() {
+  local task_dir="$1"
+  local qa_file
+  qa_file=$(foundry_qa_file "$task_dir")
 
-foundry_migrate_legacy_artifacts() {
-  local src_root="$1"
-  local artifact_root="$src_root/artifacts"
-  local summary_root="$src_root/summary"
-  [[ -d "$artifact_root" || -d "$summary_root" ]] || return 0
-
-  local dir slug task_dir
-  if [[ -d "$artifact_root" ]]; then
-    for dir in "$artifact_root"/*; do
-      [[ -d "$dir" ]] || continue
-      slug=$(basename "$dir")
-      task_dir=$(foundry_task_dir_for_slug "$slug" || true)
-      [[ -n "$task_dir" ]] || task_dir=$(foundry_create_task_dir "# ${slug}" "$slug")
-      mkdir -p "$(foundry_artifacts_dir "$task_dir")"
-      if [[ ! -e "$(foundry_artifacts_dir "$task_dir")/$(basename "$dir")" ]]; then
-        cp -R "$dir" "$(foundry_artifacts_dir "$task_dir")/" 2>/dev/null || true
-      fi
-    done
+  if [[ ! -f "$qa_file" ]]; then
+    echo "Error: qa.json not found at $qa_file" >&2
+    return 1
   fi
 
-  local summary_file summary_name
-  if [[ -d "$summary_root" ]]; then
-    for summary_file in "$summary_root"/*.md; do
-      [[ -f "$summary_file" ]] || continue
-      summary_name=$(basename "$summary_file")
-      slug=$(printf '%s' "$summary_name" | sed -E 's/^[a-z]-[0-9_]+-//; s/\.md$//')
-      task_dir=$(foundry_task_dir_for_slug "$slug" || true)
-      [[ -n "$task_dir" ]] || continue
-      if [[ ! -s "$(foundry_summary_file "$task_dir")" ]]; then
-        cp "$summary_file" "$(foundry_summary_file "$task_dir")" 2>/dev/null || true
-      fi
-    done
+  local blocking_unanswered
+  blocking_unanswered=$(python3 -c "
+import json, sys
+data = json.loads(open(sys.argv[1]).read())
+print(sum(1 for q in data.get('questions', [])
+         if q.get('priority') == 'blocking' and q.get('answer') is None))
+" "$qa_file" 2>/dev/null || echo "0")
+
+  if [[ "$blocking_unanswered" -gt 0 ]]; then
+    echo "Error: $blocking_unanswered blocking question(s) still unanswered" >&2
+    return 1
   fi
+
+  # Sync qa.json answers back to handoff.md
+  foundry_sync_qa_to_handoff "$task_dir"
+
+  # Get waiting agent
+  local resume_agent
+  resume_agent=$(foundry_state_field "$task_dir" "waiting_agent" 2>/dev/null || echo "")
+
+  if [[ -z "$resume_agent" ]]; then
+    echo "Error: no waiting_agent in state.json" >&2
+    return 1
+  fi
+
+  # Update state
+  foundry_set_state_status "$task_dir" "pending" "$resume_agent" "$resume_agent"
+  foundry_update_state_field "$task_dir" "resume_from" "$resume_agent"
+
+  # Count answered questions
+  local total_answered
+  total_answered=$(python3 -c "
+import json, sys
+data = json.loads(open(sys.argv[1]).read())
+print(sum(1 for q in data.get('questions', []) if q.get('answer') is not None))
+" "$qa_file" 2>/dev/null || echo "0")
+
+  foundry_update_state_field "$task_dir" "questions_answered" "$total_answered"
+
+  # Emit event
+  pipeline_task_append_event "$task_dir" "qa_answered" \
+    "Questions answered — resuming from $resume_agent" "$resume_agent"
+
+  echo "✓ Pipeline resumed from $resume_agent"
+  return 0
 }
 
-maybe_migrate_legacy_foundry_tasks() {
-  ensure_pipeline_tasks_root
-  [[ -d "$LEGACY_FOUNDRY_TASK_ROOT" || -d "$LEGACY_FOUNDRY_QUEUE_ROOT" ]] || return 0
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_TASK_ROOT" "todo"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_TASK_ROOT" "in-progress"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_TASK_ROOT" "done"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_TASK_ROOT" "failed"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_TASK_ROOT" "suspended"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_QUEUE_ROOT" "todo"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_QUEUE_ROOT" "in-progress"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_QUEUE_ROOT" "done"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_QUEUE_ROOT" "failed"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_QUEUE_ROOT" "suspended"
-  foundry_migrate_legacy_state "$LEGACY_FOUNDRY_QUEUE_ROOT" "archive"
-  foundry_migrate_legacy_artifacts "$LEGACY_FOUNDRY_TASK_ROOT"
-  foundry_migrate_legacy_artifacts "$LEGACY_FOUNDRY_QUEUE_ROOT"
+# ── HITL: Answer a question in qa.json from CLI ──────────────────────
+foundry_answer_question() {
+  local task_dir="$1"
+  local question_id="$2"
+  local answer_text="$3"
+  local answered_by="${4:-human}"
+  local qa_file
+  qa_file=$(foundry_qa_file "$task_dir")
+
+  [[ -f "$qa_file" ]] || { echo "Error: qa.json not found" >&2; return 1; }
+
+  python3 - "$qa_file" "$question_id" "$answer_text" "$answered_by" <<'PYEOF'
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+qa_path = Path(sys.argv[1])
+question_id = sys.argv[2]
+answer_text = sys.argv[3]
+answered_by = sys.argv[4]
+
+data = json.loads(qa_path.read_text(encoding="utf-8"))
+found = False
+for q in data.get("questions", []):
+    if q.get("id") == question_id:
+        q["answer"] = answer_text
+        q["answered_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        q["answered_by"] = answered_by
+        q["answer_source"] = "cli"
+        found = True
+        break
+
+if not found:
+    print(f"Error: question {question_id} not found", file=sys.stderr)
+    raise SystemExit(1)
+
+qa_path.write_text(json.dumps(data, ensure_ascii=True, indent=2) + "\n", encoding="utf-8")
+print(f"✓ Answered question {question_id}")
+PYEOF
+}
+
+# ── HITL: List tasks waiting for answers ────────────────────────────
+foundry_list_waiting_tasks() {
+  foundry_find_tasks_by_status "waiting_answer"
 }
 
 ensure_foundry_task_root() {
@@ -1286,112 +1220,6 @@ foundry_cancel_in_progress_tasks() {
         pipeline_task_append_event "$task_dir" "stopped" "Pipeline stopped by user" ""
       fi
     fi
+    # waiting_answer tasks are preserved — they need human input, not cancellation
   done
-}
-
-# ── Q&A helpers (Human-in-the-Loop protocol) ────────────────────────
-
-# Return the path to the qa.json file for a task directory.
-foundry_qa_file() {
-  echo "$1/qa.json"
-}
-
-# Count unanswered questions in qa.json.
-# Prints the count (0 if file missing or no questions).
-foundry_qa_unanswered_count() {
-  local task_dir="$1"
-  local qa_file
-  qa_file=$(foundry_qa_file "$task_dir")
-  [[ -f "$qa_file" ]] || { echo 0; return; }
-  python3 - "$qa_file" <<'PYEOF'
-import json, sys
-try:
-    data = json.loads(open(sys.argv[1]).read())
-    questions = data.get("questions", [])
-    count = sum(1 for q in questions if q.get("answer") is None)
-    print(count)
-except Exception:
-    print(0)
-PYEOF
-}
-
-# Count unanswered BLOCKING questions in qa.json.
-# Prints the count (0 if file missing or no blocking questions).
-foundry_qa_blocking_unanswered_count() {
-  local task_dir="$1"
-  local qa_file
-  qa_file=$(foundry_qa_file "$task_dir")
-  [[ -f "$qa_file" ]] || { echo 0; return; }
-  python3 - "$qa_file" <<'PYEOF'
-import json, sys
-try:
-    data = json.loads(open(sys.argv[1]).read())
-    questions = data.get("questions", [])
-    count = sum(1 for q in questions
-                if q.get("priority") == "blocking" and q.get("answer") is None)
-    print(count)
-except Exception:
-    print(0)
-PYEOF
-}
-
-# Count total questions and answered questions in qa.json.
-# Prints "answered/total" (e.g. "1/3").
-foundry_qa_progress() {
-  local task_dir="$1"
-  local qa_file
-  qa_file=$(foundry_qa_file "$task_dir")
-  [[ -f "$qa_file" ]] || { echo "0/0"; return; }
-  python3 - "$qa_file" <<'PYEOF'
-import json, sys
-try:
-    data = json.loads(open(sys.argv[1]).read())
-    questions = data.get("questions", [])
-    total = len(questions)
-    answered = sum(1 for q in questions if q.get("answer") is not None)
-    print(f"{answered}/{total}")
-except Exception:
-    print("0/0")
-PYEOF
-}
-
-# Mark state.json fields for waiting_answer status.
-# Sets: status=waiting_answer, waiting_agent, waiting_since, questions_count, questions_answered.
-foundry_set_waiting_answer() {
-  local task_dir="$1"
-  local waiting_agent="$2"
-  local questions_count="${3:-0}"
-  foundry_repair_state_file "$task_dir"
-  python3 - "$task_dir" "$waiting_agent" "$questions_count" <<'PYEOF'
-import json, sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-waiting_agent = sys.argv[2]
-questions_count = int(sys.argv[3])
-state_path = task_dir / "state.json"
-
-data = {}
-if state_path.exists():
-    try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            data = {}
-    except (json.JSONDecodeError, OSError):
-        data = {}
-
-now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-data["status"] = "waiting_answer"
-data["waiting_agent"] = waiting_agent
-data["waiting_since"] = now
-data["questions_count"] = questions_count
-data["questions_answered"] = 0
-data["resume_from"] = waiting_agent
-data["updated_at"] = now
-
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
 }

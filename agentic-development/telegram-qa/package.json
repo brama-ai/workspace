@@ -1,0 +1,20 @@
+{
+  "name": "foundry-telegram-qa",
+  "version": "1.0.0",
+  "description": "Standalone Telegram Q&A bot for Foundry HITL pipeline",
+  "type": "module",
+  "main": "dist/bot.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/bot.js",
+    "dev": "tsx src/bot.ts"
+  },
+  "dependencies": {
+    "grammy": "^1.30.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}

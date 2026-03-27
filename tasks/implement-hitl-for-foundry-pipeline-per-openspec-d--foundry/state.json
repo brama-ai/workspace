@@ -3,10 +3,10 @@
   "workflow": "foundry",
   "started_at": "2026-03-26T15:14:27.469631Z",
   "attempt": 1,
-  "status": "completed",
-  "current_step": null,
-  "resume_from": null,
-  "updated_at": "2026-03-26T20:29:57.799135Z",
+  "status": "in_progress",
+  "current_step": "u-summarizer",
+  "resume_from": "u-summarizer",
+  "updated_at": "2026-03-26T20:29:50.124944Z",
   "task_file": "/workspaces/brama/tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/task.md",
   "branch": "pipeline/implement-hitl-for-foundry-pipeline-per-openspec-d",
   "agents": [
@@ -36,12 +36,12 @@
       "agent": "u-summarizer",
       "status": "done",
       "model": "anthropic/claude-opus-4-6",
-      "duration_seconds": 1058,
+      "duration_seconds": 145,
       "input_tokens": 13,
       "output_tokens": 7281,
       "cost": 1.0565,
       "call_count": 1,
-      "updated_at": "2026-03-26T20:29:50.559662Z"
+      "updated_at": "2026-03-26T20:29:50.124930Z"
     }
   ]
 }
