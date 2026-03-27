@@ -172,13 +172,25 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
   };
 }
 
+const DEFAULT_FALLBACKS: Record<string, string[]> = {
+  "u-investigator": ["google/gemini-2.5-flash", "minimax-coding-plan/MiniMax-M2.7", "opencode-go/glm-5", "openai/gpt-5.4", "anthropic/claude-sonnet-4-6", "opencode/big-pickle"],
+  "u-architect":    ["google/gemini-2.5-flash", "minimax-coding-plan/MiniMax-M2.7", "opencode-go/glm-5", "openai/gpt-5.4", "anthropic/claude-sonnet-4-6", "opencode/big-pickle"],
+  "u-coder":        ["minimax-coding-plan/MiniMax-M2.7", "opencode-go/glm-5", "google/gemini-2.5-flash", "openai/gpt-5.3-codex", "anthropic/claude-sonnet-4-6", "opencode/big-pickle"],
+  "u-validator":    ["opencode-go/kimi-k2.5", "google/gemini-2.5-flash", "anthropic/claude-sonnet-4-6", "openai/gpt-5.2", "opencode/big-pickle"],
+  "u-tester":       ["minimax-coding-plan/MiniMax-M2.7", "anthropic/claude-sonnet-4-6", "opencode-go/glm-5", "openai/gpt-5.3-codex", "google/gemini-2.5-flash", "opencode/big-pickle"],
+  "u-documenter":   ["anthropic/claude-sonnet-4-6", "minimax-coding-plan/MiniMax-M2.7", "google/gemini-2.5-flash", "openai/gpt-5.4", "opencode-go/kimi-k2.5", "opencode/big-pickle"],
+  "u-auditor":      ["minimax-coding-plan/MiniMax-M2.7", "anthropic/claude-sonnet-4-6", "opencode-go/glm-5", "openai/gpt-5.4", "google/gemini-2.5-flash", "opencode/big-pickle"],
+  "u-merger":       ["minimax-coding-plan/MiniMax-M2.7", "anthropic/claude-sonnet-4-6", "opencode-go/glm-5", "openai/gpt-5.4", "google/gemini-2.5-flash", "opencode/big-pickle"],
+  "u-summarizer":   ["anthropic/claude-opus-4-6", "minimax-coding-plan/MiniMax-M2.7", "google/gemini-2.5-flash", "openai/gpt-5.4", "opencode-go/glm-5", "opencode/big-pickle"],
+};
+
 function getFallbackChain(agent: string): string[] {
   const key = `PIPELINE_FALLBACK_${agent.replace(/^u-/, "").toUpperCase()}`;
   const envValue = env[key];
   if (envValue) {
     return envValue.split(",").filter(Boolean);
   }
-  return [];
+  return DEFAULT_FALLBACKS[agent] ?? [];
 }
 
 function getContinueOnWait(taskDir: string): boolean {
