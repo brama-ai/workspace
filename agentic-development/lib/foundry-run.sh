@@ -1324,7 +1324,7 @@ apply_profile() {
   timeouts=$(jq -r ".\"${profile_name}\".timeout_overrides // {} | to_entries[] | \"\(.key)=\(.value)\"" "$PROFILES_FILE" 2>/dev/null)
   while IFS='=' read -r key val; do
     [[ -z "$key" ]] && continue
-    local var="PIPELINE_TIMEOUT_$(echo "$key" | tr '[:lower:]' '[:upper:]')"
+    local var="PIPELINE_TIMEOUT_$(echo "$key" | tr '[:lower:]' '[:upper:]' | tr '-' '_')"
     eval "$var=$val"
     echo -e "  ${BLUE}Timeout ${key}: ${val}s${NC}"
   done <<< "$timeouts"
@@ -1380,7 +1380,7 @@ apply_plan() {
   timeouts=$(jq -r '.timeout_overrides // {} | to_entries[] | "\(.key)=\(.value)"' "$plan_file" 2>/dev/null)
   while IFS='=' read -r key val; do
     [[ -z "$key" ]] && continue
-    local var="PIPELINE_TIMEOUT_$(echo "$key" | tr '[:lower:]' '[:upper:]')"
+    local var="PIPELINE_TIMEOUT_$(echo "$key" | tr '[:lower:]' '[:upper:]' | tr '-' '_')"
     eval "$var=$val"
   done <<< "$timeouts"
 
