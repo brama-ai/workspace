@@ -1,11 +1,7 @@
 import { spawnSync, spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { join, dirname, basename } from "node:path";
-import { fileURLToPath } from "node:url";
 import { env } from "node:process";
-import { fileURLToPath } from "node:url";
 
 const DEBUG = env.FOUNDRY_DEBUG === "true";
 

@@ -390,64 +390,43 @@ foundry_state_field() {
 
 # ── Atomic task claiming for parallel workers ───────────────────────
 # Returns 0 if task was claimed, 1 if already taken.
-# Uses fcntl file locking via Python for atomicity.
+# Uses flock for atomic file locking.
 foundry_claim_task() {
   local task_dir="$1"
   local worker_id="${2:-main}"
-  python3 - "$task_dir" "$worker_id" <<'PYEOF'
-import fcntl
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-worker_id = sys.argv[2]
-state_path = task_dir / "state.json"
-lock_path = task_dir / ".claim.lock"
-
-# Create lock file
-lock_path.touch(exist_ok=True)
-lock_fd = open(lock_path, "r+")
-
-try:
-    fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-except (OSError, IOError):
-    # Another process holds the lock
-    lock_fd.close()
-    raise SystemExit(1)
-
-try:
-    data = {}
-    if state_path.exists():
-        try:
-            data = json.loads(state_path.read_text(encoding="utf-8"))
-            if not isinstance(data, dict):
-                data = {}
-        except (json.JSONDecodeError, OSError):
-            data = {}
-
-    status = data.get("status", "pending")
-    if status != "pending":
-        # Already claimed or not available
-        raise SystemExit(1)
-
-    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    data["status"] = "in_progress"
-    data["worker_id"] = worker_id
-    data["claimed_at"] = now
-    data["updated_at"] = now
-
-    with open(state_path, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, ensure_ascii=True, indent=2)
-        fh.write("\n")
-
-    # Success
-    raise SystemExit(0)
-finally:
-    fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
-    lock_fd.close()
-PYEOF
+  local lock_file="$task_dir/.claim.lock"
+  local state_file="$task_dir/state.json"
+  local now
+  
+  touch "$lock_file"
+  
+  (
+    # Non-blocking exclusive lock
+    flock -n 9 || exit 1
+    
+    local status="pending"
+    if [[ -f "$state_file" ]]; then
+      status=$(jq -r '.status // "pending"' "$state_file" 2>/dev/null) || status="pending"
+    fi
+    
+    if [[ "$status" != "pending" ]]; then
+      exit 1
+    fi
+    
+    now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    
+    local existing="{}"
+    [[ -f "$state_file" ]] && existing=$(cat "$state_file" 2>/dev/null) || existing="{}"
+    
+    echo "$existing" | jq --arg worker_id "$worker_id" --arg now "$now" '
+      .status = "in_progress" |
+      .worker_id = $worker_id |
+      .claimed_at = $now |
+      .updated_at = $now
+    ' > "$state_file"
+    
+    exit 0
+  ) 9>"$lock_file"
 }
 
 # Release a claimed task back to pending (e.g. worker crashed before starting)
@@ -474,7 +453,7 @@ foundry_resume_stopped_task() {
   local current_status
   current_status=$(foundry_state_field "$task_dir" status 2>/dev/null || echo "")
   if [[ "$current_status" != "stopped" ]]; then
-    echo "Warning: Task is not in stopped state (current: $current_status)" >&2
+    echo "Warning: Task is not in stopped state, current=$current_status" >&2
     return 1
   fi
 
@@ -495,105 +474,89 @@ foundry_resume_stopped_task() {
 # Find and claim the next pending task (priority-sorted). Prints task_dir on success.
 foundry_claim_next_task() {
   local worker_id="${1:-main}"
-  python3 - "$PIPELINE_TASKS_ROOT" "$worker_id" <<'PYEOF'
-import fcntl
-import json
-import re
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-root = Path(sys.argv[1])
-worker_id = sys.argv[2]
-
-# Collect pending tasks with priority
-candidates = []
-for task_dir in sorted(root.glob("*--foundry*")):
-    if not task_dir.is_dir():
-        continue
-    state_path = task_dir / "state.json"
-    status = "pending"
-    if state_path.exists():
-        try:
-            status = json.loads(state_path.read_text(encoding="utf-8")).get("status", "pending")
-        except (json.JSONDecodeError, OSError):
-            status = "pending"
-    if status != "pending":
-        continue
-
-    # Read priority from task.md
-    priority = 1
-    task_md = task_dir / "task.md"
-    if task_md.exists():
-        try:
-            first_line = task_md.read_text(encoding="utf-8").split("\n", 1)[0]
-            m = re.search(r"<!--\s*priority:\s*(\d+)\s*-->", first_line)
-            if m:
-                priority = int(m.group(1))
-        except (OSError, ValueError):
-            pass
-
-    candidates.append((priority, task_dir))
-
-# Sort by priority descending
-candidates.sort(key=lambda x: x[0], reverse=True)
-
-# Try to claim each one atomically
-now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-for _, task_dir in candidates:
-    state_path = task_dir / "state.json"
-    lock_path = task_dir / ".claim.lock"
-    lock_path.touch(exist_ok=True)
-
-    try:
-        lock_fd = open(lock_path, "r+")
-        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except (OSError, IOError):
-        continue  # Another worker is claiming this one
-
-    try:
-        data = {}
-        if state_path.exists():
-            try:
-                data = json.loads(state_path.read_text(encoding="utf-8"))
-                if not isinstance(data, dict):
-                    data = {}
-            except (json.JSONDecodeError, OSError):
-                data = {}
-
-        if data.get("status", "pending") != "pending":
-            continue  # Already claimed between check and lock
-
-        # Ensure all required fields exist — covers tasks created manually
-        # (task.md placed in tasks/ without going through foundry_create_task_dir)
-        data.setdefault("task_id", task_dir.name)
-        data.setdefault("workflow", "foundry")
-        data.setdefault("attempt", 1)
-        data.setdefault("current_step", None)
-        data.setdefault("resume_from", None)
-        data.setdefault("branch", None)
-        data.setdefault("task_file", str(task_dir / "task.md"))
-        data.setdefault("started_at", now)
-
-        data["status"] = "in_progress"
-        data["worker_id"] = worker_id
-        data["claimed_at"] = now
-        data["updated_at"] = now
-
-        with open(state_path, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, ensure_ascii=True, indent=2)
-            fh.write("\n")
-
-        print(task_dir)
-        raise SystemExit(0)
-    finally:
-        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
-        lock_fd.close()
-
-# No task available
-raise SystemExit(1)
-PYEOF
+  
+  # Collect pending tasks with priority
+  local -a candidates=()
+  local task_dir state_file status priority first_line
+  
+  for task_dir in "$PIPELINE_TASKS_ROOT"/*--foundry*; do
+    [[ ! -d "$task_dir" ]] && continue
+    state_file="$task_dir/state.json"
+    
+    status="pending"
+    if [[ -f "$state_file" ]]; then
+      status=$(jq -r '.status // "pending"' "$state_file" 2>/dev/null) || status="pending"
+    fi
+    [[ "$status" != "pending" ]] && continue
+    
+    # Read priority from task.md (<!-- priority: N -->)
+    priority=1
+    if [[ -f "$task_dir/task.md" ]]; then
+      first_line=$(head -1 "$task_dir/task.md" 2>/dev/null)
+      if [[ "$first_line" =~ priority:\ *([0-9]+) ]]; then
+        priority="${BASH_REMATCH[1]}"
+      fi
+    fi
+    
+    candidates+=("$priority:$task_dir")
+  done
+  
+  [[ ${#candidates[@]} -eq 0 ]] && return 1
+  
+  # Sort by priority descending
+  IFS=$'\n' read -r -d '' -a candidates < <(printf '%s\n' "${candidates[@]}" | sort -t: -k1 -rn) || true
+  
+  # Try to claim each one atomically
+  local now
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  
+  for entry in "${candidates[@]}"; do
+    task_dir="${entry#*:}"
+    local lock_file="$task_dir/.claim.lock"
+    local state_file="$task_dir/state.json"
+    
+    touch "$lock_file"
+    
+    local claimed=false
+    (
+      flock -n 9 || exit 1
+      
+      local cur_status="pending"
+      if [[ -f "$state_file" ]]; then
+        cur_status=$(jq -r '.status // "pending"' "$state_file" 2>/dev/null) || cur_status="pending"
+      fi
+      [[ "$cur_status" != "pending" ]] && exit 1
+      
+      local existing="{}"
+      [[ -f "$state_file" ]] && existing=$(cat "$state_file" 2>/dev/null) || existing="{}"
+      local task_id
+      task_id=$(basename "$task_dir")
+      
+      echo "$existing" | jq --arg task_id "$task_id" \
+        --arg worker_id "$worker_id" \
+        --arg now "$now" \
+        --arg task_file "$task_dir/task.md" '
+        .task_id = (.task_id // $task_id) |
+        .workflow = (.workflow // "foundry") |
+        .attempt = (.attempt // 1) |
+        .started_at = (.started_at // $now) |
+        .task_file = (.task_file // $task_file) |
+        .status = "in_progress" |
+        .worker_id = $worker_id |
+        .claimed_at = $now |
+        .updated_at = $now
+      ' > "$state_file"
+      
+      exit 0
+    ) 9>"$lock_file"
+    
+    if [[ $? -eq 0 ]]; then
+      echo "$task_dir"
+      return 0
+    fi
+  done
+  
+  return 1
 }
 
 # ── Git worktree management for parallel workers ────────────────────
@@ -823,26 +786,7 @@ foundry_find_tasks_by_status() {
       local now task_id
       now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
       task_id=$(basename "$task_dir")
-      local task_file_rel="${task_file#$REPO_ROOT/${task_file#$REPO_ROOT}"
-      task_file_rel=${task_file#$REPO_ROOT/$${task_file#}"
-      
-      local payload
-      payload=$(cat <<EOF
-{
-  "task_id": "$task_id",
-  "workflow": "foundry",
-  "started_at": "$now",
-  "attempt": 1,
-  "status": "pending",
-  "current_step": null,
-  "resume_from": null,
-  "updated_at": "$now",
-  "task_file": "$task_file_rel",
-  "branch": null
-}
-EOF
-      )
-      echo "$payload" > "$state_file"
+      echo "{\"task_id\":\"$task_id\",\"workflow\":\"foundry\",\"started_at\":\"$now\",\"attempt\":1,\"status\":\"pending\",\"current_step\":null,\"resume_from\":null,\"updated_at\":\"$now\",\"task_file\":\"$task_file\",\"branch\":null}" > "$state_file"
     fi
     
     status=$(jq -r '.status // "pending"' "$state_file" 2>/dev/null) || status="pending"
@@ -852,28 +796,14 @@ EOF
     fi
   done
 }
-        try:
-            state_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n")
-        except OSError:
-            pass
-    status = "pending"
-    if state_path.exists():
-        try:
-            status = json.loads(state_path.read_text(encoding="utf-8")).get("status", "pending")
-        except json.JSONDecodeError:
-            status = "pending"
-    if status in wanted:
-        print(task_dir)
-PYEOF
-}
 
 foundry_task_counts() {
-  local pending=0 in_progress=1 completed=1 failed=1 suspended=1 cancelled=1 stopped=1
+  local pending=0 in_progress=0 completed=0 failed=0 suspended=0 cancelled=0 stopped=0
   
   for task_dir in "$PIPELINE_TASKS_ROOT"/*--foundry*; do
     [[ ! -d "$task_dir" ]] && continue
     state_file="$task_dir/state.json"
-    status=$(jq -r '.status // "pending' "$state_file" 2>/dev/null) || status="pending"
+    status=$(jq -r '.status // "pending"' "$state_file" 2>/dev/null) || status="pending"
     
     case "$status" in
       pending) pending=$((pending + 1)) ;;
@@ -1056,57 +986,67 @@ foundry_cleanup_zombies() {
 
 # Print zombie/process status report (for monitor display)
 foundry_process_status() {
-  local repo_root="$1"
-  local result=""
-  local processes
+  local repo_root="${1:-$REPO_ROOT}"
+  local lockfile="$repo_root/.opencode/pipeline/.batch.lock"
+  local log_dir="$repo_root/agentic-development/runtime/logs"
   
-  # Use jq to bash instead of Python
-  local ps_output=""
+  local workers="[]"
+  local zombies="[]"
+  local lock="null"
   
-  for task_dir in $(find "$PIPELINE_TASKS_ROOT" -type d - - --sort |); do
-  [[ ! -d "$task_dir" ]] && continue
-    state_file="$task_dir/state.json"
-    [[ ! -f "$state_file" ]] && continue
-    state=$(jq -r '.status // "pending"' "$state_file" 2>/dev/null) || status="pending"
-    
-    if [[ "$status" == "pending" || [[ "$status" == "in_progress" ]]; then
-      echo "$task_dir"
-    elif
-      echo "$task_dir"
+  # Check batch lock
+  if [[ -f "$lockfile" ]]; then
+    local pid
+    pid=$(cat "$lockfile" 2>/dev/null | tr -d '[:space:]')
+    if [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]]; then
+      local state="unknown"
+      if [[ -f "/proc/$pid/status" ]]; then
+        state=$(grep -m1 '^State:' "/proc/$pid/status" 2>/dev/null | awk '{print $2}') || state="unknown"
+      fi
+      local is_zombie=false
+      [[ "$state" == "Z" ]] && is_zombie=true
+      lock=$(jq -n --argjson pid "$pid" --arg state "$state" --argjson zombie "$is_zombie" \
+        '{pid: $pid, state: $state, zombie: $zombie}')
     fi
-  done
+  fi
   
-  echo "$processes"
-}
-            # Find matching log file
-            if log_dir.exists():
-                logs = sorted(log_dir.glob("*.log"), key=lambda p: p.stat().st_mtime, reverse=True)
-                if logs:
-                    entry["log"] = str(logs[0])
-            if is_zombie:
-                result["zombies"].append(entry)
-            else:
-                result["workers"].append(entry)
-except Exception:
-    pass
-
-print(json.dumps(result))
-PYEOF
+  # Active foundry/opencode workers
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    local pid stat etime args
+    read -r pid stat etime args <<< "$line"
+    [[ -z "$pid" ]] && continue
+    
+    if echo "$args" | grep -qE "foundry|opencode"; then
+      local is_zombie=false
+      [[ "$stat" == Z* ]] && is_zombie=true
+      local entry
+      entry=$(jq -n --argjson pid "$pid" --arg stat "$stat" --arg etime "$etime" \
+        --arg args "${args:0:80}" --argjson zombie "$is_zombie" \
+        '{pid: $pid, stat: $stat, etime: $etime, args: $args, zombie: $zombie}')
+      
+      if [[ "$is_zombie" == "true" ]]; then
+        zombies=$(echo "$zombies" | jq --argjson e "$entry" '. + [$e]')
+      else
+        workers=$(echo "$workers" | jq --argjson e "$entry" '. + [$e]')
+      fi
+    fi
+  done < <(ps -eo pid,stat,etime,args 2>/dev/null | tail -n +2)
+  
+  jq -n --argjson workers "$workers" --argjson zombies "$zombies" --argjson lock "$lock" \
+    '{workers: $workers, zombies: $zombies, lock: $lock}'
 }
 
 # Check if all agents in a task completed (summarizer done = pipeline finished).
 # Returns 0 if all agents done, 1 otherwise.
 _foundry_all_agents_done() {
   local task_dir="$1"
-  python3 -c "
-import json, sys
-from pathlib import Path
-state = json.loads((Path(sys.argv[1]) / 'state.json').read_text())
-agents = state.get('agents', [])
-if agents and any(a.get('agent','').endswith('summarizer') and a.get('status')=='done' for a in agents):
-    sys.exit(0)
-sys.exit(1)
-" "$task_dir" 2>/dev/null
+  local state_file="$task_dir/state.json"
+  [[ -f "$state_file" ]] || return 1
+  
+  local summarizer_done
+  summarizer_done=$(jq -r '[.agents[]? | select(.agent | endswith("summarizer")) | select(.status == "done")] | length' "$state_file" 2>/dev/null) || return 1
+  [[ "$summarizer_done" -gt 0 ]]
 }
 
 # Cancel all in_progress tasks (e.g. when batch workers are stopped).
@@ -1165,7 +1105,10 @@ foundry_qa_progress() {
   local qa_file
   qa_file=$(foundry_qa_file "$task_dir")
   [[ -f "$qa_file" ]] || { echo "0/0"; return; }
-  jq -r '"\([.questions[]? | select(.answer != null)] | length)/\(.questions | length)"' "$qa_file" 2>/dev/null || echo "0/0"
+  local answered total
+  answered=$(jq '[.questions[]? | select(.answer != null)] | length' "$qa_file" 2>/dev/null) || answered=0
+  total=$(jq '.questions | length' "$qa_file" 2>/dev/null) || total=0
+  echo "${answered}/${total}"
 }
 
 # ── Q&A Timeout Strategy (Section 13 of openspec-human-in-the-loop.md) ──────
@@ -1306,30 +1249,13 @@ foundry_qa_apply_timeout_strategy() {
     skip)
       # Mark all unanswered questions as skipped
       if [[ -f "$qa_file" ]]; then
-        python3 - "$qa_file" <<'PYEOF'
-import json, sys
-from datetime import datetime, timezone
-
-path = sys.argv[1]
-try:
-    data = json.loads(open(path).read())
-except Exception:
-    sys.exit(0)
-
-now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-changed = False
-for q in data.get("questions", []):
-    if q.get("answer") is None:
-        q["answer"] = "__skipped__"
-        q["answered_at"] = now
-        q["answered_by"] = "system:timeout_skip"
-        changed = True
-
-if changed:
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, ensure_ascii=True, indent=2)
-        fh.write("\n")
-PYEOF
+        local now
+        now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        jq --arg now "$now" '
+          .questions = [.questions[]? | if .answer == null then
+            .answer = "__skipped__" | .answered_at = $now | .answered_by = "system:timeout_skip"
+          else . end]
+        ' "$qa_file" > "$qa_file.tmp" && mv "$qa_file.tmp" "$qa_file"
       fi
       # Update state: mark agent as skipped_qa, continue
       foundry_update_state_field "$task_dir" "qa_timeout_action" "skip"
@@ -1341,36 +1267,17 @@ PYEOF
     fallback)
       # Use default_answer from qa.json per-question, or mark as skipped if none
       if [[ -f "$qa_file" ]]; then
-        python3 - "$qa_file" <<'PYEOF'
-import json, sys
-from datetime import datetime, timezone
-
-path = sys.argv[1]
-try:
-    data = json.loads(open(path).read())
-except Exception:
-    sys.exit(0)
-
-now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-changed = False
-for q in data.get("questions", []):
-    if q.get("answer") is None:
-        default = q.get("default_answer")
-        if default:
-            q["answer"] = default
-            q["answered_at"] = now
-            q["answered_by"] = "system:timeout_fallback"
-        else:
-            q["answer"] = "__skipped__"
-            q["answered_at"] = now
-            q["answered_by"] = "system:timeout_skip"
-        changed = True
-
-if changed:
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(data, fh, ensure_ascii=True, indent=2)
-        fh.write("\n")
-PYEOF
+        local now
+        now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        jq --arg now "$now" '
+          .questions = [.questions[]? | if .answer == null then
+            if .default_answer then
+              .answer = .default_answer | .answered_at = $now | .answered_by = "system:timeout_fallback"
+            else
+              .answer = "__skipped__" | .answered_at = $now | .answered_by = "system:timeout_skip"
+            end
+          else . end]
+        ' "$qa_file" > "$qa_file.tmp" && mv "$qa_file.tmp" "$qa_file"
       fi
       foundry_update_state_field "$task_dir" "qa_timeout_action" "fallback"
       pipeline_task_append_event "$task_dir" "qa_timeout_fallback" \
@@ -1383,7 +1290,7 @@ PYEOF
       foundry_update_state_field "$task_dir" "stop_reason" "qa_timeout"
       foundry_set_state_status "$task_dir" "failed" "" ""
       pipeline_task_append_event "$task_dir" "qa_timeout" \
-        "QA timeout expired: task failed (strategy=fail)" ""
+        "QA timeout expired: task failed, strategy=fail" ""
       return 1
       ;;
   esac
@@ -1415,22 +1322,17 @@ foundry_qa_check_timeout() {
   [[ "$timeout_secs" -gt 0 ]] 2>/dev/null || return 0
 
   # Calculate elapsed seconds
-  local elapsed_secs
-  elapsed_secs=$(python3 - "$waiting_since" <<'PYEOF'
-import sys
-from datetime import datetime, timezone
-
-raw = sys.argv[1]
-try:
-    # Handle both Z and +00:00 suffixes
-    raw = raw.replace("Z", "+00:00")
-    since = datetime.fromisoformat(raw)
-    now = datetime.now(timezone.utc)
-    print(int((now - since).total_seconds()))
-except Exception:
-    print(0)
-PYEOF
-)
+  local elapsed_secs=0
+  if [[ -n "$waiting_since" ]]; then
+    local since_clean="${waiting_since//Z/+00:00}"
+    local since_epoch
+    since_epoch=$(date -d "$since_clean" +%s 2>/dev/null) || since_epoch=0
+    local now_epoch
+    now_epoch=$(date +%s)
+    if [[ "$since_epoch" -gt 0 ]]; then
+      elapsed_secs=$(( now_epoch - since_epoch ))
+    fi
+  fi
 
   [[ "$elapsed_secs" -gt 0 ]] 2>/dev/null || return 0
 
@@ -1461,7 +1363,7 @@ PYEOF
       fi
       foundry_update_state_field "$task_dir" "$reminder_sent_key" "true"
       pipeline_task_append_event "$task_dir" "qa_reminder" \
-        "QA timeout reminder sent at ${pct}% (elapsed: ${elapsed_human})" ""
+        "QA timeout reminder sent at ${pct}% elapsed=${elapsed_human}" ""
     fi
   done
 
@@ -1529,39 +1431,28 @@ foundry_set_waiting_answer() {
   local task_dir="$1"
   local waiting_agent="$2"
   local questions_count="${3:-0}"
+  
   foundry_repair_state_file "$task_dir"
-  python3 - "$task_dir" "$waiting_agent" "$questions_count" <<'PYEOF'
-import json, sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-waiting_agent = sys.argv[2]
-questions_count = int(sys.argv[3])
-state_path = task_dir / "state.json"
-
-data = {}
-if state_path.exists():
-    try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            data = {}
-    except (json.JSONDecodeError, OSError):
-        data = {}
-
-now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-data["status"] = "waiting_answer"
-data["waiting_agent"] = waiting_agent
-data["waiting_since"] = now
-data["questions_count"] = questions_count
-data["questions_answered"] = 0
-data["resume_from"] = waiting_agent
-data["updated_at"] = now
-
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
+  
+  local state_file="$task_dir/state.json"
+  local now
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  
+  local existing="{}"
+  [[ -f "$state_file" ]] && existing=$(cat "$state_file" 2>/dev/null) || existing="{}"
+  
+  echo "$existing" | jq --arg status "waiting_answer" \
+    --arg waiting_agent "$waiting_agent" \
+    --arg now "$now" \
+    --argjson questions_count "$questions_count" '
+    .status = $status |
+    .waiting_agent = $waiting_agent |
+    .waiting_since = $now |
+    .questions_count = $questions_count |
+    .questions_answered = 0 |
+    .resume_from = $waiting_agent |
+    .updated_at = $now
+  ' > "$state_file"
 }
 
 # Handle a waiting_answer event from an agent (exit code 75).
@@ -1598,7 +1489,7 @@ foundry_handle_waiting_answer() {
 
   # Emit event
   pipeline_task_append_event "$task_dir" "waiting_answer" \
-    "Agent ${agent} has ${unanswered} unanswered question(s)" "$agent"
+    "Agent ${agent} has ${unanswered} unanswered questions" "$agent"
 
   # Start background timeout monitor (if not already running for this task)
   local monitor_pid_file="$task_dir/.qa_timeout_monitor.pid"

@@ -1,9 +1,6 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { env } from "node:process";
-import { fileURLToPath } from "node:url";
 import { TokenUsage } from "../state/telemetry.js";
 
 const DEBUG = env.FOUNDRY_DEBUG === "true";

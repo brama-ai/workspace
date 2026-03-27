@@ -197,7 +197,7 @@ export function updateStateField(taskDir: string, key: keyof TaskState, value: s
   } else if (key === "agents") {
     state.agents = JSON.parse(Array.isArray(value) ? value[0] : value);
   } else {
-    (state as Record<string, unknown>)[key] = value;
+    (state as unknown as Record<string, unknown>)[key] = value;
   }
   
   writeState(taskDir, state);

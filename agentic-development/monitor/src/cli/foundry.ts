@@ -113,7 +113,7 @@ const PROFILES: Record<string, string[]> = {
 };
 
 async function cmdRun(args: string[], options: Record<string, unknown>): Promise<number> {
-  const { values } = parseArgs({
+  const { values, positionals } = parseArgs({
     args,
     options: {
       "task-file": { type: "string", short: "f" },
@@ -135,7 +135,7 @@ async function cmdRun(args: string[], options: Record<string, unknown>): Promise
     env.FOUNDRY_DEBUG = "true";
   }
 
-  let taskMessage = (values._ || []).join(" ").trim();
+  let taskMessage = positionals.join(" ").trim();
 
   if (values["task-file"]) {
     try {
