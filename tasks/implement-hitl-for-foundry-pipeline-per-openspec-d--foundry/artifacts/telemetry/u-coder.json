@@ -1,0 +1,104 @@
+{
+  "workflow": "builder",
+  "agent": "u-coder",
+  "model": "zai-coding-plan/glm-5",
+  "duration_ms": 469000,
+  "duration_seconds": 469,
+  "exit_code": 0,
+  "session_id": "ses_2d5446d64ffe54syogWfI3X1h1",
+  "tokens": {
+    "input_tokens": 644809,
+    "output_tokens": 53705,
+    "cache_read": 18027616,
+    "cache_write": 0
+  },
+  "tools": [
+    {
+      "name": "bash",
+      "count": 62
+    },
+    {
+      "name": "edit",
+      "count": 35
+    },
+    {
+      "name": "glob",
+      "count": 3
+    },
+    {
+      "name": "grep",
+      "count": 2
+    },
+    {
+      "name": "read",
+      "count": 52
+    },
+    {
+      "name": "todowrite",
+      "count": 9
+    },
+    {
+      "name": "write",
+      "count": 7
+    }
+  ],
+  "files_read": [
+    "/tmp/test-handoff.md",
+    "/tmp/test-normalize.ts",
+    "/tmp/test-summary.md",
+    ".claude/skills/foundry/SKILL.md",
+    "agentic-development",
+    "agentic-development/AGENTS.md",
+    "agentic-development/README.md",
+    "agentic-development/audit.md",
+    "agentic-development/foundry.sh",
+    "agentic-development/lib/env-check.sh",
+    "agentic-development/lib/foundry-batch.sh",
+    "agentic-development/lib/foundry-cleanup.sh",
+    "agentic-development/lib/foundry-common.sh",
+    "agentic-development/lib/foundry-retry.sh",
+    "agentic-development/lib/foundry-run.sh",
+    "agentic-development/lib/foundry-stats.sh",
+    "agentic-development/lib/normalize-summary.py",
+    "agentic-development/lib/ultraworks-monitor.sh",
+    "agentic-development/lib/ultraworks-postmortem-summary.sh",
+    "agentic-development/monitor/package.json",
+    "agentic-development/monitor/src/__tests__/task-state.test.ts",
+    "agentic-development/monitor/src/__tests__/tasks.test.ts",
+    "agentic-development/monitor/src/components/App.tsx",
+    "agentic-development/monitor/src/index.tsx",
+    "agentic-development/monitor/src/lib/actions.ts",
+    "agentic-development/monitor/src/lib/normalize-summary.ts",
+    "agentic-development/monitor/src/lib/task-state.ts",
+    "agentic-development/monitor/src/lib/tasks.ts",
+    "agentic-development/monitor/vitest.config.ts",
+    "agentic-development/tests/test-env-check.sh",
+    "agentic-development/tests/test-foundry-state.sh",
+    "agentic-development/tests/test-pipeline-lifecycle.sh",
+    "agentic-development/ultraworks.sh",
+    "agentic-development/foundry.sh",
+    "agentic-development/lib/cost-tracker.sh",
+    "agentic-development/lib/foundry-batch.sh",
+    "agentic-development/lib/foundry-cleanup.sh",
+    "agentic-development/lib/foundry-e2e.sh",
+    "agentic-development/lib/foundry-retry.sh",
+    "agentic-development/lib/foundry-run.sh",
+    "agentic-development/lib/foundry-setup.sh",
+    "agentic-development/lib/foundry-stats.sh",
+    "audit.md",
+    "console.log",
+    "foundry-common.sh",
+    "foundry-run.sh",
+    "foundry.sh",
+    "normalize-summary.py",
+    "normalize.summary",
+    "package.json",
+    "re.sub",
+    "src/lib/normalize-summary.ts",
+    "test-env-check.sh",
+    "test-foundry-state.sh",
+    "test-pipeline-lifecycle.sh"
+  ],
+  "context": {},
+  "cost": 0.0
+}

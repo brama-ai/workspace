@@ -74,6 +74,7 @@ is_critical_path() {
 # Returns 0 if clean, 1 if dirty
 # Outputs: dirty_files (JSON array), has_critical (bool)
 check_workspace_clean() {
+  _track_usage "check_workspace_clean" "foundry-preflight.sh"
   local workspace_dir="${1:-$REPO_ROOT}"
   python3 - "$workspace_dir" <<'PYEOF'
 import json
@@ -249,6 +250,7 @@ preflight_check_base_reference() {
 
 # 3. Workspace Safety Check
 preflight_check_workspace_safety() {
+  _track_usage "preflight_check_workspace_safety" "foundry-preflight.sh"
   local task_dir="$1"
   local workspace_type="${2:-default_branch}"  # default_branch | task_workspace | other
 
@@ -330,6 +332,7 @@ preflight_check_policy() {
 # Returns 0 if all checks pass, 1 otherwise
 # On failure, sets stop_reason and stop_details in state.json
 foundry_preflight_check() {
+  _track_usage "foundry_preflight_check" "foundry-preflight.sh"
   local task_dir="$1"
   local requested_base="${2:-default}"
 
@@ -410,6 +413,7 @@ foundry_preflight_check() {
 
 # Stop a task with detailed reasoning
 foundry_stop_task_with_reason() {
+  _track_usage "foundry_stop_task_with_reason" "foundry-preflight.sh"
   local task_dir="$1"
   local stop_reason="$2"
   local stopped_by="$3"
@@ -502,11 +506,11 @@ EOF
   case "$stop_reason" in
     "$STOP_REASON_DIRTY_DEFAULT_WORKSPACE")
       cat >> "$handoff_file" <<'EOF'
-- **Action**: Commit or stash uncommitted changes in the main branch
+- **Action**: Commit uncommitted changes (never stash — stash pop conflicts lose work)
 - **Commands**:
   ```bash
   git status  # Review changes
-  git stash save "WIP: manual changes"  # or commit them
+  git add -A && git commit -m "WIP: save changes before pipeline run"
   ```
 EOF
       ;;
@@ -546,6 +550,7 @@ EOF
 
 # Resume a stopped task (reset to pending)
 foundry_resume_stopped_task() {
+  _track_usage "foundry_resume_stopped_task" "foundry-preflight.sh"
   local task_dir="$1"
   local current_status
   current_status=$(foundry_state_field "$task_dir" status 2>/dev/null || echo "")

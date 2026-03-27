@@ -114,6 +114,7 @@ log_batch() {
 # ── Single worker loop ───────────────────────────────────────────────
 # Runs in a subshell; claims tasks, runs them in a worktree, loops.
 worker_loop() {
+  _track_usage "worker_loop" "foundry-batch.sh"
   local worker_id="$1"
   shift
   local extra_args=("$@")
@@ -192,6 +193,7 @@ cleanup_all() {
 
 # ── Spawn workers ────────────────────────────────────────────────────
 spawn_workers() {
+  _track_usage "spawn_workers" "foundry-batch.sh"
   local num_workers="$1"
   shift
   local extra_args=("$@")

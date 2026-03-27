@@ -1,0 +1,45 @@
+{
+  "task": "Implement HITL for Foundry Pipeline per OpenSpec docs/pipeline/en/openspec-human-in-the-loop.md",
+  "branch": "pipeline/implement-hitl-for-foundry-pipeline-per-openspec-d",
+  "workflow": "foundry",
+  "started": "2026-03-26 20:02:16",
+  "agents": {
+    "u-planner": {
+      "status": "done",
+      "model": "anthropic/claude-opus-4-6",
+      "duration": 114,
+      "commit": "",
+      "finished": "2026-03-26 20:04:11",
+      "tokens": {}
+    },
+    "u-coder": {
+      "status": "done",
+      "model": "anthropic/claude-sonnet-4-6",
+      "duration": 473,
+      "commit": "086940d",
+      "finished": "2026-03-26 20:12:04",
+      "tokens": {}
+    },
+    "u-validator": {
+      "status": "done",
+      "model": "opencode-go/kimi-k2.5",
+      "duration": 7,
+      "commit": "e01c250",
+      "finished": "2026-03-26 20:12:11",
+      "tokens": {}
+    },
+    "u-summarizer": {
+      "status": "done",
+      "model": "openai/gpt-5.4",
+      "duration": 1058,
+      "commit": "1982c92",
+      "finished": "2026-03-26 20:29:50",
+      "tokens": {}
+    }
+  },
+  "planned_agents": [
+    "u-coder",
+    "u-validator",
+    "u-summarizer"
+  ]
+}

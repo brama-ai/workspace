@@ -1,54 +1,52 @@
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, renameSync } from "node:fs";
 import { join, basename, dirname } from "node:path";
-import { execSync, spawn } from "node:child_process";
+import { execSync } from "node:child_process";
+import { readState, writeState, type TaskState } from "./task-state.js";
 
-function readState(dir: string): any {
-  const p = join(dir, "state.json");
+function trackUsage(fn: string): void {
+  if (process.env.FOUNDRY_USAGE_TRACKING !== "true") return;
   try {
-    return JSON.parse(readFileSync(p, "utf-8"));
-  } catch {
-    return {};
-  }
-}
-
-function writeState(dir: string, data: any): void {
-  writeFileSync(join(dir, "state.json"), JSON.stringify(data, null, 2) + "\n");
+    const logDir = join(findRepoRoot(), "agentic-development/runtime/logs");
+    mkdirSync(logDir, { recursive: true });
+    const ts = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+    appendFileSync(
+      join(logDir, "usage-tracker.jsonl"),
+      `{"ts":"${ts}","fn":"${fn}","src":"actions.ts","pid":${process.pid}}\n`
+    );
+  } catch {}
 }
 
 export function claimTask(taskDir: string, workerId: string): boolean {
+  trackUsage("claimTask");
   const state = readState(taskDir);
   if (state.status !== "pending") return false;
 
   state.status = "in_progress";
   state.worker_id = workerId;
-  state.claimed_at = new Date().toISOString().replace(/\.\d+Z$/, "Z");
-  state.updated_at = state.claimed_at;
+  (state as any).claimed_at = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+  state.updated_at = (state as any).claimed_at;
 
   writeState(taskDir, state);
   return true;
 }
 
 export function releaseTask(taskDir: string): void {
+  trackUsage("releaseTask");
   const state = readState(taskDir);
   if (state.status !== "in_progress") return;
 
   state.status = "pending";
   delete state.worker_id;
-  delete state.claimed_at;
+  delete (state as any).claimed_at;
   state.updated_at = new Date().toISOString().replace(/\.\d+Z$/, "Z");
 
   writeState(taskDir, state);
 }
 
-/**
- * Archive a task: move it to tasks/archives/DD-MM-YYYY/task-slug/
- * Returns the archive path, or throws if task is truly in_progress (mid-pipeline).
- * Tasks stuck as in_progress but with all agents done are auto-completed first.
- */
 export function archiveTask(taskDir: string): string {
+  trackUsage("archiveTask");
   const state = readState(taskDir);
   if (state.status === "in_progress") {
-    // Allow archive if all agents completed (task stuck in finalization)
     const agents = Array.isArray(state.agents) ? state.agents : [];
     const summarizerDone = agents.some(
       (a: any) => a.agent?.includes("summarizer") && a.status === "done"
@@ -156,19 +154,23 @@ function foundryPath(repoRoot: string): string {
 }
 
 export function startWorkers(repoRoot: string): CmdResult {
+  trackUsage("startWorkers");
   const cmd = `"${foundryPath(repoRoot)}" headless`;
   return runInTmux("foundry-headless", cmd, repoRoot);
 }
 
 export function stopWorkers(repoRoot: string): CmdResult {
+  trackUsage("stopWorkers");
   return runQuick(`"${foundryPath(repoRoot)}" stop`, repoRoot);
 }
 
 export function retryFailed(repoRoot: string): CmdResult {
+  trackUsage("retryFailed");
   return runQuick(`"${foundryPath(repoRoot)}" retry`, repoRoot);
 }
 
 export function runAutotest(repoRoot: string, smoke: boolean): CmdResult {
+  trackUsage("runAutotest");
   const args = ["autotest", "5"];
   if (smoke) args.push("--smoke");
   args.push("--start");
@@ -183,11 +185,13 @@ function ultraworksPath(repoRoot: string): string {
 }
 
 export function ultraworksLaunch(repoRoot: string): CmdResult {
+  trackUsage("ultraworksLaunch");
   const cmd = `"${ultraworksPath(repoRoot)}" launch`;
   return runInTmux("ultraworks", cmd, repoRoot);
 }
 
 export function ultraworksAttach(repoRoot: string): CmdResult {
+  trackUsage("ultraworksAttach");
   // Just return the attach command — session should already exist
   return {
     session: "ultraworks",
@@ -197,6 +201,7 @@ export function ultraworksAttach(repoRoot: string): CmdResult {
 }
 
 export function ultraworksCleanup(repoRoot: string): CmdResult {
+  trackUsage("ultraworksCleanup");
   return runQuick(`"${ultraworksPath(repoRoot)}" cleanup`, repoRoot);
 }
 
@@ -219,6 +224,7 @@ export interface ProcessStatus {
 
 /** Read live process status via foundry_process_status() shell helper */
 export function getProcessStatus(repoRoot: string): ProcessStatus {
+  trackUsage("getProcessStatus");
   const empty: ProcessStatus = { workers: [], zombies: [], lock: null };
   try {
     const commonSh = join(repoRoot, "agentic-development", "lib", "foundry-common.sh");
@@ -234,6 +240,7 @@ export function getProcessStatus(repoRoot: string): ProcessStatus {
 
 /** Clean zombie processes and stale batch lock */
 export function cleanZombies(repoRoot: string): CmdResult {
+  trackUsage("cleanZombies");
   const commonSh = join(repoRoot, "agentic-development", "lib", "foundry-common.sh");
   return runQuick(
     `bash -c 'REPO_ROOT="${repoRoot}" source "${commonSh}" && n=$(foundry_cleanup_zombies) && echo "Cleaned: $n zombie(s)/stale lock(s)"'`,
@@ -245,12 +252,14 @@ export function cleanZombies(repoRoot: string): CmdResult {
 
 /** Run u-doctor general diagnostics in tmux */
 export function runDoctor(repoRoot: string): CmdResult {
+  trackUsage("runDoctor");
   const cmd = `opencode run --agent u-doctor "Diagnose current Foundry state. Check failed tasks, zombie processes, missing files, and stale locks. Create root cause report in agentic-development/doctor/"`;
   return runInTmux("foundry-doctor", cmd, repoRoot);
 }
 
 /** Run u-doctor diagnostics for a specific task */
 export function runDoctorTask(repoRoot: string, taskSlug: string): CmdResult {
+  trackUsage("runDoctorTask");
   const cmd = `opencode run --agent u-doctor "Diagnose task '${taskSlug}'. Check its state.json, handoff.md, agent logs, and identify why it failed or got stuck. Create root cause report in agentic-development/doctor/"`;
   return runInTmux("foundry-doctor", cmd, repoRoot);
 }

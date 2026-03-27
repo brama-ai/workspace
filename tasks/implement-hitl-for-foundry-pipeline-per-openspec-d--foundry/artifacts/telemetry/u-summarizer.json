@@ -1,0 +1,66 @@
+{
+  "workflow": "builder",
+  "agent": "u-summarizer",
+  "model": "anthropic/claude-opus-4-6",
+  "duration_ms": 145000,
+  "duration_seconds": 145,
+  "exit_code": 0,
+  "session_id": "ses_2d42b74a2ffearaZuG5xt51Kb2",
+  "tokens": {
+    "input_tokens": 13,
+    "output_tokens": 7281,
+    "cache_read": 340181,
+    "cache_write": 45769
+  },
+  "tools": [
+    {
+      "name": "bash",
+      "count": 2
+    },
+    {
+      "name": "edit",
+      "count": 1
+    },
+    {
+      "name": "glob",
+      "count": 9
+    },
+    {
+      "name": "read",
+      "count": 21
+    },
+    {
+      "name": "skill",
+      "count": 1
+    },
+    {
+      "name": "write",
+      "count": 2
+    }
+  ],
+  "files_read": [
+    ".opencode/agents/CONTEXT-CONTRACT.md",
+    ".opencode/pipeline/handoff.md",
+    ".opencode/pipeline/reports",
+    "tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry",
+    "tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/artifacts",
+    "tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/artifacts/checkpoint.json",
+    "tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/artifacts/telemetry",
+    "tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/artifacts/telemetry/u-coder.json",
+    "tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/artifacts/telemetry/u-planner.json",
+    "tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/artifacts/telemetry/u-summarizer.json",
+    "tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/artifacts/telemetry/u-validator.json",
+    "tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/artifacts/u-coder",
+    "tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/artifacts/u-coder/result.json",
+    "tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/artifacts/u-validator",
+    "tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/events.jsonl",
+    "tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/handoff.md",
+    "tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/meta.json",
+    "tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/pipeline-plan.json",
+    "tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/state.json",
+    "tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/summary.md",
+    "tasks/implement-hitl-for-foundry-pipeline-per-openspec-d--foundry/task.md"
+  ],
+  "context": {},
+  "cost": 1.056542
+}

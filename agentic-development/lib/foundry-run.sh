@@ -25,7 +25,11 @@ set -euo pipefail
 REPO_ROOT="${PIPELINE_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 # shellcheck source=/dev/null
 source "$REPO_ROOT/agentic-development/lib/foundry-common.sh"
-maybe_migrate_legacy_foundry_tasks
+
+# Debug trap: log where the script exits on error
+if [[ "${FOUNDRY_DEBUG:-}" == "true" ]]; then
+  trap 'debug_log "CRASH" "Script exited unexpectedly" "line=$LINENO" "exit_code=$?" "command=$BASH_COMMAND"' ERR
+fi
 ensure_foundry_task_root
 PIPELINE_DIR="$REPO_ROOT/.opencode/pipeline"
 LOG_DIR="$PIPELINE_DIR/logs"
@@ -86,28 +90,32 @@ CHEAP_MODELS="${PIPELINE_CHEAP_MODELS:-openrouter/deepseek-v3.2,openrouter/gemin
 
 # "free" virtual model — expands to a chain of free models
 # Override via: PIPELINE_FREE_MODELS="model1,model2,model3"
-FREE_MODELS="${PIPELINE_FREE_MODELS:-opencode/big-pickle,opencode/gpt-5-nano,opencode/minimax-m2.5-free}"
+FREE_MODELS="${PIPELINE_FREE_MODELS:-opencode/big-pickle,opencode/gpt-5-nano}"
 
 # Fallback model chains (override via env: PIPELINE_FALLBACK_ARCHITECT="model1,model2")
 # Tiers: subscriptions (Claude+Codex) → free (OpenRouter) → cheap (paid per-token)
 # Subscriptions already paid (flat rate), free costs nothing, cheap is last resort
 # Fallback model chains: 5 fallbacks × 5 providers per agent
-# Providers: anthropic, openai, google, minimax, opencode, openrouter
+# Providers: anthropic, openai, google, opencode-go, opencode, openrouter
 # Primary model (from agent .md) excluded; each fallback = different provider
 #
-# "free" expands to: opencode/big-pickle,opencode/gpt-5-nano,opencode/minimax-m2.5-free
+# "free" expands to: opencode/big-pickle,opencode/gpt-5-nano
 # "cheap" expands to: openrouter/deepseek-v3.2,openrouter/gemini-3.1-flash-lite
-# Order: available providers first (openrouter, opencode, minimax), then rate-limited (openai, google, anthropic)
-FALLBACK_INVESTIGATOR="${PIPELINE_FALLBACK_INVESTIGATOR:-openai/gpt-5.4,opencode-go/glm-5,minimax/MiniMax-M2.7,google/gemini-3.1-pro-preview,opencode/big-pickle,openrouter/free}"
-FALLBACK_ARCHITECT="${PIPELINE_FALLBACK_ARCHITECT:-openai/gpt-5.4,opencode-go/glm-5,minimax/MiniMax-M2.7,google/gemini-3.1-pro-preview,opencode/big-pickle,openrouter/free}"
-FALLBACK_CODER="${PIPELINE_FALLBACK_CODER:-minimax/MiniMax-M2.7,openai/gpt-5.3-codex,opencode-go/glm-5,google/gemini-3.1-pro-preview,opencode/big-pickle,openrouter/qwen/qwen3-coder:free}"
-FALLBACK_VALIDATOR="${PIPELINE_FALLBACK_VALIDATOR:-openai/gpt-5.2,opencode-go/kimi-k2.5,opencode/minimax-m2.5-free,google/gemini-3.1-flash-lite-preview,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
-FALLBACK_TESTER="${PIPELINE_FALLBACK_TESTER:-openai/gpt-5.3-codex,minimax/MiniMax-M2.7-highspeed,opencode/big-pickle,google/gemini-3.1-pro-preview,openrouter/qwen/qwen3-coder:free}"
-FALLBACK_DOCUMENTER="${PIPELINE_FALLBACK_DOCUMENTER:-anthropic/claude-sonnet-4-6,google/gemini-3-flash-preview,minimax/MiniMax-M2.5,opencode-go/kimi-k2.5,opencode/big-pickle,openrouter/free}"
-FALLBACK_AUDITOR="${PIPELINE_FALLBACK_AUDITOR:-openai/gpt-5.4,opencode-go/glm-5,minimax/MiniMax-M2.7,opencode/big-pickle,google/gemini-3.1-pro-preview,openrouter/free}"
-FALLBACK_E2E="${PIPELINE_FALLBACK_E2E:-opencode-go/glm-5,openai/gpt-5.4,minimax/minimax-m2.7,google/gemini-2.5-flash,openrouter/qwen/qwen3-coder:free}"
-FALLBACK_MERGER="${PIPELINE_FALLBACK_MERGER:-openai/gpt-5.4,minimax/MiniMax-M2.7,opencode-go/glm-5,google/gemini-3.1-pro-preview,opencode/big-pickle,openrouter/free}"
-FALLBACK_SUMMARIZER="${PIPELINE_FALLBACK_SUMMARIZER:-anthropic/claude-opus-4-6,google/gemini-3.1-pro-preview,minimax/MiniMax-M2.7,opencode-go/glm-5,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528:free}"
+#
+# Measured TTFO (2026-03-26): anthropic 6-7s, google 6s, minimax-coding-plan 7s, opencode-go 8s, opencode/free 12-19s
+# openai/* may hit rate limits — stall detection handles fallback in ~12s
+# Provider: minimax-coding-plan (NOT minimax/)
+# Order: fastest (6-8s) → openai (may stall) → free tier last
+FALLBACK_INVESTIGATOR="${PIPELINE_FALLBACK_INVESTIGATOR:-google/gemini-2.5-flash,minimax-coding-plan/MiniMax-M2.7,opencode-go/glm-5,openai/gpt-5.4,anthropic/claude-sonnet-4-6,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
+FALLBACK_ARCHITECT="${PIPELINE_FALLBACK_ARCHITECT:-google/gemini-2.5-flash,minimax-coding-plan/MiniMax-M2.7,opencode-go/glm-5,openai/gpt-5.4,anthropic/claude-sonnet-4-6,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
+FALLBACK_CODER="${PIPELINE_FALLBACK_CODER:-minimax-coding-plan/MiniMax-M2.7,opencode-go/glm-5,google/gemini-2.5-flash,openai/gpt-5.3-codex,anthropic/claude-sonnet-4-6,opencode/big-pickle,openrouter/qwen/qwen3-coder:free}"
+FALLBACK_VALIDATOR="${PIPELINE_FALLBACK_VALIDATOR:-opencode-go/kimi-k2.5,google/gemini-2.5-flash,minimax-coding-plan/MiniMax-M2.7,openai/gpt-5.2,anthropic/claude-sonnet-4-6,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
+FALLBACK_TESTER="${PIPELINE_FALLBACK_TESTER:-minimax-coding-plan/MiniMax-M2.7,anthropic/claude-sonnet-4-6,opencode-go/glm-5,openai/gpt-5.3-codex,google/gemini-2.5-flash,opencode/big-pickle,openrouter/qwen/qwen3-coder:free}"
+FALLBACK_DOCUMENTER="${PIPELINE_FALLBACK_DOCUMENTER:-anthropic/claude-sonnet-4-6,minimax-coding-plan/MiniMax-M2.7,google/gemini-2.5-flash,openai/gpt-5.4,opencode-go/kimi-k2.5,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
+FALLBACK_AUDITOR="${PIPELINE_FALLBACK_AUDITOR:-minimax-coding-plan/MiniMax-M2.7,anthropic/claude-sonnet-4-6,opencode-go/glm-5,openai/gpt-5.4,google/gemini-2.5-flash,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
+FALLBACK_E2E="${PIPELINE_FALLBACK_E2E:-opencode-go/glm-5,minimax-coding-plan/MiniMax-M2.7,google/gemini-2.5-flash,openai/gpt-5.4,anthropic/claude-sonnet-4-6,opencode/big-pickle,openrouter/qwen/qwen3-coder:free}"
+FALLBACK_MERGER="${PIPELINE_FALLBACK_MERGER:-minimax-coding-plan/MiniMax-M2.7,anthropic/claude-sonnet-4-6,opencode-go/glm-5,openai/gpt-5.4,google/gemini-2.5-flash,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528-qwen3-8b:free}"
+FALLBACK_SUMMARIZER="${PIPELINE_FALLBACK_SUMMARIZER:-anthropic/claude-opus-4-6,minimax-coding-plan/MiniMax-M2.7,google/gemini-2.5-flash,openai/gpt-5.4,opencode-go/glm-5,opencode/big-pickle,openrouter/deepseek/deepseek-r1-0528:free}"
 
 # ── Help ──────────────────────────────────────────────────────────────
 
@@ -435,6 +443,7 @@ fi
 # ── Pre-flight checks ────────────────────────────────────────────────
 
 preflight() {
+  _track_usage "preflight" "foundry-run.sh"
   echo -e "${BOLD}Pre-flight checks...${NC}"
   local errors=0
 
@@ -514,6 +523,7 @@ preflight() {
 # ── Environment check ────────────────────────────────────────────────
 
 env_check() {
+  _track_usage "env_check" "foundry-run.sh"
   if [[ "$SKIP_ENV_CHECK" == true ]]; then
     echo -e "${YELLOW}⚠ Environment check skipped (--skip-env-check)${NC}"
     return 0
@@ -655,6 +665,7 @@ get_agents_to_run() {
 # ── Git branch setup ──────────────────────────────────────────────────
 
 setup_branch() {
+  _track_usage "setup_branch" "foundry-run.sh"
   if [[ -n "$BRANCH_NAME" ]]; then
     echo "$BRANCH_NAME"
   else
@@ -677,6 +688,7 @@ get_timeout() {
 # ── Commit agent work ─────────────────────────────────────────────────
 
 commit_agent_work() {
+  _track_usage "commit_agent_work" "foundry-run.sh"
   local agent="$1"
   local task_slug="$2"
 
@@ -764,9 +776,11 @@ init_artifacts() {
   fi
 
   # Create fresh checkpoint
+  local task_escaped
+  task_escaped=$(printf '%s' "$TASK_MESSAGE" | jq -Rs .)
   cat > "$CHECKPOINT_FILE" << CHECKPOINT_EOF
 {
-  "task": $(printf '%s' "$TASK_MESSAGE" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))'),
+  "task": $task_escaped,
   "branch": "$branch",
   "workflow": "foundry",
   "started": "$(date '+%Y-%m-%d %H:%M:%S')",
@@ -777,22 +791,16 @@ CHECKPOINT_EOF
 }
 
 set_planned_agents() {
+  _track_usage "set_planned_agents" "foundry-run.sh"
   [[ -f "$CHECKPOINT_FILE" ]] || return 0
-
-  python3 - "$CHECKPOINT_FILE" "$@" <<'PYEOF'
-import json, sys
-cp_file = sys.argv[1]
-planned = sys.argv[2:]
-with open(cp_file, 'r') as f:
-    data = json.load(f)
-data['planned_agents'] = planned
-with open(cp_file, 'w') as f:
-    json.dump(data, f, indent=2)
-PYEOF
+  local agents_json
+  agents_json=$(printf '%s\n' "$@" | jq -R . | jq -s .)
+  local tmp="${CHECKPOINT_FILE}.tmp"
+  jq --argjson planned "$agents_json" '.planned_agents = $planned' "$CHECKPOINT_FILE" > "$tmp" && mv "$tmp" "$CHECKPOINT_FILE"
 }
 
-# Write checkpoint after agent completes
 write_checkpoint() {
+  _track_usage "write_checkpoint" "foundry-run.sh"
   local agent="$1"
   local status="$2"
   local duration="$3"
@@ -802,31 +810,19 @@ write_checkpoint() {
 
   [[ -f "$CHECKPOINT_FILE" ]] || return 0
 
-  # Use python3 to safely update JSON (stdin to avoid shell quoting issues)
-  python3 - "$CHECKPOINT_FILE" "$agent" "$status" "$duration" "$commit_hash" "$tokens_json" "$actual_model" <<'PYEOF'
-import json, sys
-cp_file, agent, status, duration, commit, tokens_raw, model = sys.argv[1:8]
-with open(cp_file, 'r') as f:
-    data = json.load(f)
-try:
-    tokens = json.loads(tokens_raw) if tokens_raw != '{}' else {}
-except json.JSONDecodeError:
-    tokens = {}
-from datetime import datetime
-data['agents'][agent] = {
-    'status': status,
-    'model': model,
-    'duration': int(duration),
-    'commit': commit,
-    'finished': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-    'tokens': tokens
-}
-with open(cp_file, 'w') as f:
-    json.dump(data, f, indent=2)
-PYEOF
-  if [[ $? -ne 0 ]]; then
-    echo -e "  ${YELLOW}⚠ write_checkpoint failed for ${agent}${NC}" >&2
-  fi
+  local finished
+  finished=$(date '+%Y-%m-%d %H:%M:%S')
+  local tmp="${CHECKPOINT_FILE}.tmp"
+  
+  jq --arg agent "$agent" \
+     --arg status "$status" \
+     --arg model "$actual_model" \
+     --argjson duration "$duration" \
+     --arg commit "$commit_hash" \
+     --arg finished "$finished" \
+     --argjson tokens "$tokens_json" \
+     '.agents[$agent] = {status: $status, model: $model, duration: $duration, commit: $commit, finished: $finished, tokens: $tokens}' \
+     "$CHECKPOINT_FILE" > "$tmp" && mv "$tmp" "$CHECKPOINT_FILE"
 }
 
 # Copy agent log to artifacts
@@ -862,43 +858,42 @@ save_agent_artifact() {
   fi
 }
 
-# Read checkpoint and determine which agent to resume from
 get_resume_agent() {
+  _track_usage "get_resume_agent" "foundry-run.sh"
   [[ -f "$CHECKPOINT_FILE" ]] || return
-
-  python3 - "$CHECKPOINT_FILE" <<'PYEOF' 2>/dev/null || true
-import json, sys
-with open(sys.argv[1], 'r') as f:
-    data = json.load(f)
-agents_order = data.get('planned_agents') or ['planner', 'architect', 'coder', 'auditor', 'validator', 'tester', 'e2e', 'documenter', 'summarizer']
-completed = data.get('agents', {})
-for agent in agents_order:
-    info = completed.get(agent, {})
-    if info.get('status') != 'done':
-        print(agent)
-        break
-PYEOF
+  
+  local planned
+  planned=$(jq -r '.planned_agents // ["planner","architect","coder","auditor","validator","tester","e2e","documenter","summarizer"] | .[]' "$CHECKPOINT_FILE" 2>/dev/null)
+  
+  local default_order="planner architect coder auditor validator tester e2e documenter summarizer"
+  [[ -z "$planned" ]] && planned="$default_order"
+  
+  for agent in $planned; do
+    local status
+    status=$(jq -r --arg a "$agent" '.agents[$a].status // "pending"' "$CHECKPOINT_FILE" 2>/dev/null)
+    if [[ "$status" != "done" ]]; then
+      echo "$agent"
+      return
+    fi
+  done
 }
 
-# Print checkpoint summary
 print_checkpoint_summary() {
+  _track_usage "print_checkpoint_summary" "foundry-run.sh"
   [[ -f "$CHECKPOINT_FILE" ]] || return
-
-  python3 - "$CHECKPOINT_FILE" <<'PYEOF' 2>/dev/null || true
-import json, sys
-with open(sys.argv[1], 'r') as f:
-    data = json.load(f)
-agents = data.get('agents', {})
-if not agents:
-    print('  (no completed agents)')
-    exit()
-for name, info in agents.items():
-    status = info.get('status', '?')
-    dur = info.get('duration', 0)
-    commit = info.get('commit', '')
-    icon = '✓' if status == 'done' else '✗'
-    print(f'  {icon} {name}: {status} ({dur}s) {commit}')
-PYEOF
+  
+  local agents
+  agents=$(jq -r '.agents | keys | .[]' "$CHECKPOINT_FILE" 2>/dev/null)
+  [[ -z "$agents" ]] && { echo "  (no completed agents)"; return; }
+  
+  for name in $agents; do
+    local status dur commit icon
+    status=$(jq -r --arg n "$name" '.agents[$n].status // "?"' "$CHECKPOINT_FILE")
+    dur=$(jq -r --arg n "$name" '.agents[$n].duration // 0' "$CHECKPOINT_FILE")
+    commit=$(jq -r --arg n "$name" '.agents[$n].commit // ""' "$CHECKPOINT_FILE")
+    [[ "$status" == "done" ]] && icon="✓" || icon="✗"
+    echo "  $icon $name: $status (${dur}s) $commit"
+  done
 }
 
 # ── Dev Reporter Agent integration ───────────────────────────────────
@@ -962,6 +957,7 @@ send_telegram() {
 # ── Run migrations if needed ──────────────────────────────────────────
 
 run_migrations() {
+  _track_usage "run_migrations" "foundry-run.sh"
   echo -e "  ${BLUE}Checking for new migrations...${NC}"
 
   local has_migrations=false
@@ -1142,6 +1138,7 @@ swap_agent_model() {
   local old_model
   old_model=$(get_current_model "$agent")
 
+  debug_log "model" "MODEL SWAP" "agent=$agent" "from=$old_model" "to=$new_model" "file=$agent_file"
   sed -i.bak "s|^model:.*|model: ${new_model}|" "$agent_file"
   rm -f "${agent_file}.bak"
 
@@ -1487,7 +1484,8 @@ monitor_agent_loop() {
   local fast_check_count=0
 
   while kill -0 "$agent_pid" 2>/dev/null; do
-    # Use faster checks (20s) for the first few iterations to catch immediate failures
+    # Use faster checks (20s) for the first few iterations to catch stalled models.
+    # Measured TTFO: all working models respond within 8s; 20s gives safe margin for slow free-tier.
     local current_interval=$check_interval
     if [[ $fast_check_count -lt 2 ]]; then
       current_interval=20
@@ -1514,16 +1512,22 @@ monitor_agent_loop() {
       if [[ "$log_lines" -lt 5 && "$stall_count" -ge 1 ]]; then
         # After just 20s with minimal output, trigger fallback
         local stall_duration=$((20 + (stall_count - 1) * current_interval))
+        debug_log "stall" "STALL DETECTED (minimal output)" "agent=$agent" "duration=${stall_duration}s" "lines=$log_lines" "pid=$agent_pid"
         echo "LOOP_DETECTED:stall:Log not growing for ${stall_duration}s (minimal output: ${log_lines} lines)" > "${log_file}.loop"
+        debug_log "kill" "Killing stalled agent tree" "pid=$agent_pid"
         _kill_process_tree "$agent_pid"
+        debug_log "kill" "Kill complete" "pid=$agent_pid"
         return
       fi
 
       # Normal stall detection for active logs
       if [[ $stall_count -ge $stall_threshold ]]; then
         local stall_duration=$((40 + (stall_count - 2) * check_interval))  # 2 * 20s + rest * 60s
+        debug_log "stall" "STALL DETECTED (normal)" "agent=$agent" "duration=${stall_duration}s" "stall_count=$stall_count" "threshold=$stall_threshold"
         echo "LOOP_DETECTED:stall:Log not growing for ${stall_duration}s" > "${log_file}.loop"
+        debug_log "kill" "Killing stalled agent tree" "pid=$agent_pid"
         _kill_process_tree "$agent_pid"
+        debug_log "kill" "Kill complete" "pid=$agent_pid"
         return
       fi
     else
@@ -1607,176 +1611,185 @@ verify_coder_output() {
   return 0
 }
 
-# ── Agent-to-Agent Q&A Escalation (Section 14) ───────────────────────
-#
-# When an agent exits with code 75 (waiting_answer), the orchestrator
-# first tries to resolve questions via u-architect in qa-responder mode
-# (short timeout, cheaper model) before escalating to human.
-#
-# Returns:
-#   0  — all blocking questions resolved by u-architect; pipeline may continue
-#   75 — questions remain unanswered; pipeline must pause for human input
+# ── Agent-to-Agent Q&A Resolution (Section 14) ────────────────────────
+# Runs u-architect in Q&A responder mode to try answering questions
+# from another agent before escalating to human.
+# Echoes: "resolved" | "partial" | "failed"
+# Side effects: updates qa.json with agent answers, emits events.
+try_agent_qa_resolution() {
+  local asking_agent="$1"
+  local task_dir="$2"
+  local qa_file
+  qa_file=$(foundry_qa_file "$task_dir")
 
-handle_waiting_answer() {
-  local agent="$1"
-  local task_dir="${2:-$TASK_DIR}"
-
-  local qa_file="${task_dir}/qa.json"
-
-  # Validate qa.json exists and has unanswered questions
   if [[ ! -f "$qa_file" ]]; then
-    echo -e "  ${YELLOW}⚠ Agent '${agent}' exited 75 but qa.json not found — treating as failure${NC}"
-    return 1
+    echo "failed"
+    return 0
   fi
 
-  local unanswered
-  unanswered=$(foundry_qa_unanswered_count "$task_dir")
+  local unanswered_blocking
+  unanswered_blocking=$(python3 -c "
+import json, sys
+data = json.loads(open(sys.argv[1]).read())
+print(sum(1 for q in data.get('questions', [])
+         if q.get('priority') == 'blocking' and q.get('answer') is None))
+" "$qa_file" 2>/dev/null || echo "0")
 
-  if [[ "$unanswered" -eq 0 ]]; then
-    echo -e "  ${YELLOW}⚠ Agent '${agent}' exited 75 but no unanswered questions in qa.json — treating as failure${NC}"
-    return 1
+  if [[ "$unanswered_blocking" -eq 0 ]]; then
+    echo "resolved"
+    return 0
   fi
 
-  local progress
-  progress=$(foundry_qa_progress "$task_dir")
-  echo -e "  ${CYAN}Agent '${agent}' is waiting for answers (${unanswered} unanswered, progress: ${progress})${NC}"
+  echo -e "${CYAN}  🤖 Attempting agent-to-agent Q&A resolution via u-architect...${NC}" >&2
+  emit_event "AGENT_QA_ATTEMPT" "asking=${asking_agent}|responder=u-architect|blocking=${unanswered_blocking}"
+  debug_log "hitl" "Agent-to-agent Q&A attempt" "asking=$asking_agent" "blocking=$unanswered_blocking"
 
-  # Update state.json to reflect waiting_answer
-  foundry_set_waiting_answer "$task_dir" "$agent" "$unanswered"
-  pipeline_task_append_event "$task_dir" "waiting_answer" \
-    "Agent ${agent} has ${unanswered} unanswered question(s)" "$agent"
-  emit_event "AGENT_WAITING" "agent=${agent}|unanswered=${unanswered}"
+  # Build Q&A prompt for u-architect
+  local qa_prompt
+  qa_prompt=$(cat <<QAPROMPT
+## Q&A Responder Mode
 
-  # ── Step 1: Agent-to-Agent resolution via u-architect ──────────────
-  # Only attempt if the asking agent is NOT u-architect itself
-  # (avoids infinite recursion) and qa.json has blocking questions.
-  local blocking_unanswered
-  blocking_unanswered=$(foundry_qa_blocking_unanswered_count "$task_dir")
+You are running in Q&A responder mode. Agent **${asking_agent}** has questions that are blocking the pipeline.
 
-  if [[ "$agent" != "u-architect" && "$blocking_unanswered" -gt 0 ]]; then
-    echo -e "  ${CYAN}Attempting agent-to-agent Q&A resolution via u-architect (qa-responder mode)...${NC}"
+### Instructions
 
-    # Build a focused prompt for u-architect acting as Q&A responder.
-    # Short, cheap: read qa.json + task spec, answer what you can.
-    local qa_prompt
-    qa_prompt=$(cat << QAEOF
-You are acting as a Q&A responder for the pipeline.
+1. Read the questions in \`${qa_file}\`
+2. Read the task spec and handoff at \`${task_dir}/handoff.md\`
+3. For each question where \`answer\` is \`null\`:
+   - If you can answer confidently based on the spec, codebase, or architectural knowledge: fill in the answer
+   - If you cannot answer confidently: leave \`answer\` as \`null\`
+4. For every question you answer, also set:
+   - \`"answered_by": "u-architect"\`
+   - \`"answer_source": "agent"\`
+   - \`"answered_at": "<current ISO timestamp>"\`
 
-Agent '${agent}' has paused with unanswered questions in:
-  ${qa_file}
+### Important
 
-## Your Task
-
-1. Read the qa.json file above — it contains questions from '${agent}'
-2. Read the original task spec and handoff.md for context
-3. For each question you CAN answer based on the spec/codebase:
-   - Fill in the "answer" field with a clear, concise answer
-   - Set "answered_by" to "u-architect"
-   - Set "answered_at" to current ISO8601 timestamp
-   - Set "answer_source" to "agent"
-4. For questions you CANNOT answer (require human judgment or external info):
-   - Leave "answer" as null
-5. Write the updated qa.json back to: ${qa_file}
-
-## Rules
-
-- Answer ONLY from information available in the codebase, spec, and handoff
-- Do NOT invent answers or make assumptions beyond what the spec says
-- Do NOT ask follow-up questions — either answer or leave null
-- Keep answers concise and actionable
-- If ALL questions are outside your knowledge, write qa.json unchanged and exit 0
-
-## Context Files
-
-- Task qa.json: ${qa_file}
-- Handoff: .opencode/pipeline/handoff.md
-- Task description: read from handoff.md Task field
-QAEOF
+- Only answer questions you are confident about. Wrong answers are worse than no answers.
+- Do NOT modify any source code. Only update \`qa.json\`.
+- Do NOT create new files or change handoff.md.
+- Read the original task spec and relevant code to inform your answers.
+- Exit with code 0 when done (even if you couldn't answer all questions).
+QAPROMPT
 )
 
-    # Run u-architect in qa-responder mode:
-    # - Short timeout (5 min): this is a quick lookup, not a full architect run
-    # - Use a cheaper model override if PIPELINE_QA_RESPONDER_MODEL is set
-    local qa_responder_timeout="${PIPELINE_QA_RESPONDER_TIMEOUT:-300}"  # 5 min default
-    local qa_responder_model="${PIPELINE_QA_RESPONDER_MODEL:-}"
-    local original_architect_model
-    original_architect_model=$(get_current_model "u-architect")
+  # Run u-architect with short timeout (5 min) in Q&A responder mode
+  local qa_log="$LOG_DIR/${TIMESTAMP}_u-architect-qa.log"
+  local qa_timeout=300  # 5 minutes
+  local qa_exit=0
+  local qa_start_epoch
+  qa_start_epoch=$(date +%s)
 
-    # Temporarily swap to cheaper model if configured
-    if [[ -n "$qa_responder_model" && "$qa_responder_model" != "$original_architect_model" ]]; then
-      echo -e "  ${YELLOW}  Using cheaper model for qa-responder: ${qa_responder_model}${NC}"
-      swap_agent_model "u-architect" "$qa_responder_model"
-    fi
-
-    local qa_log_file="$LOG_DIR/${TIMESTAMP}_${agent}_qa-responder.log"
-    local qa_exit_code=0
-
-    echo -e "  ${BLUE}  Running u-architect as qa-responder (timeout: ${qa_responder_timeout}s)...${NC}"
-
-    local qa_run_cmd="opencode run --agent u-architect $(printf '%q' "$qa_prompt")"
-    if command -v timeout &>/dev/null; then
-      qa_run_cmd="timeout ${qa_responder_timeout} ${qa_run_cmd}"
-    fi
-
-    if command -v script &>/dev/null; then
-      (cd "$REPO_ROOT" && script -qc "$qa_run_cmd" /dev/null) \
-        < /dev/null 2>&1 | tee "$qa_log_file" &
-    else
-      (cd "$REPO_ROOT" && eval "$qa_run_cmd") \
-        < /dev/null 2>&1 | tee "$qa_log_file" &
-    fi
-    local qa_pid=$!
-    wait "$qa_pid" 2>/dev/null || qa_exit_code=$?
-
-    # Restore original architect model
-    restore_agent_model "u-architect" "$original_architect_model"
-
-    if [[ $qa_exit_code -ne 0 && $qa_exit_code -ne 75 ]]; then
-      echo -e "  ${YELLOW}  u-architect qa-responder exited with code ${qa_exit_code} — checking qa.json anyway${NC}"
-    fi
-
-    # Check if all blocking questions are now answered
-    local still_blocking_unanswered
-    still_blocking_unanswered=$(foundry_qa_blocking_unanswered_count "$task_dir")
-
-    if [[ "$still_blocking_unanswered" -eq 0 ]]; then
-      # All blocking questions resolved by u-architect!
-      local total_answered
-      total_answered=$(foundry_qa_progress "$task_dir")
-      echo -e "  ${GREEN}✓ u-architect resolved all blocking questions (${total_answered} answered)${NC}"
-      pipeline_task_append_event "$task_dir" "agent_qa_resolved" \
-        "u-architect answered all blocking questions from ${agent}" "$agent"
-      emit_event "AGENT_QA_RESOLVED" "asking=${agent}|resolver=u-architect|progress=${total_answered}"
-
-      # Restore state to in_progress so pipeline can continue
-      foundry_set_state_status "$task_dir" "in_progress" "$agent" "$agent"
-
-      return 0  # Continue pipeline — answers are in qa.json for agent to read on resume
-    fi
-
-    # Partial or no resolution
-    local now_answered
-    now_answered=$(foundry_qa_progress "$task_dir")
-    echo -e "  ${YELLOW}  u-architect could not resolve all blocking questions (${now_answered} answered, ${still_blocking_unanswered} blocking remain)${NC}"
-    pipeline_task_append_event "$task_dir" "agent_qa_partial" \
-      "u-architect answered some questions, ${still_blocking_unanswered} blocking remain — escalating to human" "$agent"
-    emit_event "AGENT_QA_PARTIAL" "asking=${agent}|resolver=u-architect|blocking_remain=${still_blocking_unanswered}"
+  # Save and override u-architect timeout for this short Q&A run
+  local current_model
+  current_model=$(get_current_model "u-architect")
+  local run_cmd="opencode run --agent u-architect $(printf '%q' "$qa_prompt")"
+  if command -v timeout &>/dev/null; then
+    run_cmd="timeout ${qa_timeout} ${run_cmd}"
   fi
 
-  # ── Step 2: Escalate to human ───────────────────────────────────────
-  echo -e "  ${YELLOW}Pipeline paused — waiting for human answers${NC}"
-  echo -e "  ${BLUE}Questions in: ${qa_file}${NC}"
-  echo -e "  ${BLUE}Resume with: ./agentic-development/foundry.sh resume-qa $(basename "$task_dir" | sed 's/--foundry.*//')${NC}"
+  debug_log "hitl" "Spawning u-architect Q&A" "timeout=${qa_timeout}s" "log=$qa_log"
 
-  # Ensure state reflects waiting_answer (may have been partially updated above)
-  local final_unanswered
-  final_unanswered=$(foundry_qa_unanswered_count "$task_dir")
-  foundry_set_waiting_answer "$task_dir" "$agent" "$final_unanswered"
-  pipeline_task_append_event "$task_dir" "agent_qa_escalated" \
-    "Questions from ${agent} escalated to human (${final_unanswered} unanswered)" "$agent"
-  emit_event "AGENT_QA_ESCALATED" "agent=${agent}|unanswered=${final_unanswered}"
+  if command -v script &>/dev/null; then
+    (cd "$REPO_ROOT" && script -qc "$run_cmd" /dev/null) \
+      < /dev/null 2>&1 | tee "$qa_log" &
+  else
+    (cd "$REPO_ROOT" && eval "$run_cmd") \
+      < /dev/null 2>&1 | tee "$qa_log" &
+  fi
+  local qa_pid=$!
+  wait "$qa_pid" || qa_exit=$?
 
-  return 75
+  local qa_end_epoch
+  qa_end_epoch=$(date +%s)
+  local qa_dur=$(( qa_end_epoch - qa_start_epoch ))
+
+  debug_log "hitl" "u-architect Q&A finished" "exit=$qa_exit" "duration=${qa_dur}s"
+
+  # Track u-architect Q&A cost
+  local qa_tokens
+  qa_tokens=$(get_agent_tokens "u-architect" 2>/dev/null || echo '{}')
+  local qa_in_tok qa_out_tok qa_cost
+  qa_in_tok=$(echo "$qa_tokens" | jq -r '.input_tokens // 0' 2>/dev/null || echo 0)
+  qa_out_tok=$(echo "$qa_tokens" | jq -r '.output_tokens // 0' 2>/dev/null || echo 0)
+  qa_cost=$(echo "$qa_tokens" | jq -r '.cost // 0' 2>/dev/null || echo 0)
+
+  if [[ "$TASK_LIFECYCLE" == true && -n "$task_dir" ]]; then
+    foundry_state_upsert_agent "$task_dir" "u-architect-qa" "done" "$current_model" \
+      "$qa_dur" "$qa_in_tok" "$qa_out_tok" "$qa_cost" "1"
+  fi
+
+  # If u-architect failed or timed out, treat as "failed"
+  if [[ $qa_exit -ne 0 ]]; then
+    echo -e "${YELLOW}  u-architect Q&A exited with code ${qa_exit}${NC}" >&2
+    emit_event "AGENT_QA_FAILED" "asking=${asking_agent}|responder=u-architect|exit=${qa_exit}|duration=${qa_dur}s"
+    pipeline_task_append_event "$task_dir" "agent_qa_escalated" \
+      "u-architect Q&A failed (exit $qa_exit), escalating to human" "$asking_agent"
+    echo "failed"
+    return 0
+  fi
+
+  # Check how many blocking questions are now answered
+  local still_unanswered
+  still_unanswered=$(python3 -c "
+import json, sys
+data = json.loads(open(sys.argv[1]).read())
+print(sum(1 for q in data.get('questions', [])
+         if q.get('priority') == 'blocking' and q.get('answer') is None))
+" "$qa_file" 2>/dev/null || echo "0")
+
+  local total_q answered_q
+  total_q=$(python3 -c "
+import json, sys
+data = json.loads(open(sys.argv[1]).read())
+print(len(data.get('questions', [])))
+" "$qa_file" 2>/dev/null || echo "0")
+  answered_q=$(python3 -c "
+import json, sys
+data = json.loads(open(sys.argv[1]).read())
+print(sum(1 for q in data.get('questions', []) if q.get('answer') is not None))
+" "$qa_file" 2>/dev/null || echo "0")
+
+  emit_event "AGENT_QA_RESULT" "asking=${asking_agent}|answered=${answered_q}/${total_q}|still_blocking=${still_unanswered}"
+
+  if [[ "$still_unanswered" -eq 0 ]]; then
+    # All blocking questions resolved by u-architect
+    pipeline_task_append_event "$task_dir" "agent_qa_resolved" \
+      "u-architect answered all blocking questions from $asking_agent ($answered_q/$total_q)" "$asking_agent"
+
+    # Sync answers to handoff.md
+    foundry_sync_qa_to_handoff "$task_dir"
+
+    # Update state back to in_progress
+    foundry_set_state_status "$task_dir" "in_progress" "$asking_agent" "$asking_agent"
+    foundry_update_state_field "$task_dir" "questions_answered" "$answered_q"
+
+    # Send Telegram notification for agent resolution
+    if [[ -f "$REPO_ROOT/agentic-development/lib/foundry-telegram.sh" ]]; then
+      source "$REPO_ROOT/agentic-development/lib/foundry-telegram.sh"
+      send_telegram_hitl_agent_resolved "u-architect" "$asking_agent" "${TASK_SLUG:-task}"
+    fi
+
+    echo "resolved"
+  elif [[ "$answered_q" -gt 0 ]]; then
+    # Partial resolution — some answered, some still need human
+    pipeline_task_append_event "$task_dir" "agent_qa_partial" \
+      "u-architect answered $answered_q/$total_q questions, escalating rest to human" "$asking_agent"
+
+    # Sync partial answers to handoff.md
+    foundry_sync_qa_to_handoff "$task_dir"
+    foundry_update_state_field "$task_dir" "questions_answered" "$answered_q"
+
+    echo "partial"
+  else
+    # No questions answered
+    pipeline_task_append_event "$task_dir" "agent_qa_escalated" \
+      "u-architect could not answer any questions from $asking_agent" "$asking_agent"
+
+    echo "failed"
+  fi
+
+  return 0
 }
 
 # ── Run a single agent with timeout and retry ─────────────────────────
@@ -1802,6 +1815,7 @@ run_agent() {
   fi
 
   emit_event "AGENT_START" "agent=${agent}|model=${original_model}|fallbacks=${fallback_chain:-none}"
+  debug_log "agent" "AGENT_START" "agent=$agent" "model=$original_model" "fallback=$fallback_chain" "timeout=${agent_timeout}s" "log=$log_file"
 
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
   echo -e "${BLUE}▶ Agent:   ${YELLOW}${agent}${NC}"
@@ -1841,10 +1855,13 @@ run_agent() {
 
     # Use 'script' to allocate a pseudo-TTY so opencode streams output
     # line-by-line instead of block-buffering (Node.js buffers stdout in pipes)
+    local current_model
+    current_model=$(get_current_model "$agent")
     local run_cmd="opencode run --agent ${agent} $(printf '%q' "$message")"
     if command -v timeout &>/dev/null; then
       run_cmd="timeout ${agent_timeout} ${run_cmd}"
     fi
+    debug_log "process" "Spawning agent process" "agent=$agent" "model=$current_model" "attempt=$attempt/$max_attempts" "pid=pending" "timeout=${agent_timeout}s"
     if command -v script &>/dev/null; then
       (cd "$REPO_ROOT" && script -qc "$run_cmd" /dev/null) \
         < /dev/null 2>&1 | tee "$log_file" &
@@ -1853,13 +1870,16 @@ run_agent() {
         < /dev/null 2>&1 | tee "$log_file" &
     fi
     local agent_pid=$!
+    debug_log "process" "Agent process spawned" "agent=$agent" "tee_pid=$agent_pid"
 
     # Start loop monitor in background
     monitor_agent_loop "$log_file" "$agent" "$agent_pid" &
     local monitor_pid=$!
+    debug_log "process" "Loop monitor started" "agent=$agent" "monitor_pid=$monitor_pid" "agent_pid=$agent_pid"
 
     # Wait for agent to finish
     wait "$agent_pid" 2>/dev/null || exit_code=$?
+    debug_log "process" "Agent process exited" "agent=$agent" "exit_code=$exit_code" "pid=$agent_pid"
 
     # Kill monitor
     kill "$monitor_pid" 2>/dev/null
@@ -2006,11 +2026,7 @@ run_agent() {
 
     # Update state.json with agent telemetry
     local agent_status_for_state="done"
-    if [[ $exit_code -ne 0 && $exit_code -ne 75 ]]; then
-      agent_status_for_state="failed"
-    elif [[ $exit_code -eq 75 ]]; then
-      agent_status_for_state="waiting_answer"
-    fi
+    [[ $exit_code -ne 0 ]] && agent_status_for_state="failed"
     foundry_state_upsert_agent "$TASK_DIR" "$agent" "$agent_status_for_state" "$actual_model_used" \
       "$(( agent_end_epoch - agent_start_epoch ))" "$in_tok" "$out_tok" "$agent_cost" "1"
 
@@ -2033,43 +2049,82 @@ run_agent() {
       fi
       return 0
     elif [[ $exit_code -eq 75 ]]; then
-      # Agent is waiting for answers (Human-in-the-Loop protocol, Section 14)
+      # HITL: Agent is waiting for human answers
       local agent_dur=$(( agent_end_epoch - agent_start_epoch ))
-      emit_event "AGENT_DONE" "agent=${agent}|model=${actual_model_used}|status=waiting_answer|duration=${agent_dur}s"
+      emit_event "AGENT_DONE" "agent=${agent}|status=waiting_answer|duration=${agent_dur}s"
 
       echo ""
       echo -e "${YELLOW}⏸ Agent '${agent}' is waiting for answers (exit 75)${NC}"
       restore_agent_model "$agent" "$original_model"
 
-      # Attempt agent-to-agent resolution, then escalate to human if needed
-      local wa_result=0
-      handle_waiting_answer "$agent" "${TASK_DIR:-}" || wa_result=$?
+      # Update agent status in state.json
+      if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
+        foundry_state_upsert_agent "$TASK_DIR" "$agent" "waiting_answer" "$actual_model_used" \
+          "$agent_dur" "$in_tok" "$out_tok" "$agent_cost" "1"
+      fi
 
-      if [[ $wa_result -eq 0 ]]; then
-        # u-architect resolved all blocking questions — resume agent with answers
-        echo -e "  ${GREEN}✓ Questions resolved by u-architect — resuming '${agent}' with answers${NC}"
-        emit_event "AGENT_RESUME" "agent=${agent}|reason=qa_resolved_by_architect"
-
-        # Build a resume prompt that tells the agent to read qa.json answers
-        local resume_message
-        resume_message="${message}
-
-## RESUME CONTEXT
-
-You are RESUMING after your questions were answered by u-architect.
-Read $(foundry_qa_file "${TASK_DIR:-}") for the answers.
-Continue your work incorporating the answers.
-Do NOT re-ask answered questions.
-Your previous work is preserved in handoff.md and git history."
-
-        # Reset attempt counter so the resume counts as a fresh run
-        attempt=$((attempt - 1))
-        # Update message for the next loop iteration
-        message="$resume_message"
-        continue
+      # Handle waiting_answer: validate qa.json, update state, check continue_on_wait
+      local hitl_result=0
+      if [[ -n "$TASK_DIR" ]]; then
+        foundry_handle_waiting_answer "$agent" "$TASK_DIR" || hitl_result=$?
       else
-        # Escalated to human — pipeline must pause
-        echo -e "  ${RED}Pipeline paused — human input required${NC}"
+        echo -e "${YELLOW}  No TASK_DIR — cannot handle waiting_answer properly${NC}"
+        hitl_result=75
+      fi
+
+      # ── Agent-to-Agent Q&A Escalation (Section 14) ──────────────────
+      # Try u-architect as first responder before escalating to human.
+      # Skip if: the asking agent IS u-architect, or no TASK_DIR.
+      if [[ -n "$TASK_DIR" && "$agent" != "u-architect" ]]; then
+        local qa_resolution_result
+        qa_resolution_result=$(try_agent_qa_resolution "$agent" "$TASK_DIR")
+
+        if [[ "$qa_resolution_result" == "resolved" ]]; then
+          # All blocking questions answered by u-architect — signal re-run
+          echo -e "${GREEN}  ✓ u-architect resolved all blocking questions${NC}"
+          return 76  # Special code: Q&A resolved, caller should re-run agent
+        elif [[ "$qa_resolution_result" == "partial" ]]; then
+          echo -e "${YELLOW}  ⚠ u-architect partially resolved questions — escalating to human${NC}"
+        else
+          echo -e "${YELLOW}  u-architect could not resolve questions — escalating to human${NC}"
+        fi
+      fi
+
+      # Send Telegram notification (if configured)
+      if [[ -f "$REPO_ROOT/agentic-development/lib/foundry-telegram.sh" ]]; then
+        # shellcheck source=/dev/null
+        source "$REPO_ROOT/agentic-development/lib/foundry-telegram.sh"
+        local qa_count
+        qa_count=$(foundry_state_field "$TASK_DIR" "questions_count" 2>/dev/null || echo "?")
+        local task_slug_short="${TASK_SLUG:-task}"
+
+        if [[ -n "$TASK_DIR" && "$agent" != "u-architect" ]]; then
+          # Agent-to-agent was attempted — use escalation notification
+          local total_q answered_q
+          total_q=$(python3 -c "
+import json, sys
+data = json.loads(open(sys.argv[1]).read())
+print(len(data.get('questions', [])))
+" "$(foundry_qa_file "$TASK_DIR")" 2>/dev/null || echo "?")
+          answered_q=$(python3 -c "
+import json, sys
+data = json.loads(open(sys.argv[1]).read())
+print(sum(1 for q in data.get('questions', []) if q.get('answer') is not None))
+" "$(foundry_qa_file "$TASK_DIR")" 2>/dev/null || echo "0")
+          send_telegram_hitl_escalated "$agent" "$task_slug_short" "$answered_q" "$total_q"
+        else
+          send_telegram_hitl_waiting "$agent" "$task_slug_short" "$qa_count"
+        fi
+      fi
+
+      if [[ $hitl_result -eq 0 ]]; then
+        # continue_on_wait=true — pipeline continues
+        echo -e "${CYAN}  continue_on_wait=true — proceeding to next agent${NC}"
+        return 75  # Special return: caller handles this
+      else
+        # Pipeline paused
+        echo -e "${YELLOW}  Pipeline paused — use: foundry.sh answer ${TASK_SLUG:-<slug>}${NC}"
+        echo -e "${YELLOW}  Then resume with: foundry.sh resume-qa ${TASK_SLUG:-<slug>}${NC}"
         return 75
       fi
     elif [[ $exit_code -eq 124 ]]; then
@@ -2697,6 +2752,7 @@ EOF
 # ── Main execution ───────────────────────────────────────────────────
 
 main() {
+  debug_log "main" "Pipeline starting" "pid=$$" "args=$*"
   echo ""
   echo -e "${CYAN}╔══════════════════════════════════════════════════╗${NC}"
   echo -e "${CYAN}║${NC}     ${YELLOW}OpenCode Multi-Agent Pipeline v2${NC}             ${CYAN}║${NC}"
@@ -2722,61 +2778,91 @@ main() {
   local main_branch
   main_branch=$(git -C "$REPO_ROOT" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@refs/remotes/origin/@@' || echo "main")
 
-  # Only enforce main branch requirement for new branches (not for existing task branches)
-  if ! git -C "$REPO_ROOT" rev-parse --verify "$branch" &>/dev/null; then
-    # New branch — must be on main/master
-    if [[ "$current_branch" != "$main_branch" && "$current_branch" != "master" ]]; then
-      # Check if we can auto-switch to main (clean working tree)
-      if git -C "$REPO_ROOT" diff-index --quiet HEAD -- 2>/dev/null; then
-        echo -e "${YELLOW}⚠ Not on ${main_branch} (on ${current_branch}), but working tree is clean${NC}"
-        echo -e "${YELLOW}  Auto-switching to ${main_branch}...${NC}"
-        if git -C "$REPO_ROOT" checkout "$main_branch" 2>/dev/null; then
-          echo -e "${GREEN}✓ Switched to ${main_branch}${NC}"
+  # ── Branch checkout logic ──────────────────────────────────────────
+  # Case 1: Already on the target branch → skip checkout entirely
+  # Case 2: Target branch exists → switch to it
+  # Case 3: Target branch doesn't exist → create from main
+  #
+  # Fail explicitly if untracked files block checkout (don't silently die).
+
+  debug_log "git" "Branch checkout" "current=$current_branch" "target=$branch" "main=$main_branch"
+  if [[ "$current_branch" == "$branch" ]]; then
+    # Already on the target feature branch — nothing to do
+    echo -e "${GREEN}✓ Already on target branch: ${branch}${NC}"
+    debug_log "git" "Already on target branch — skipping checkout"
+  else
+    # Need to switch branches
+    debug_log "git" "Switching branches" "from=$current_branch" "to=$branch"
+    if ! git -C "$REPO_ROOT" rev-parse --verify "$branch" &>/dev/null; then
+      # New branch — must be on main/master to create it
+      if [[ "$current_branch" != "$main_branch" && "$current_branch" != "master" ]]; then
+        if git -C "$REPO_ROOT" diff-index --quiet HEAD -- 2>/dev/null; then
+          echo -e "${YELLOW}⚠ Not on ${main_branch} (on ${current_branch}), auto-switching...${NC}"
+          if ! git -C "$REPO_ROOT" checkout "$main_branch" 2>/dev/null; then
+            echo -e "${RED}✗ Failed to switch to ${main_branch}${NC}"
+            [[ "$TASK_LIFECYCLE" == true ]] && foundry_set_state_status "$TASK_DIR" "stopped" "branch_switch_failed" ""
+            exit 1
+          fi
           current_branch="$main_branch"
         else
-          echo -e "${RED}✗ Failed to auto-switch to ${main_branch}${NC}"
-          echo -e "${RED}  Run: git checkout ${main_branch}${NC}"
+          echo -e "${RED}✗ Cannot create branch: must be on ${main_branch} (currently on ${current_branch})${NC}"
+          echo -e "${RED}  Working tree has uncommitted changes — cannot auto-switch${NC}"
+          echo -e "${RED}  Run: git stash && git checkout ${main_branch}${NC}"
+          [[ "$TASK_LIFECYCLE" == true ]] && foundry_set_state_status "$TASK_DIR" "stopped" "dirty_workspace" ""
           exit 1
         fi
+      fi
+      echo -e "${GREEN}✓ On ${main_branch} — safe to create task branch${NC}"
+    fi
+
+    # Create or switch to branch (with retry for lock contention)
+    local branch_ok=false
+    local checkout_error=""
+    for _try in 1 2 3 4 5; do
+      checkout_error=""
+      if git -C "$REPO_ROOT" rev-parse --verify "$branch" &>/dev/null; then
+        # Branch exists — switch to it (or re-create in worktree mode)
+        if [[ -f "$REPO_ROOT/.git" ]]; then
+          git -C "$REPO_ROOT" branch -D "$branch" 2>/dev/null || true
+          checkout_error=$(git -C "$REPO_ROOT" checkout -b "$branch" 2>&1) && { branch_ok=true; break; }
+        else
+          checkout_error=$(git -C "$REPO_ROOT" checkout "$branch" 2>&1) && {
+            echo -e "${YELLOW}Switched to existing branch: ${branch}${NC}"
+            branch_ok=true; break
+          }
+        fi
       else
-        echo -e "${RED}✗ Cannot create new task branch: must be on ${main_branch} (currently on ${current_branch})${NC}"
-        echo -e "${RED}  Working tree has uncommitted changes - cannot auto-switch${NC}"
-        echo -e "${RED}  Run: git stash && git checkout ${main_branch}${NC}"
+        checkout_error=$(git -C "$REPO_ROOT" checkout -b "$branch" 2>&1) && {
+          echo -e "${GREEN}Created branch: ${branch}${NC}"
+          branch_ok=true; break
+        }
+      fi
+
+      # Check if failure is due to untracked files (not recoverable by retry)
+      if echo "$checkout_error" | grep -q "untracked working tree files would be overwritten"; then
+        local blocking_files
+        blocking_files=$(echo "$checkout_error" | grep -A50 "untracked working tree files" | grep "^\t" | head -10)
+        echo -e "${RED}✗ Cannot switch to branch ${branch}: untracked files would be overwritten${NC}"
+        echo -e "${RED}  Blocking files:${NC}"
+        echo "$blocking_files" | while read -r f; do echo -e "${RED}    $f${NC}"; done
+        echo -e "${RED}  Fix: remove or commit these files, then retry${NC}"
+        [[ "$TASK_LIFECYCLE" == true ]] && {
+          foundry_set_state_status "$TASK_DIR" "stopped" "untracked_files_block_checkout" ""
+          pipeline_task_append_event "$TASK_DIR" "task_stopped" \
+            "Untracked files block checkout to $branch: $(echo "$blocking_files" | tr '\n' ', ')" ""
+        }
         exit 1
       fi
-    fi
-    echo -e "${GREEN}✓ On ${main_branch} — safe to create task branch${NC}"
-  fi
 
-  # Create or switch to branch (with retry for lock contention in parallel mode)
-  local branch_ok=false
-  for _try in 1 2 3 4 5; do
-    if git -C "$REPO_ROOT" rev-parse --verify "$branch" &>/dev/null; then
-      # Branch exists — re-create from current HEAD in worktree mode
-      if [[ -f "$REPO_ROOT/.git" ]]; then
-        git -C "$REPO_ROOT" branch -D "$branch" 2>/dev/null || true
-        if git -C "$REPO_ROOT" checkout -b "$branch" 2>/dev/null; then
-          echo -e "${YELLOW}Re-created branch (worktree re-run): ${branch}${NC}"
-          branch_ok=true; break
-        fi
-      else
-        if git -C "$REPO_ROOT" checkout "$branch" 2>/dev/null; then
-          echo -e "${YELLOW}Switched to existing branch: ${branch}${NC}"
-          branch_ok=true; break
-        fi
-      fi
-    else
-      if git -C "$REPO_ROOT" checkout -b "$branch" 2>/dev/null; then
-        echo -e "${GREEN}Created branch: ${branch}${NC}"
-        branch_ok=true; break
-      fi
+      echo -e "${YELLOW}Git lock contention (attempt ${_try}/5), retrying in ${_try}s...${NC}"
+      sleep "$_try"
+    done
+    if [[ "$branch_ok" != true ]]; then
+      echo -e "${RED}Failed to create/switch branch after 5 attempts${NC}"
+      [[ -n "$checkout_error" ]] && echo -e "${RED}  Last error: ${checkout_error}${NC}"
+      [[ "$TASK_LIFECYCLE" == true ]] && foundry_set_state_status "$TASK_DIR" "stopped" "branch_checkout_failed" ""
+      exit 1
     fi
-    echo -e "${YELLOW}Git lock contention (attempt ${_try}/5), retrying in ${_try}s...${NC}"
-    sleep "$_try"
-  done
-  if [[ "$branch_ok" != true ]]; then
-    echo -e "${RED}Failed to create/switch branch after 5 attempts${NC}"
-    exit 1
   fi
 
   # Move task to in-progress (if using task file lifecycle)
@@ -2816,14 +2902,18 @@ main() {
     planner_prompt=$(build_prompt "u-planner")
     local planner_start
     planner_start=$(date +%s)
+    debug_log "planner" "Starting planner"
     if run_agent "u-planner" "$planner_prompt"; then
       local planner_dur=$(( $(date +%s) - planner_start ))
       echo -e "${GREEN}✓ Planner completed in ${planner_dur}s${NC}"
+      debug_log "planner" "Planner completed" "duration=${planner_dur}s" "plan_exists=$(test -f "$PLAN_FILE" && echo yes || echo no)"
       if apply_plan "$PLAN_FILE"; then
         write_checkpoint "u-planner" "done" "$planner_dur" ""
+        debug_log "planner" "Plan applied" "file=$PLAN_FILE"
       fi
     else
       echo -e "${YELLOW}⚠ Planner failed, using standard pipeline${NC}"
+      debug_log "planner" "PLANNER FAILED — using standard pipeline"
       write_checkpoint "u-planner" "failed" "$(( $(date +%s) - planner_start ))" ""
     fi
     # Archive plan.json for this task, then clean up git
@@ -2846,6 +2936,7 @@ main() {
   fi
 
   echo ""
+  debug_log "pipeline" "Agents resolved" "agents=$(echo "$agents_to_run" | tr '\n' ',')" "profile=${PIPELINE_PROFILE:-standard}"
   echo -e "${BLUE}Agents to run:${NC} $(echo "$agents_to_run" | tr '\n' ' ')"
   echo ""
 
@@ -2870,12 +2961,14 @@ main() {
     should_run_summarizer=true
   fi
   for agent in $agents_to_run; do
+    debug_log "loop" "=== Agent loop iteration ===" "agent=$agent"
     if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
       foundry_set_state_status "$TASK_DIR" "in_progress" "$agent" "$agent"
     fi
 
     local prompt
     prompt=$(build_prompt "$agent")
+    debug_log "loop" "Prompt built" "agent=$agent" "prompt_length=${#prompt}"
 
     local agent_start
     agent_start=$(date +%s)
@@ -2883,10 +2976,12 @@ main() {
     # Log file for this agent run
     local agent_log="$LOG_DIR/${TIMESTAMP}_${agent}.log"
 
-    local run_agent_exit=0
-    run_agent "$agent" "$prompt" || run_agent_exit=$?
+    local run_exit=0
+    debug_log "loop" "Calling run_agent" "agent=$agent" "log=$agent_log"
+    run_agent "$agent" "$prompt" || run_exit=$?
+    debug_log "loop" "run_agent returned" "agent=$agent" "exit=$run_exit" "duration=$(($(date +%s) - agent_start))s"
 
-    if [[ $run_agent_exit -eq 0 ]]; then
+    if [[ $run_exit -eq 0 ]]; then
       local agent_dur=$(( $(date +%s) - agent_start ))
 
       send_telegram "✅ <b>${agent}</b> completed (${agent_dur}s)
@@ -2935,11 +3030,82 @@ main() {
       fi
 
       echo ""
-    elif [[ $run_agent_exit -eq 75 ]]; then
-      # Agent escalated to human — pipeline pauses here
+    elif [[ $run_exit -eq 76 ]]; then
+      # HITL: Agent Q&A was resolved by u-architect — re-run agent with answers
+      local agent_dur=$(( $(date +%s) - agent_start ))
+      echo -e "${CYAN}🔄 Re-running '${agent}' with u-architect's answers...${NC}"
+
+      # Auto-commit partial work before re-run
+      commit_agent_work "$agent" "$task_slug"
+
+      write_checkpoint "$agent" "qa_resolved_rerun" "$agent_dur" "" "$(get_agent_tokens "$agent")"
+
+      # Re-run the same agent — it will read answered qa.json and continue
+      agent_start=$(date +%s)
+      prompt=$(build_prompt "$agent")
+      run_exit=0
+      run_agent "$agent" "$prompt" || run_exit=$?
+
+      # Handle re-run result the same as a normal run
+      if [[ $run_exit -eq 0 ]]; then
+        agent_dur=$(( $(date +%s) - agent_start ))
+        send_telegram "✅ <b>${agent}</b> completed after Q&A resolution (${agent_dur}s)
+📋 <i>${TASK_MESSAGE}</i>"
+        commit_agent_work "$agent" "$task_slug"
+        local commit_hash
+        commit_hash=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo "")
+        local agent_tokens
+        agent_tokens=$(get_agent_tokens "$agent")
+        write_checkpoint "$agent" "done" "$agent_dur" "$commit_hash" "$agent_tokens"
+        save_agent_artifact "$agent" "$agent_log"
+        local _in_tok _out_tok _cost
+        _in_tok=$(echo "$agent_tokens" | jq -r '.input_tokens // 0' 2>/dev/null || echo 0)
+        _out_tok=$(echo "$agent_tokens" | jq -r '.output_tokens // 0' 2>/dev/null || echo 0)
+        _cost=$(echo "$agent_tokens" | jq -r '.cost // 0' 2>/dev/null || echo 0)
+        if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
+          foundry_state_upsert_agent "$TASK_DIR" "$agent" "done" "" "$agent_dur" "$_in_tok" "$_out_tok" "$_cost" "1"
+        fi
+        if [[ "$agent" == "u-coder" ]]; then
+          if ! verify_coder_output; then
+            failed=true
+            failed_agent="$agent (no code produced after Q&A)"
+            break
+          fi
+          run_migrations
+        fi
+        echo ""
+      else
+        # Re-run also failed or paused — fall through to normal failure handling
+        agent_dur=$(( $(date +%s) - agent_start ))
+        if [[ $run_exit -eq 75 ]]; then
+          # Still waiting for answers after re-run (new questions or same unresolved)
+          commit_agent_work "$agent" "$task_slug"
+          local commit_hash
+          commit_hash=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo "")
+          write_checkpoint "$agent" "waiting_answer" "$agent_dur" "$commit_hash" "$(get_agent_tokens "$agent")"
+          save_agent_artifact "$agent" "$agent_log"
+          emit_event "TASK_WAITING" "agent=${agent}|duration=${agent_dur}s|note=after_qa_rerun"
+          if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
+            foundry_set_state_status "$TASK_DIR" "waiting_answer" "$agent" "$agent"
+          fi
+          echo -e "${YELLOW}Pipeline paused at agent: ${agent} (still waiting for answers after Q&A re-run)${NC}"
+          echo -e "${YELLOW}Answer questions: ./agentic-development/foundry.sh answer ${TASK_SLUG:-<slug>}${NC}"
+          echo -e "${YELLOW}Resume pipeline:  ./agentic-development/foundry.sh resume-qa ${TASK_SLUG:-<slug>}${NC}"
+          break
+        else
+          failed=true
+          failed_agent="$agent"
+          send_telegram "❌ <b>${agent}</b> FAILED after Q&A re-run (${agent_dur}s)
+📋 <i>${TASK_MESSAGE}</i>"
+          echo -e "${RED}Pipeline stopped at agent: ${agent} (failed after Q&A re-run)${NC}"
+          break
+        fi
+      fi
+    elif [[ $run_exit -eq 75 ]]; then
+      # HITL: Agent is waiting for answers — pipeline paused (escalated to human)
       local agent_dur=$(( $(date +%s) - agent_start ))
 
-      # Commit any partial work the agent may have produced before pausing
+      # Auto-commit agent's partial work
       commit_agent_work "$agent" "$task_slug"
       local commit_hash
       commit_hash=$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo "")
@@ -2949,23 +3115,16 @@ main() {
       write_checkpoint "$agent" "waiting_answer" "$agent_dur" "$commit_hash" "$agent_tokens"
       save_agent_artifact "$agent" "$agent_log"
 
-      local _in_tok _out_tok _cost
-      _in_tok=$(echo "$agent_tokens" | jq -r '.input_tokens // 0' 2>/dev/null || echo 0)
-      _out_tok=$(echo "$agent_tokens" | jq -r '.output_tokens // 0' 2>/dev/null || echo 0)
-      _cost=$(echo "$agent_tokens" | jq -r '.cost // 0' 2>/dev/null || echo 0)
+      emit_event "TASK_WAITING" "agent=${agent}|duration=${agent_dur}s"
+
+      # Move task to waiting_answer state (already done in run_agent, but ensure it)
       if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
-        foundry_state_upsert_agent "$TASK_DIR" "$agent" "waiting_answer" "" "$agent_dur" "$_in_tok" "$_out_tok" "$_cost" "1"
+        foundry_set_state_status "$TASK_DIR" "waiting_answer" "$agent" "$agent"
       fi
 
-      failed=true
-      failed_agent="$agent (waiting_answer)"
-
-      send_telegram "⏸ <b>${agent}</b> WAITING FOR ANSWERS
-📋 <i>${TASK_MESSAGE}</i>
-❓ Human input required. Resume with: <code>./agentic-development/foundry.sh resume-qa $(basename "${TASK_DIR:-task}")</code>"
-
-      echo -e "${YELLOW}Pipeline paused at agent: ${agent} (waiting for human answers)${NC}"
-      echo -e "${BLUE}Resume with: ./agentic-development/foundry.sh resume-qa $(basename "${TASK_DIR:-task}" | sed 's/--foundry.*//')${NC}"
+      echo -e "${YELLOW}Pipeline paused at agent: ${agent} (waiting for answers)${NC}"
+      echo -e "${YELLOW}Answer questions: ./agentic-development/foundry.sh answer ${TASK_SLUG:-<slug>}${NC}"
+      echo -e "${YELLOW}Resume pipeline:  ./agentic-development/foundry.sh resume-qa ${TASK_SLUG:-<slug>}${NC}"
       break
     else
       local agent_dur=$(( $(date +%s) - agent_start ))
@@ -3060,22 +3219,8 @@ main() {
 
       # Get status from checkpoint
       local agent_status agent_dur
-      agent_status=$(python3 - "$CHECKPOINT_FILE" "$agent" <<'PYEOF' 2>/dev/null || echo "unknown"
-import json, sys
-with open(sys.argv[1], 'r') as f:
-    data = json.load(f)
-info = data.get('agents', {}).get(sys.argv[2], {})
-print(info.get('status', 'skipped'))
-PYEOF
-)
-      agent_dur=$(python3 - "$CHECKPOINT_FILE" "$agent" <<'PYEOF' 2>/dev/null || echo "0"
-import json, sys
-with open(sys.argv[1], 'r') as f:
-    data = json.load(f)
-info = data.get('agents', {}).get(sys.argv[2], {})
-print(info.get('duration', 0))
-PYEOF
-)
+      agent_status=$(jq -r --arg a "$agent" '.agents[$a].status // "skipped"' "$CHECKPOINT_FILE" 2>/dev/null || echo "unknown")
+      agent_dur=$(jq -r --arg a "$agent" '.agents[$a].duration // 0' "$CHECKPOINT_FILE" 2>/dev/null || echo "0")
 
       local status_icon="✓"
       if [[ "$agent_status" != "done" ]]; then
@@ -3121,13 +3266,7 @@ PYEOF
         out_tok=$(echo "$agent_tokens" | jq -r '.output_tokens // 0' 2>/dev/null || echo 0)
         cache_r=$(echo "$agent_tokens" | jq -r '.cache_read // 0' 2>/dev/null || echo 0)
         cache_w=$(echo "$agent_tokens" | jq -r '.cache_write // 0' 2>/dev/null || echo 0)
-        agent_dur_s=$(python3 - "$CHECKPOINT_FILE" "$agent" <<'PYEOF' 2>/dev/null || echo "0"
-import json, sys
-with open(sys.argv[1], 'r') as f:
-    data = json.load(f)
-print(data.get('agents', {}).get(sys.argv[2], {}).get('duration', 0))
-PYEOF
-)
+        agent_dur_s=$(jq -r --arg a "$agent" '.agents[$a].duration // 0' "$CHECKPOINT_FILE" 2>/dev/null || echo "0")
         local agent_cost
         agent_cost=$(awk "BEGIN { printf \"%.3f\", ($in_tok * 3 + $out_tok * 15 + $cache_r * 0.30 + $cache_w * 3.75) / 1000000 }")
         grand_in=$((grand_in + in_tok))
@@ -3182,7 +3321,16 @@ PYEOF
   fi
 
   # Task file lifecycle: finalize BEFORE push/PR so task never stays in_progress
-  if $failed; then
+  # Check if task is in waiting_answer state (HITL pause)
+  local current_task_status=""
+  if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
+    current_task_status=$(foundry_state_field "$TASK_DIR" status 2>/dev/null || echo "")
+  fi
+
+  if [[ "$current_task_status" == "waiting_answer" ]]; then
+    # Task is paused for HITL — do not mark as failed or completed
+    echo -e "${YELLOW}Task paused in waiting_answer state — not finalizing${NC}"
+  elif $failed; then
     _task_move_to_failed "$branch" "$total_duration"
   else
     _task_move_to_done "$branch" "$total_duration"
@@ -3223,7 +3371,16 @@ PYEOF
   # Final status
   echo ""
   echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-  if $failed; then
+  if [[ "$current_task_status" == "waiting_answer" ]]; then
+    emit_event "TASK_WAITING" "duration=$(( total_duration / 60 ))m"
+    echo -e "${YELLOW}Pipeline PAUSED — waiting for human answers${NC}"
+    echo -e "${BLUE}Branch:${NC}  ${branch}"
+    echo -e "${BLUE}Report:${NC}  ${report_file}"
+    echo -e "${BLUE}Handoff:${NC} ${HANDOFF_FILE}"
+    echo -e "${YELLOW}Answer:${NC}  ./agentic-development/foundry.sh answer ${TASK_SLUG:-<slug>}"
+    echo -e "${YELLOW}Resume:${NC}  ./agentic-development/foundry.sh resume-qa ${TASK_SLUG:-<slug>}"
+    exit 75
+  elif $failed; then
     emit_event "TASK_FAIL" "agent=${failed_agent}|duration=$(( total_duration / 60 ))m"
     echo -e "${RED}Pipeline FAILED at agent: ${failed_agent}${NC}"
     echo -e "${BLUE}Report:${NC}  ${report_file}"

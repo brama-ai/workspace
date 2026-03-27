@@ -1,0 +1,19 @@
+{
+  "workflow": "builder",
+  "agent": "u-tester",
+  "model": "opencode-go/kimi-k2.5",
+  "duration_ms": 3000,
+  "duration_seconds": 3,
+  "exit_code": 0,
+  "session_id": "ses_2d16f270dfferCwbu7n8pwNOGH",
+  "tokens": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_read": 0,
+    "cache_write": 0
+  },
+  "tools": [],
+  "files_read": [],
+  "context": {},
+  "cost": 0.0
+}

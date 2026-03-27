@@ -1,0 +1,54 @@
+{
+  "workflow": "builder",
+  "agent": "u-coder",
+  "model": "anthropic/claude-sonnet-4-6",
+  "duration_ms": 296000,
+  "duration_seconds": 296,
+  "exit_code": 0,
+  "session_id": "ses_2d1742fa8ffecUy2mR9X7ZjMV4",
+  "tokens": {
+    "input_tokens": 36,
+    "output_tokens": 14589,
+    "cache_read": 3502193,
+    "cache_write": 136609
+  },
+  "tools": [
+    {
+      "name": "bash",
+      "count": 5
+    },
+    {
+      "name": "edit",
+      "count": 5
+    },
+    {
+      "name": "glob",
+      "count": 5
+    },
+    {
+      "name": "grep",
+      "count": 5
+    },
+    {
+      "name": "read",
+      "count": 13
+    },
+    {
+      "name": "skill",
+      "count": 1
+    },
+    {
+      "name": "todowrite",
+      "count": 5
+    }
+  ],
+  "files_read": [
+    ".opencode/pipeline/handoff.md",
+    "agentic-development",
+    "agentic-development/lib/foundry-common.sh",
+    "agentic-development/lib/foundry-run.sh",
+    "docs/pipeline/en/openspec-human-in-the-loop.md"
+  ],
+  "context": {},
+  "cost": 1.269601
+}

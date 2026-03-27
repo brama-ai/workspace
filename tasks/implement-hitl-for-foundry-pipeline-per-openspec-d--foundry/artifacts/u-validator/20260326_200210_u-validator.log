@@ -1,0 +1,6 @@
++ cd /workspaces/brama
++ script -qc 'timeout 1200 opencode run --agent u-validator $'\''Read `.opencode/pipeline/handoff.md` for the task description and full pipeline context.\n\n## Instructions\n\n1. From handoff.md, determine which apps were changed\n2. Run validation ONLY for changed apps (not the entire codebase):\n\n| App | CS Check | Analyse |\n|-----|----------|---------|\n| apps/brama-core/ | make cs-check | make analyse |\n| apps/knowledge-agent/ | make knowledge-cs-check | make knowledge-analyse |\n| apps/hello-agent/ | make hello-cs-check | make hello-analyse |\n| apps/news-maker-agent/ | make news-cs-check | make news-analyse |\n\n3. For CS issues: run the corresponding `cs-fix` target first, then verify\n4. For PHPStan errors: read the failing file, understand the error, fix manually\n5. If `phpstan-baseline.neon` exists, preserve existing suppressions — only fix NEW errors\n6. Re-run all checks after fixes. Iterate until zero errors.\n\n## Handoff\n\nUpdate `.opencode/pipeline/handoff.md` — Validator section:\n- PHPStan result: pass/fail (per app)\n- CS-check result: pass/fail (per app)\n- Files fixed (list)'\''' /dev/null
+[0m
+> u-validator · kimi-k2.5
+[0m
+[91m[1mError: [0mInsufficient balance. Manage your billing here: https://opencode.ai/workspace/wrk_01KM2ZJ95BTC2S2R55X0A3DBE3/billing

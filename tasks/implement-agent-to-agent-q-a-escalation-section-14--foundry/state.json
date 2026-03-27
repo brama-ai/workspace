@@ -3,10 +3,10 @@
   "workflow": "foundry",
   "started_at": "2026-03-27T09:03:18.876134Z",
   "attempt": 1,
-  "status": "in_progress",
-  "current_step": "u-summarizer",
-  "resume_from": "u-summarizer",
-  "updated_at": "2026-03-27T09:16:06.464210Z",
+  "status": "completed",
+  "current_step": null,
+  "resume_from": null,
+  "updated_at": "2026-03-27T09:16:13.020765Z",
   "task_file": "/workspaces/brama/tasks/implement-agent-to-agent-q-a-escalation-section-14--foundry/task.md",
   "branch": "pipeline/implement-agent-to-agent-q-a-escalation-section-14",
   "agents": [
@@ -58,12 +58,12 @@
       "agent": "u-summarizer",
       "status": "done",
       "model": "openai/gpt-5.4",
-      "duration_seconds": 220,
+      "duration_seconds": 223,
       "input_tokens": 100000,
       "output_tokens": 7157,
       "cost": 0.3613,
       "call_count": 1,
-      "updated_at": "2026-03-27T09:16:06.464195Z"
+      "updated_at": "2026-03-27T09:16:07.013149Z"
     }
   ]
 }

@@ -1,0 +1,33 @@
+{
+  "agent": "u-summarizer",
+  "status": "done",
+  "confidence": 0.93,
+  "assessment": {
+    "what_went_well": [
+      "All data sources available: checkpoint.json, state.json, telemetry/*.json, handoff.md, u-coder/result.json",
+      "cost-tracker.sh summary-block generated telemetry tables successfully",
+      "Identified 4 anomalies: u-coder token overuse (644K), u-validator empty output, previous u-summarizer failure ($7.04), u-tester skipped",
+      "Comprehensive Ukrainian summary with all required sections produced"
+    ],
+    "what_went_wrong": [
+      "No pipeline logs found at .opencode/pipeline/logs/20260326_200210_*.log — log files were not generated or stored elsewhere",
+      "Previous u-summarizer telemetry shows identical session_id and files_read as u-coder — possible telemetry data corruption",
+      "No qa.json found — Q&A Log section omitted"
+    ],
+    "improvement_suggestions": [
+      "Pipeline should ensure log files are written to the expected path pattern",
+      "Telemetry collection should validate session_id uniqueness per agent",
+      "Consider adding a pre-flight check for summarizer to verify all expected data sources exist"
+    ],
+    "blocked_by": [],
+    "deviations_from_spec": [
+      "Q&A Log section omitted because qa.json does not exist for this task",
+      "Report structure follows the caller's required format rather than the skill's default format where they differ"
+    ]
+  },
+  "metrics": {
+    "anomalies_detected": 4,
+    "follow_up_tasks_proposed": 3,
+    "data_sources_read": 8
+  }
+}

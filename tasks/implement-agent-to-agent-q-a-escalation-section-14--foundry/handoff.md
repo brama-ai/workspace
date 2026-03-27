@@ -72,3 +72,4 @@
 - **Final status**: PASS
 - **Summary path**: `/workspaces/brama/tasks/write-root-cause-analysis-docs--foundry/summary.md`
 - **Recommendation**: Verify the RCA documentation commands on a real failed Foundry task and adjust any paths/examples that differ from the current runtime.
+- **Commit (u-summarizer)**: ea67342
