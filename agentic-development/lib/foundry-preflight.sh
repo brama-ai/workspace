@@ -75,73 +75,55 @@ is_critical_path() {
 # Outputs: dirty_files (JSON array), has_critical (bool)
 check_workspace_clean() {
   local workspace_dir="${1:-$REPO_ROOT}"
-  python3 - "$workspace_dir" <<'PYEOF'
-import json
-import subprocess
-import sys
-from pathlib import Path
-
-workspace = Path(sys.argv[1])
-critical_patterns = [
-    "package.json", "package-lock.json", "composer.json", "composer.lock",
-    ".gitlab-ci.yml", ".github/workflows", "Jenkinsfile",
-    "db/migrations", "database/migrations",
-    "openapi.yaml", "schema.graphql", "proto/",
-    "Dockerfile", "docker-compose.yml",
-    "infra/", "terraform/", "k8s/"
-]
-
-try:
-    result = subprocess.run(
-        ["git", "-C", str(workspace), "status", "--porcelain"],
-        capture_output=True, text=True, check=True
-    )
-    dirty_lines = [line for line in result.stdout.strip().split("\n") if line]
-
-    if not dirty_lines:
-        print(json.dumps({"clean": True, "dirty_files": [], "has_critical": False}))
-        sys.exit(0)
-
-    dirty_files = []
-    has_critical = False
-
-    for line in dirty_lines:
-        # Format: "XY filename"
-        if len(line) < 4:
-            continue
-        status = line[:2]
-        filepath = line[3:]
-
-        change_type = []
-        if status[0] in "MARC":
-            change_type.append("staged")
-        if status[1] in "MD":
-            change_type.append("tracked_modified")
-        if status == "??":
-            change_type.append("untracked")
-
-        is_critical = any(pattern in filepath for pattern in critical_patterns)
-        if is_critical:
-            has_critical = True
-
-        dirty_files.append({
-            "path": filepath,
-            "status": status,
-            "change_type": change_type,
-            "is_critical": is_critical
-        })
-
-    print(json.dumps({
-        "clean": False,
-        "dirty_files": dirty_files,
-        "has_critical": has_critical
-    }))
-    sys.exit(1)  # Dirty
-
-except subprocess.CalledProcessError:
-    print(json.dumps({"clean": False, "error": "git_command_failed"}))
-    sys.exit(1)
-PYEOF
+  
+  local critical_patterns
+  critical_patterns="package.json|package-lock.json|composer.json|composer.lock|\.gitlab-ci\.yml|\.github/workflows|Jenkinsfile|db/migrations|database/migrations|openapi\.yaml|schema\.graphql|proto/|Dockerfile|docker-compose\.yml|infra/|terraform/|k8s/"
+  
+  local git_status
+  git_status=$(git -C "$workspace_dir" status --porcelain 2>/dev/null) || {
+    echo '{"clean": false, "error": "git_command_failed"}'
+    return 1
+  }
+  
+  if [[ -z "$git_status" ]]; then
+    echo '{"clean": true, "dirty_files": [], "has_critical": false}'
+    return 0
+  fi
+  
+  local dirty_files="[]"
+  local has_critical=false
+  
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    [[ ${#line} -lt 4 ]] && continue
+    
+    local status="${line:0:2}"
+    local filepath="${line:3}"
+    
+    local change_type="[]"
+    if [[ "$status" =~ ^[MARC] ]]; then
+      change_type='["staged"]'
+    elif [[ "$status" =~ [MD]$ ]]; then
+      change_type='["tracked_modified"]'
+    elif [[ "$status" == "??" ]]; then
+      change_type='["untracked"]'
+    fi
+    
+    local is_critical=false
+    if echo "$filepath" | grep -qE "$critical_patterns"; then
+      is_critical=true
+      has_critical=true
+    fi
+    
+    dirty_files=$(echo "$dirty_files" | jq --arg path "$filepath" \
+      --arg status "$status" \
+      --argjson change_type "$change_type" \
+      --argjson is_critical "$is_critical" \
+      '. + [{path: $path, status: $status, change_type: $change_type, is_critical: $is_critical}]')
+  done <<< "$git_status"
+  
+  echo "{\"clean\": false, \"dirty_files\": $dirty_files, \"has_critical\": $has_critical}"
+  return 1
 }
 
 # Get current branch name
@@ -261,8 +243,8 @@ preflight_check_workspace_safety() {
     # Parse JSON result
     local is_clean
     local has_critical
-    is_clean=$(echo "$check_result" | python3 -c "import json,sys; print(json.load(sys.stdin).get('clean', False))")
-    has_critical=$(echo "$check_result" | python3 -c "import json,sys; print(json.load(sys.stdin).get('has_critical', False))")
+    is_clean=$(echo "$check_result" | jq -r '.clean // false')
+    has_critical=$(echo "$check_result" | jq -r '.has_critical // false')
 
     if [[ "$has_critical" == "True" ]]; then
       echo "Workspace has uncommitted changes in critical paths"
@@ -415,60 +397,30 @@ foundry_stop_task_with_reason() {
   local stopped_by="$3"
   local message="$4"
   local stop_details_json="${5:-{}}"
-
-  # Update state.json with extended stop information
+  
   foundry_repair_state_file "$task_dir"
-
-  python3 - "$task_dir" "$stop_reason" "$stopped_by" "$message" "$stop_details_json" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-stop_reason = sys.argv[2]
-stopped_by = sys.argv[3]
-message = sys.argv[4]
-stop_details_raw = sys.argv[5]
-
-state_path = task_dir / "state.json"
-now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-# Load existing state
-data = {}
-if state_path.exists():
-    try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            data = {}
-    except (json.JSONDecodeError, OSError):
-        data = {}
-
-# Parse stop_details
-try:
-    stop_details = json.loads(stop_details_raw)
-except json.JSONDecodeError:
-    stop_details = {"raw": stop_details_raw}
-
-# Update state
-data["status"] = "stopped"
-data["stop_reason"] = stop_reason
-data["stopped_by"] = stopped_by
-data["stopped_at"] = now
-data["updated_at"] = now
-data["message"] = message
-
-# Merge stop_details, handling potential existing details
-if "stop_details" in data and isinstance(data["stop_details"], dict):
-    data["stop_details"].update(stop_details)
-else:
-    data["stop_details"] = stop_details
-
-# Write state
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
+  
+  local state_file="$task_dir/state.json"
+  local now
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  
+  local existing="{}"
+  [[ -f "$state_file" ]] && existing=$(cat "$state_file" 2>/dev/null) || existing="{}"
+  
+  echo "$existing" | jq --arg status "stopped" \
+    --arg stop_reason "$stop_reason" \
+    --arg stopped_by "$stopped_by" \
+    --arg message "$message" \
+    --arg now "$now" \
+    --argjson stop_details "$stop_details_json" '
+    .status = $status |
+    .stop_reason = $stop_reason |
+    .stopped_by = $stopped_by |
+    .stopped_at = $now |
+    .updated_at = $now |
+    .message = $message |
+    .stop_details = (.stop_details // {} | . + $stop_details)
+  ' > "$state_file"
 
   # Log event
   pipeline_task_append_event "$task_dir" "task_stopped" "$message" "$stop_reason"
@@ -555,33 +507,18 @@ foundry_resume_stopped_task() {
     return 1
   fi
 
-  # Clear stop fields and reset to pending
-  python3 - "$task_dir" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-state_path = task_dir / "state.json"
-now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-if not state_path.exists():
-    print("state.json does not exist")
-    sys.exit(1)
-
-data = json.loads(state_path.read_text(encoding="utf-8"))
-data["status"] = "pending"
-data["updated_at"] = now
-
-# Clear stop-specific fields
-for key in ["stop_reason", "stopped_by", "stopped_at", "stop_details", "message"]:
-    data.pop(key, None)
-
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
+  local state_file="$task_dir/state.json"
+  local now
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  
+  local existing
+  existing=$(cat "$state_file" 2>/dev/null) || existing="{}"
+  
+  echo "$existing" | jq --arg now "$now" '
+    .status = "pending" |
+    .updated_at = $now |
+    del(.stop_reason, .stopped_by, .stopped_at, .stop_details, .message)
+  ' > "$state_file"
 
   pipeline_task_append_event "$task_dir" "task_resumed" "Task resumed from stopped state" ""
   echo "Task resumed and set to pending"
