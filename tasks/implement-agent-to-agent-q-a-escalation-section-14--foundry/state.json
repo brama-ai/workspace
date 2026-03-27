@@ -4,9 +4,9 @@
   "started_at": "2026-03-27T09:03:18.876134Z",
   "attempt": 1,
   "status": "in_progress",
-  "current_step": "u-validator",
-  "resume_from": "u-validator",
-  "updated_at": "2026-03-27T09:12:15.851673Z",
+  "current_step": "u-tester",
+  "resume_from": "u-tester",
+  "updated_at": "2026-03-27T09:12:22.984184Z",
   "task_file": "/workspaces/brama/tasks/implement-agent-to-agent-q-a-escalation-section-14--foundry/task.md",
   "branch": "pipeline/implement-agent-to-agent-q-a-escalation-section-14",
   "agents": [
@@ -36,23 +36,23 @@
       "agent": "u-validator",
       "status": "done",
       "model": "openai/gpt-5.4",
-      "duration_seconds": 25,
+      "duration_seconds": 28,
       "input_tokens": 18425,
       "output_tokens": 800,
       "cost": 0.0494,
       "call_count": 1,
-      "updated_at": "2026-03-27T09:12:15.851659Z"
+      "updated_at": "2026-03-27T09:12:16.121977Z"
     },
     {
       "agent": "u-tester",
-      "status": "pending",
-      "model": "",
-      "duration_seconds": 0,
+      "status": "done",
+      "model": "opencode-go/kimi-k2.5",
+      "duration_seconds": 3,
       "input_tokens": 0,
       "output_tokens": 0,
-      "cost": 0,
-      "call_count": 0,
-      "updated_at": ""
+      "cost": 0.0,
+      "call_count": 1,
+      "updated_at": "2026-03-27T09:12:22.984169Z"
     },
     {
       "agent": "u-summarizer",
