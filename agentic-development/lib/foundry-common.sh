@@ -649,6 +649,7 @@ foundry_state_upsert_agent() {
   local output_tokens="${7:-}"
   local cost="${8:-}"
   local call_count="${9:-1}"
+  local session_id="${10:-}"
   
   foundry_repair_state_file "$task_dir"
   
@@ -667,6 +668,7 @@ foundry_state_upsert_agent() {
     --argjson output "${output_tokens:-0}" \
     --argjson cost "${cost:-0}" \
     --argjson call_count "${call_count:-1}" \
+    --arg session_id "$session_id" \
     --arg now "$now" '
     .agents = (.agents // []) |
     (first(.agents[] | select(.agent == $agent)) // null) as $existing |
@@ -679,6 +681,7 @@ foundry_state_upsert_agent() {
         .output_tokens = (if $output > 0 then $output else .output_tokens // "n/d" end) |
         .cost = (if $cost > 0 then $cost else .cost // "n/d" end) |
         .call_count = (if $call_count > 0 then $call_count else .call_count // 1 end) |
+        .session_id = (if $session_id != "" then $session_id else .session_id // "n/d" end) |
         .updated_at = $now
       else . end]
     else
@@ -691,6 +694,7 @@ foundry_state_upsert_agent() {
         output_tokens: (if $output > 0 then $output else "n/d" end),
         cost: (if $cost > 0 then $cost else "n/d" end),
         call_count: (if $call_count > 0 then $call_count else 1 end),
+        session_id: (if $session_id != "" then $session_id else "n/d" end),
         updated_at: $now
       }]
     end |

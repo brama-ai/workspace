@@ -122,103 +122,59 @@ run_e2e_suite() {
 
 parse_failures() {
   local report_path="$1"
-  python3 - "$report_path" "$LIMIT" <<'PYEOF'
-import json
-import sys
-from pathlib import Path
-
-report_path = Path(sys.argv[1])
-limit = int(sys.argv[2])
-raw = report_path.read_text(encoding="utf-8")
-start = raw.find("{")
-if start == -1:
-    raise SystemExit(f"No JSON object found in report: {report_path}")
-
-data = json.loads(raw[start:])
-
-failures = data.get("failures")
-if not isinstance(failures, list):
-    failures = []
-
-INFRA_PATTERNS = [
-    "ERR_NAME_NOT_RESOLVED",
-    "ENOTFOUND",
-    "ECONNREFUSED",
-    "net::ERR_CONNECTION_REFUSED",
-    "net::ERR_CONNECTION_RESET",
-    "net::ERR_NETWORK_CHANGED",
-    "getaddrinfo",
-]
-
-def is_infra_failure(message):
-    msg = message.lower()
-    return any(p.lower() in msg for p in INFRA_PATTERNS)
-
-def normalize_failure(entry):
-    title = entry.get("fullTitle") or entry.get("title") or "Unnamed E2E failure"
-    file_path = entry.get("file") or ""
-    err = entry.get("err") or {}
-    message = err.get("message") or entry.get("errMessage") or "No error message"
-    stack = err.get("stack") or ""
-    return {
-        "title": title.strip(),
-        "file": file_path.strip(),
-        "message": str(message).strip(),
-        "stack": str(stack).strip(),
-    }
-
-seen = set()
-count = 0
-skipped_infra = 0
-for raw in failures:
-    if count >= limit:
-        break
-    item = normalize_failure(raw)
-    if is_infra_failure(item["message"]):
-        skipped_infra += 1
-        continue
-    key = (item["title"], item["file"], item["message"])
-    if key in seen:
-        continue
-    seen.add(key)
-    print(json.dumps(item, ensure_ascii=True))
-    count += 1
-
-if skipped_infra:
-    print(json.dumps({"_infra_skipped": skipped_infra}), file=sys.stderr)
-PYEOF
+  local limit="${LIMIT:-5}"
+  
+  [[ -f "$report_path" ]] || { echo "Report not found: $report_path" >&2; return 1; }
+  
+  # Extract JSON from report (skip non-JSON preamble)
+  local json_content
+  json_content=$(sed -n '/{/,$p' "$report_path" 2>/dev/null)
+  [[ -n "$json_content" ]] || { echo "No JSON found in report: $report_path" >&2; return 1; }
+  
+  local infra_pattern="ERR_NAME_NOT_RESOLVED|ENOTFOUND|ECONNREFUSED|ERR_CONNECTION_REFUSED|ERR_CONNECTION_RESET|ERR_NETWORK_CHANGED|getaddrinfo"
+  
+  echo "$json_content" | jq -r --argjson limit "$limit" --arg infra "$infra_pattern" '
+    .failures // [] |
+    map({
+      title: (.fullTitle // .title // "Unnamed E2E failure" | gsub("^\\s+|\\s+$"; "")),
+      file: (.file // "" | gsub("^\\s+|\\s+$"; "")),
+      message: ((.err.message // .errMessage // "No error message") | tostring | gsub("^\\s+|\\s+$"; "")),
+      stack: ((.err.stack // "") | tostring | gsub("^\\s+|\\s+$"; ""))
+    }) |
+    # Filter infra failures
+    map(select(.message | test($infra; "i") | not)) |
+    # Dedup by title+file+message
+    unique_by(.title + "|" + .file + "|" + .message) |
+    .[:$limit] |
+    .[] |
+    @json
+  ' 2>/dev/null
 }
 
 create_fix_task() {
   local failure_json="$1"
   local report_path="$2"
-  local task_text
-  task_text=$(python3 - "$failure_json" "$report_path" <<'PYEOF'
-import json
-import sys
-from pathlib import Path
-
-failure = json.loads(sys.argv[1])
-report_path = sys.argv[2]
-title = failure["title"]
-safe_title = title[:120]
-file_path = failure["file"] or "unknown"
-message = failure["message"] or "No message"
-stack = failure["stack"] or ""
-stack_excerpt = "\n".join(stack.splitlines()[:20]).strip()
-
-print(f"""<!-- priority: 3 -->
+  
+  local title file_path message stack safe_title stack_excerpt
+  title=$(echo "$failure_json" | jq -r '.title // "Unnamed"')
+  file_path=$(echo "$failure_json" | jq -r '.file // "unknown"')
+  message=$(echo "$failure_json" | jq -r '.message // "No message"')
+  stack=$(echo "$failure_json" | jq -r '.stack // ""')
+  safe_title="${title:0:120}"
+  stack_excerpt=$(echo "$stack" | head -20)
+  
+  local task_text="<!-- priority: 3 -->
 <!-- source: e2e-autofix -->
-# Fix E2E failure: {safe_title}
+# Fix E2E failure: ${safe_title}
 
 Auto-generated Foundry bugfix task from E2E failure analysis.
 
 ## Failure
 
-- Report: `{report_path}`
-- Test file: `{file_path}`
-- Scenario: `{title}`
-- Message: `{message}`
+- Report: \`${report_path}\`
+- Test file: \`${file_path}\`
+- Scenario: \`${title}\`
+- Message: \`${message}\`
 
 ## Required work
 
@@ -233,16 +189,17 @@ Auto-generated Foundry bugfix task from E2E failure analysis.
 ## Notes
 
 - Keep scope limited to this failure unless a shared root cause clearly affects multiple failing tests.
-- If the issue is pure infra flakiness, stabilize the test or document the blocker clearly.
-""")
+- If the issue is pure infra flakiness, stabilize the test or document the blocker clearly."
 
-if stack_excerpt:
-    print("\n## Stack excerpt\n")
-    print("```text")
-    print(stack_excerpt)
-    print("```")
-PYEOF
-)
+  if [[ -n "$stack_excerpt" ]]; then
+    task_text="${task_text}
+
+## Stack excerpt
+
+\`\`\`text
+${stack_excerpt}
+\`\`\`"
+  fi
 
   foundry_create_task_dir "$task_text" >/dev/null
 }

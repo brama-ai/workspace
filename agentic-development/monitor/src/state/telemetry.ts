@@ -53,22 +53,149 @@ export interface CheckpointRecord {
   tokens: TokenUsage;
 }
 
-const PRICING: Record<string, { input: number; output: number; cache_read: number }> = {
-  "claude-opus-4-20250514": { input: 15, output: 75, cache_read: 1.5 },
-  "claude-sonnet-4-20250514": { input: 3, output: 15, cache_read: 0.3 },
-  "claude-sonnet-4-6": { input: 3, output: 15, cache_read: 0.3 },
-  "gpt-5.4": { input: 5, output: 15, cache_read: 0 },
-  "gpt-5.3-codex": { input: 3, output: 10, cache_read: 0 },
-  "gpt-5.2": { input: 2, output: 8, cache_read: 0 },
-  "gemini-2.5-flash": { input: 0.075, output: 0.3, cache_read: 0 },
-  "gemini-2.5-pro": { input: 1.25, output: 5, cache_read: 0 },
-  "kimi-k2.5": { input: 0.5, output: 2, cache_read: 0 },
-  "glm-5": { input: 0.5, output: 2, cache_read: 0 },
-  "MiniMax-M2.5-highspeed": { input: 0.2, output: 0.8, cache_read: 0 },
-  "MiniMax-M2.7": { input: 0.3, output: 1.2, cache_read: 0 },
-  "deepseek-v3.2": { input: 0.3, output: 1.2, cache_read: 0 },
-  "deepseek-r1": { input: 0.5, output: 2, cache_read: 0 },
+// Pricing: $ per 1M tokens. source: provider pricing pages as of 2026-03.
+// For subscription providers (Anthropic, OpenAI) actual cost = $0, but we track
+// estimated cost to compare efficiency across models.
+//
+// Provider billing types:
+//   subscription — monthly flat fee, no per-token cost (Anthropic Max, OpenAI Pro)
+//   pay-as-you-go — billed per token (OpenCode Go, OpenRouter)
+//   free — no cost (free tiers, OpenCode built-in)
+//
+// To add a new model: add entry here AND in PROVIDER_LIMITS below.
+
+export interface ModelPricing {
+  input: number;        // $ per 1M input tokens
+  output: number;       // $ per 1M output tokens
+  cache_read: number;   // $ per 1M cache read tokens
+  billing: "subscription" | "pay-as-you-go" | "free";
+  provider: string;
+}
+
+const PRICING: Record<string, ModelPricing> = {
+  // Anthropic (subscription via Max plan)
+  "claude-opus-4-20250514": { input: 15, output: 75, cache_read: 1.5, billing: "subscription", provider: "anthropic" },
+  "claude-opus-4-6": { input: 15, output: 75, cache_read: 1.5, billing: "subscription", provider: "anthropic" },
+  "claude-sonnet-4-20250514": { input: 3, output: 15, cache_read: 0.3, billing: "subscription", provider: "anthropic" },
+  "claude-sonnet-4-6": { input: 3, output: 15, cache_read: 0.3, billing: "subscription", provider: "anthropic" },
+
+  // OpenAI (subscription via Pro plan)
+  "gpt-5.4": { input: 5, output: 15, cache_read: 0, billing: "subscription", provider: "openai" },
+  "gpt-5.3-codex": { input: 3, output: 10, cache_read: 0, billing: "subscription", provider: "openai" },
+  "gpt-5.2": { input: 2, output: 8, cache_read: 0, billing: "subscription", provider: "openai" },
+
+  // Google (subscription/free)
+  "gemini-2.5-flash": { input: 0.075, output: 0.3, cache_read: 0, billing: "free", provider: "google" },
+  "gemini-2.5-pro": { input: 1.25, output: 5, cache_read: 0, billing: "subscription", provider: "google" },
+  "gemini-3.1-pro-preview": { input: 1.25, output: 5, cache_read: 0, billing: "subscription", provider: "google" },
+  "gemini-3.1-flash-lite-preview": { input: 0.04, output: 0.15, cache_read: 0, billing: "free", provider: "google" },
+  "gemini-3-pro-preview": { input: 1.25, output: 5, cache_read: 0, billing: "subscription", provider: "google" },
+  "gemini-2.0-flash": { input: 0.075, output: 0.3, cache_read: 0, billing: "free", provider: "google" },
+
+  // ZhipuAI / GLM (pay-as-you-go via OpenCode Go)
+  "glm-5": { input: 0.5, output: 2, cache_read: 0, billing: "pay-as-you-go", provider: "zhipuai" },
+
+  // Moonshot / Kimi (pay-as-you-go via OpenCode Go)
+  "kimi-k2.5": { input: 0.5, output: 2, cache_read: 0, billing: "pay-as-you-go", provider: "moonshot" },
+
+  // MiniMax (subscription/free)
+  "MiniMax-M2.5-highspeed": { input: 0.2, output: 0.8, cache_read: 0, billing: "free", provider: "minimax" },
+  "MiniMax-M2.7": { input: 0.3, output: 1.2, cache_read: 0, billing: "subscription", provider: "minimax" },
+  "MiniMax-M2.7-highspeed": { input: 0.3, output: 1.2, cache_read: 0, billing: "subscription", provider: "minimax" },
+  "MiniMax-M2": { input: 0.15, output: 0.6, cache_read: 0, billing: "free", provider: "minimax" },
+
+  // DeepSeek (pay-as-you-go)
+  "deepseek-v3.2": { input: 0.3, output: 1.2, cache_read: 0, billing: "pay-as-you-go", provider: "deepseek" },
+  "deepseek-r1": { input: 0.5, output: 2, cache_read: 0, billing: "pay-as-you-go", provider: "deepseek" },
 };
+
+// Provider rate limits — used to estimate % usage of subscription/credit limits.
+// window_hours: rolling window for rate limit (e.g., 5h = short-term burst limit)
+// monthly_credits: total monthly budget in $ (for pay-as-you-go providers)
+// tokens_per_window: max tokens in the rolling window
+export interface ProviderLimit {
+  provider: string;
+  billing: "subscription" | "pay-as-you-go" | "free";
+  window_hours: number;           // rolling window size (0 = monthly only)
+  tokens_per_window: number;      // max tokens in rolling window (0 = unlimited)
+  monthly_credits: number;        // monthly budget in $ (0 = unlimited/subscription)
+  notes: string;
+}
+
+export const PROVIDER_LIMITS: Record<string, ProviderLimit> = {
+  anthropic: {
+    provider: "anthropic",
+    billing: "subscription",
+    window_hours: 5,
+    tokens_per_window: 45_000_000,  // ~45M tokens per 5h window (Max plan estimate)
+    monthly_credits: 0,
+    notes: "Anthropic Max subscription. 5h rolling window, soft limit.",
+  },
+  openai: {
+    provider: "openai",
+    billing: "subscription",
+    window_hours: 3,
+    tokens_per_window: 30_000_000,  // ~30M per 3h window (Pro plan estimate)
+    monthly_credits: 0,
+    notes: "OpenAI Pro subscription. 3h rolling window.",
+  },
+  google: {
+    provider: "google",
+    billing: "free",
+    window_hours: 0,
+    tokens_per_window: 0,
+    monthly_credits: 0,
+    notes: "Google AI Studio. Generous free tier.",
+  },
+  zhipuai: {
+    provider: "zhipuai",
+    billing: "pay-as-you-go",
+    window_hours: 0,
+    tokens_per_window: 0,
+    monthly_credits: 50,           // $50/month budget
+    notes: "ZhipuAI GLM. Pay-as-you-go via OpenCode Go.",
+  },
+  moonshot: {
+    provider: "moonshot",
+    billing: "pay-as-you-go",
+    window_hours: 0,
+    tokens_per_window: 0,
+    monthly_credits: 30,           // $30/month budget
+    notes: "Moonshot Kimi. Pay-as-you-go via OpenCode Go.",
+  },
+  minimax: {
+    provider: "minimax",
+    billing: "subscription",
+    window_hours: 0,
+    tokens_per_window: 0,
+    monthly_credits: 0,
+    notes: "MiniMax subscription. Coding plan.",
+  },
+  deepseek: {
+    provider: "deepseek",
+    billing: "pay-as-you-go",
+    window_hours: 0,
+    tokens_per_window: 0,
+    monthly_credits: 20,           // $20/month budget
+    notes: "DeepSeek. Pay-as-you-go.",
+  },
+};
+
+export function getModelPricing(model: string): ModelPricing {
+  // Try exact match first
+  if (PRICING[model]) return PRICING[model];
+
+  // Try suffix match (e.g., "anthropic/claude-opus-4-6" → "claude-opus-4-6")
+  const shortName = model.split("/").pop() || model;
+  if (PRICING[shortName]) return PRICING[shortName];
+
+  // Try prefix match (e.g., "claude-sonnet-4-20250514" matches "claude-sonnet-4-6" family)
+  for (const [key, pricing] of Object.entries(PRICING)) {
+    if (shortName.startsWith(key.split("-").slice(0, 3).join("-"))) return pricing;
+  }
+
+  return { input: 1, output: 3, cache_read: 0, billing: "pay-as-you-go", provider: "unknown" };
+}
 
 export function calculateCost(
   model: string,
@@ -76,11 +203,66 @@ export function calculateCost(
   outputTokens: number,
   cacheRead: number = 0
 ): number {
-  const pricing = PRICING[model] || { input: 1, output: 3, cache_read: 0 };
+  const pricing = getModelPricing(model);
   const inputCost = (inputTokens / 1_000_000) * pricing.input;
   const outputCost = (outputTokens / 1_000_000) * pricing.output;
   const cacheCost = (cacheRead / 1_000_000) * pricing.cache_read;
   return Number((inputCost + outputCost + cacheCost).toFixed(6));
+}
+
+export interface UsageEstimate {
+  provider: string;
+  billing: string;
+  totalTokens: number;
+  estimatedCost: number;
+  // For subscription providers: % of rolling window consumed
+  windowUsagePercent: number | null;
+  windowTokensRemaining: number | null;
+  // For pay-as-you-go: % of monthly budget consumed
+  monthlyUsagePercent: number | null;
+  monthlyCostRemaining: number | null;
+}
+
+/**
+ * Estimate usage against provider limits.
+ * @param model - model name
+ * @param totalTokens - total tokens consumed in the current window/month
+ * @param totalCost - total cost in $ for the current period
+ */
+export function estimateUsage(
+  model: string,
+  totalTokens: number,
+  totalCost: number,
+): UsageEstimate {
+  const pricing = getModelPricing(model);
+  const limit = PROVIDER_LIMITS[pricing.provider];
+
+  const result: UsageEstimate = {
+    provider: pricing.provider,
+    billing: pricing.billing,
+    totalTokens,
+    estimatedCost: totalCost,
+    windowUsagePercent: null,
+    windowTokensRemaining: null,
+    monthlyUsagePercent: null,
+    monthlyCostRemaining: null,
+  };
+
+  if (!limit) return result;
+
+  // Subscription with rolling token window
+  if (limit.tokens_per_window > 0) {
+    result.windowUsagePercent = Math.min(100, (totalTokens / limit.tokens_per_window) * 100);
+    result.windowTokensRemaining = Math.max(0, limit.tokens_per_window - totalTokens);
+  }
+
+  // Pay-as-you-go with monthly budget
+  if (limit.monthly_credits > 0) {
+    result.monthlyUsagePercent = Math.min(100, (totalCost / limit.monthly_credits) * 100);
+    result.monthlyCostRemaining = Math.max(0, limit.monthly_credits - totalCost);
+  }
+
+  return result;
 }
 
 export function extractTokenUsage(exportData: SessionExport): TokenUsage {
