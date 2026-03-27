@@ -1,10 +1,63 @@
 # Agentic Development Audit Report
 
-**Дата:** 2026-03-26  
+**Дата:** 2026-03-27  
 **Аналіз:** Структура, дублікати, залишки старого коду, пропозиції рефакторингу  
-**Оновлено:** 2026-03-26 (після рефакторингу)
+**Оновлено:** 2026-03-27 (TypeScript міграція)
 
 ---
+
+## ✅ Phase 2: TypeScript Migration (2026-03-27)
+
+### TypeScript Modules (2961 lines)
+
+| Module | Lines | Description |
+|--------|-------|-------------|
+| `cli/foundry.ts` | 409 | Unified CLI entrypoint |
+| `state/task-state-v2.ts` | 378 | Task state management |
+| `infra/preflight.ts` | 330 | Preflight/env checks |
+| `state/telemetry.ts` | 289 | Token tracking, cost calculation |
+| `infra/git.ts` | 287 | Git operations CLI |
+| `agents/executor.ts` | 286 | Agent execution with fallback |
+| `pipeline/checkpoint.ts` | 247 | Checkpoint persistence |
+| `pipeline/handoff.ts` | 215 | Agent communication |
+| `pipeline/runner.ts` | 201 | Main pipeline loop |
+| `cli/run.ts` | 184 | CLI run command |
+| `state/events.ts` | 106 | Event logging |
+| **Total** | **2961** | |
+
+### Tests: 114 passing
+
+### Python Calls: 46 → 24 (-48%)
+
+Converted to jq/bash:
+- `pipeline_slugify` → pure Bash
+- `foundry_append_event` → jq
+- `foundry_task_dir_from_file` → pure Bash
+- `foundry_repair_state_file` → jq
+- `foundry_write_state` → jq
+- `foundry_update_state_field` → jq
+- `foundry_set_state_status` → jq
+- `foundry_increment_attempt` → jq
+- `foundry_state_field` → jq
+- `foundry_state_upsert_agent` → jq
+- `foundry_state_set_planned_agents` → jq
+- `foundry_qa_unanswered_count` → jq
+- `foundry_qa_blocking_unanswered_count` → jq
+- `foundry_qa_progress` → jq
+- `_foundry_parse_duration_seconds` → pure Bash
+- `_foundry_format_duration` → pure Bash
+
+Remaining Python (24):
+- `foundry_claim_task` - fcntl atomic locking
+- `foundry_claim_next_task` - fcntl atomic locking
+- `foundry_release_task` - fcntl atomic locking
+- QA file manipulation functions
+- Process status parsing
+- Complex JSON operations
+
+---
+
+## ✅ Phase 1: Bash Refactoring (2026-03-26)
 
 ## ✅ Виконані зміни (Refactoring Completed)
 
