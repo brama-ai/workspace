@@ -65,19 +65,19 @@ calculate_cost_from_values() {
 
 calculate_step_cost() {
   local meta_file="$1"
-  python3 - "$meta_file" <<'PYEOF'
-import json, subprocess, sys
-with open(sys.argv[1], 'r') as f:
-    data = json.load(f)
-tokens = data.get('tokens', {})
-model = data.get('model', '')
-cmd = [
-    'bash', '-lc',
-    f'. "{sys.argv[1].rsplit("/", 3)[0]}/../../agentic-development/lib/cost-tracker.sh" >/dev/null 2>&1; '
-    f'calculate_cost_from_values "{model}" "{tokens.get("input_tokens", 0)}" "{tokens.get("output_tokens", 0)}" "{tokens.get("cache_read", 0)}"'
-]
-print(subprocess.check_output(cmd, text=True).strip())
-PYEOF
+  local model tokens input_tokens output_tokens cache_read
+  
+  if [[ ! -f "$meta_file" ]]; then
+    echo "0"
+    return
+  fi
+  
+  model=$(jq -r '.model // "unknown"' "$meta_file" 2>/dev/null) || model="unknown"
+  input_tokens=$(jq -r '.tokens.input // 0' "$meta_file" 2>/dev/null) || echo 0
+  output_tokens=$(jq -r '.tokens.output // 0' "$meta_file" 2>/dev/null) || echo 0
+  cache_read=$(jq -r '.tokens.cache_read // 0' "$meta_file" 2>/dev/null) || echo 0
+  
+  calculate_cost_from_values "$model" "$input_tokens" "$output_tokens" "$cache_read"
 }
 
 summarize_export_tokens() {
@@ -125,50 +125,59 @@ extract_session_tools() {
 # Standard file operations (read/edit/write/bash) are excluded.
 extract_session_context() {
   local export_file="$1"
-  python3 - "$export_file" <<'PYEOF'
-import json, sys
-
-with open(sys.argv[1], 'r') as f:
-    data = json.load(f)
-
-skills = []
-mcp_tools = {}
-agent_prompt = None
-claude_commands = []
-
-for message in data.get("messages", []):
-    for part in message.get("parts", []):
-        if part.get("type") != "tool":
-            continue
-        tool = part.get("tool", "")
-        state = part.get("state", {}) or {}
-        inp = state.get("input", {}) or {}
-        output = state.get("output", "") or ""
-
-        # Skills: inject instructions/persona into agent
-        if tool == "skill":
-            name = inp.get("name", inp.get("skill", ""))
-            if name:
-                entry = {"name": name}
-                # Extract skill type from output if available
-                if "<skill_content" in output:
-                    entry["loaded"] = True
-                skills.append(entry)
-
-        # MCP tools: external capability servers
-        elif tool.startswith("mcp__"):
-            mcp_tools[tool] = mcp_tools.get(tool, 0) + 1
-
-        # Claude commands / slash commands
-        elif tool == "slash_command":
-            cmd = inp.get("command", inp.get("name", ""))
-            if cmd:
-                claude_commands.append(cmd)
-
-result = {
-    "skills": skills,
-    "mcp_tools": [{"name": k, "count": v} for k, v in sorted(mcp_tools.items())],
-    "claude_commands": claude_commands,
+  local context=""
+  
+  if [[ ! -f "$export_file" ]]; then
+    echo "{}"
+    return
+  fi
+  
+  context=$(jq '{
+    skills: ([.messages[].parts[]? | select(.type == "text" | .text // "") | .tools: ([.messages[].parts[]? | select(.type == "tool") | .tool // ""),
+    agent_prompt: ([.messages[].role // "") | .instructions: ([.messages[] | select(.role == "system" and .content // "")  } },
+  mcp_tools: {},
+  
+  for message in .messages; do
+    if [[ -n "$message" ]]; then
+      continue
+    fi
+    
+    local role
+    role=$(echo "$message" | jq -r '.role // "user"' 2>/dev/null)
+    if [[ -n "$role" ]]; then
+      continue
+    fi
+    
+    local content
+    content=$(echo "$message" | jq -r '.content // ""' 2>/dev/null)
+    
+    # Skills
+    if [[ "$role" == "system" ]]; then
+      local skills
+      skills=$(echo "$content" | grep -oP '<skills>' | head -1 | sed 's/<\/skills>.*$//' | tail -1)
+      if [[ -n "$skills" ]]; then
+        context=$(jq --arg skills "$skills" '. += {skills: $1}')
+        continue
+      fi
+    fi
+    
+    # MCP tools
+    if [[ "$role" == "assistant" ]]; then
+      local tools
+      tools=$(echo "$content" | grep -oP '<tools>' | head -1 | sed 's/<\/tools>.*$//' | tail -1)
+      if [[ -n "$tools" ]]; then
+        context=$(jq --arg tools "$tools" '. += {tools: $1})
+        continue
+      fi
+    fi
+    
+    # Agent prompt
+    if [[ "$role" == "system" ]]; then
+      context=$(jq --arg agent_prompt "$content" '. += {agent_prompt: 1}')
+    fi
+  done
+  
+  echo "$context"
 }
 print(json.dumps(result))
 PYEOF
