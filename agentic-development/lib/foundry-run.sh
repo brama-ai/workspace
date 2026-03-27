@@ -797,17 +797,21 @@ set_planned_agents() {
 write_checkpoint() {
   local agent="$1"
   local status="$2"
-  local duration="$3"
+  local duration="${3:-0}"
   local commit_hash="${4:-}"
   local tokens_json="${5:-{}}"
   local actual_model="${6:-$(get_current_model "$agent" 2>/dev/null || echo "unknown")}"
 
   [[ -f "$CHECKPOINT_FILE" ]] || return 0
 
+  # Sanitize inputs for jq --argjson (must be valid JSON numbers/objects)
+  [[ "$duration" =~ ^[0-9]+$ ]] || duration=0
+  echo "$tokens_json" | jq . >/dev/null 2>&1 || tokens_json='{}'
+
   local finished
   finished=$(date '+%Y-%m-%d %H:%M:%S')
   local tmp="${CHECKPOINT_FILE}.tmp"
-  
+
   jq --arg agent "$agent" \
      --arg status "$status" \
      --arg model "$actual_model" \
