@@ -1,6 +1,6 @@
 ---
 description: "Validator (unified): runs static analysis and code style checks with minimal production fixes"
-model: opencode-go/kimi-k2.5
+model: minimax-coding-plan/MiniMax-M2.7
 temperature: 0
 tools:
   edit: true
