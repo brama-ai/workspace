@@ -122,12 +122,13 @@ export function createHandoffLink(taskDir: string, pipelineDir: string = PIPELIN
   const handoffFile = join(taskDir, "handoff.md");
   const linkFile = join(pipelineDir, "handoff.md");
 
-  if (existsSync(linkFile) || lstatSync(linkFile).isSymbolicLink?.()) {
-    try {
+  try {
+    const stat = lstatSync(linkFile);
+    if (stat.isSymbolicLink() || stat.isFile()) {
       unlinkSync(linkFile);
-    } catch {
-      // Ignore
     }
+  } catch {
+    // File doesn't exist, ignore
   }
 
   if (!existsSync(pipelineDir)) {

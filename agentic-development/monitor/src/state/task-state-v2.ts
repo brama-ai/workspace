@@ -59,7 +59,9 @@ export interface QAPair {
   source?: string;
 }
 
-const PIPELINE_TASKS_ROOT = env.PIPELINE_TASKS_ROOT || env.REPO_ROOT + "/tasks";
+function getTasksRoot(): string {
+  return env.PIPELINE_TASKS_ROOT || env.REPO_ROOT + "/tasks";
+}
 
 export function ensureTaskDir(taskDir: string): void {
   if (!existsSync(taskDir)) {
@@ -184,7 +186,7 @@ export function createDefaultState(taskDir: string): TaskState {
 }
 
 export function findTaskBySlug(slug: string): string | null {
-  const tasksRoot = PIPELINE_TASKS_ROOT;
+  const tasksRoot = getTasksRoot();
   if (!existsSync(tasksRoot)) return null;
 
   const entries = readdirSync(tasksRoot);
@@ -197,7 +199,7 @@ export function findTaskBySlug(slug: string): string | null {
 }
 
 export function findTaskByStatus(wantedStatus: TaskStatus): string | null {
-  const tasksRoot = PIPELINE_TASKS_ROOT;
+  const tasksRoot = getTasksRoot();
   if (!existsSync(tasksRoot)) return null;
 
   const entries = readdirSync(tasksRoot);
@@ -213,7 +215,7 @@ export function findTaskByStatus(wantedStatus: TaskStatus): string | null {
 }
 
 export function listAllTasks(): Array<{ dir: string; state: TaskState }> {
-  const tasksRoot = PIPELINE_TASKS_ROOT;
+  const tasksRoot = getTasksRoot();
   if (!existsSync(tasksRoot)) return [];
 
   const result: Array<{ dir: string; state: TaskState }> = [];
