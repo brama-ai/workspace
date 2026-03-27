@@ -15,27 +15,25 @@ FOUNDRY_TASK_ROOT_REL="${FOUNDRY_TASK_ROOT#"$REPO_ROOT"/}"
 
 pipeline_slugify() {
   local text="${1:-unknown}"
-  python3 - "$text" <<'PYEOF'
-import re
-import sys
-
-text = sys.argv[1]
-title = ""
-for line in text.splitlines():
-    stripped = line.strip()
-    if stripped.startswith("# "):
-        title = stripped[2:].strip()
-        break
-    if stripped and not stripped.startswith("<!--"):
-        title = stripped
-        break
-
-if not title:
-    title = "unknown"
-
-slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
-print((slug or "unknown")[:60])
-PYEOF
+  local title=""
+  
+  while IFS= read -r line; do
+    local stripped="${line#"${line%%[![:space:]]*}"}"
+    if [[ "$stripped" == "# "* ]]; then
+      title="${stripped:2}"
+      break
+    fi
+    if [[ -n "$stripped" && ! "$stripped" == "<!--"* ]]; then
+      title="$stripped"
+      break
+    fi
+  done <<< "$text"
+  
+  [[ -z "$title" ]] && title="unknown"
+  
+  local slug
+  slug=$(echo "$title" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//;s/-$//')
+  echo "${slug:0:60}"
 }
 
 ensure_pipeline_tasks_root() {
@@ -164,24 +162,14 @@ pipeline_task_append_event() {
   local step="${4:-}"
   local event_file="$task_dir/events.jsonl"
   mkdir -p "$task_dir"
-  python3 - "$event_file" "$event_type" "$message" "$step" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-
-path, event_type, message, step = sys.argv[1:5]
-event = {
-    "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-    "type": event_type,
-}
-if message:
-    event["message"] = message
-if step:
-    event["step"] = step
-
-with open(path, "a", encoding="utf-8") as fh:
-    fh.write(json.dumps(event, ensure_ascii=True) + "\n")
-PYEOF
+  
+  local ts
+  ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  local event="{\"timestamp\":\"$ts\",\"type\":\"$event_type\""
+  [[ -n "$message" ]] && event="$event,\"message\":\"$message\""
+  [[ -n "$step" ]] && event="$event,\"step\":\"$step\""
+  event="$event}"
+  echo "$event" >> "$event_file"
 }
 
 foundry_task_dir_for_slug() {
@@ -197,20 +185,20 @@ foundry_task_dir_for_slug() {
 foundry_task_dir_from_file() {
   local path="$1"
   [[ -n "$path" ]] || return 1
-  python3 - "$PIPELINE_TASKS_ROOT" "$path" <<'PYEOF'
-from pathlib import Path
-import sys
-
-root = Path(sys.argv[1]).resolve()
-path = Path(sys.argv[2]).resolve()
-for parent in [path] + list(path.parents):
-    if parent == root:
-        break
-    if parent.parent == root and "--foundry" in parent.name:
-        print(parent)
-        raise SystemExit(0)
-raise SystemExit(1)
-PYEOF
+  
+  local resolved
+  resolved=$(cd "$(dirname "$path")" && pwd)/$(basename "$path") 2>/dev/null || return 1
+  
+  local parent="$resolved"
+  while [[ -n "$parent" && "$parent" != "/" ]]; do
+    parent=$(dirname "$parent")
+    if [[ "$(dirname "$parent")" == "$PIPELINE_TASKS_ROOT" && "$parent" == *"--foundry"* ]]; then
+      echo "$parent"
+      return 0
+    fi
+    [[ "$parent" == "$PIPELINE_TASKS_ROOT" ]] && break
+  done
+  return 1
 }
 
 foundry_state_path() { echo "$1/state.json"; }
@@ -239,67 +227,45 @@ foundry_task_exists() {
 foundry_repair_state_file() {
   local task_dir="$1"
   local task_file="${2:-$task_dir/task.md}"
-  python3 - "$task_dir" "$task_file" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-task_file = Path(sys.argv[2])
-state_path = task_dir / "state.json"
-meta_path = task_dir / "meta.json"
-now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-existing = {}
-if state_path.exists():
-    try:
-        loaded = json.loads(state_path.read_text(encoding="utf-8"))
-        if isinstance(loaded, dict):
-            existing = loaded
-    except (json.JSONDecodeError, OSError, TypeError, ValueError):
-        existing = {}
-
-def normalize_str(value):
-    return value if isinstance(value, str) and value.strip() else None
-
-def normalize_attempt(value):
-    try:
-        num = int(value)
-    except (TypeError, ValueError):
-        return 1
-    return num if num >= 1 else 1
-
-payload = {
-    "task_id": normalize_str(existing.get("task_id")) or task_dir.name,
-    "workflow": "foundry",
-    "started_at": normalize_str(existing.get("started_at")) or now,
-    "attempt": normalize_attempt(existing.get("attempt")),
-    "status": normalize_str(existing.get("status")) or "pending",
-    "current_step": normalize_str(existing.get("current_step")),
-    "resume_from": normalize_str(existing.get("resume_from")),
-    "updated_at": now,
-    "task_file": normalize_str(existing.get("task_file")) or str(task_file),
-    "branch": normalize_str(existing.get("branch")),
-}
-
-if meta_path.exists():
-    try:
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        if isinstance(meta, dict) and normalize_str(meta.get("branch_name")):
-            payload["branch"] = normalize_str(meta.get("branch_name"))
-    except (json.JSONDecodeError, OSError, TypeError, ValueError):
-        pass
-
-# Preserve agents array if present
-agents = existing.get("agents")
-if isinstance(agents, list) and agents:
-    payload["agents"] = agents
-
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(payload, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
+  local state_file="$task_dir/state.json"
+  local meta_file="$task_dir/meta.json"
+  local now
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  local task_id
+  task_id=$(basename "$task_dir")
+  
+  mkdir -p "$task_dir"
+  
+  if [[ ! -f "$state_file" ]]; then
+    echo "{\"task_id\":\"$task_id\",\"workflow\":\"foundry\",\"status\":\"pending\",\"started_at\":\"$now\",\"attempt\":1,\"task_file\":\"$task_file\",\"updated_at\":\"$now\"}" > "$state_file"
+    return 0
+  fi
+  
+  local existing
+  existing=$(cat "$state_file" 2>/dev/null) || existing="{}"
+  
+  local branch=""
+  if [[ -f "$meta_file" ]]; then
+    branch=$(jq -r '.branch_name // empty' "$meta_file" 2>/dev/null) || branch=""
+  fi
+  
+  echo "$existing" | jq --arg task_id "$task_id" \
+    --arg now "$now" \
+    --arg task_file "$task_file" \
+    --arg branch "$branch" '
+    {
+      task_id: (.task_id // $task_id),
+      workflow: "foundry",
+      started_at: (.started_at // $now),
+      attempt: ((.attempt // 1) | if . < 1 then 1 else . end),
+      status: (.status // "pending"),
+      current_step: (.current_step // null),
+      resume_from: (.resume_from // null),
+      updated_at: $now,
+      task_file: (.task_file // $task_file),
+      branch: (if $branch != "" then $branch elif .branch then .branch else null end)
+    } + if .agents then {agents: .agents} else {} end
+  ' > "$state_file"
 }
 
 foundry_write_state() {
@@ -308,94 +274,65 @@ foundry_write_state() {
   local current_step="${3:-}"
   local resume_from="${4:-}"
   local task_file="${5:-$task_dir/task.md}"
+  
   foundry_repair_state_file "$task_dir" "$task_file"
-  python3 - "$task_dir" "$status" "$current_step" "$resume_from" "$task_file" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-status = sys.argv[2]
-current_step = sys.argv[3] or None
-resume_from = sys.argv[4] or None
-task_file = Path(sys.argv[5])
-state_path = task_dir / "state.json"
-meta_path = task_dir / "meta.json"
-payload = {
-    "task_id": task_dir.name,
-    "workflow": "foundry",
-    "status": status,
-    "current_step": current_step,
-    "resume_from": resume_from,
-    "task_file": str(task_file),
-    "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-}
-
-if state_path.exists():
-    try:
-        existing = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(existing, dict):
-            existing = {}
-    except (json.JSONDecodeError, OSError, TypeError, ValueError):
-        existing = {}
-    payload["started_at"] = existing.get("started_at") or payload["updated_at"]
-    try:
-        payload["attempt"] = max(int(existing.get("attempt", 1)), 1)
-    except (TypeError, ValueError):
-        payload["attempt"] = 1
-    if existing.get("branch"):
-        payload["branch"] = existing["branch"]
-else:
-    payload["started_at"] = payload["updated_at"]
-    payload["attempt"] = 1
-
-if meta_path.exists():
-    try:
-      meta = json.loads(meta_path.read_text(encoding="utf-8"))
-      if isinstance(meta, dict) and meta.get("branch_name"):
-          payload["branch"] = meta["branch_name"]
-    except (json.JSONDecodeError, OSError, TypeError, ValueError):
-      pass
-
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(payload, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
+  
+  local state_file="$task_dir/state.json"
+  local meta_file="$task_dir/meta.json"
+  local now
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  local task_id
+  task_id=$(basename "$task_dir")
+  
+  local existing="{}"
+  [[ -f "$state_file" ]] && existing=$(cat "$state_file" 2>/dev/null) || existing="{}"
+  
+  local meta_branch=""
+  if [[ -f "$meta_file" ]]; then
+    meta_branch=$(jq -r '.branch_name // empty' "$meta_file" 2>/dev/null) || meta_branch=""
+  fi
+  
+  echo "$existing" | jq --arg task_id "$task_id" \
+    --arg status "$status" \
+    --arg current_step "$current_step" \
+    --arg resume_from "$resume_from" \
+    --arg task_file "$task_file" \
+    --arg now "$now" \
+    --arg meta_branch "$meta_branch" '
+    {
+      task_id: $task_id,
+      workflow: "foundry",
+      status: $status,
+      current_step: (if $current_step != "" then $current_step else null end),
+      resume_from: (if $resume_from != "" then $resume_from else null end),
+      task_file: $task_file,
+      updated_at: $now,
+      started_at: (.started_at // $now),
+      attempt: (((.attempt // 1) | tonumber) | if . < 1 then 1 else . end),
+      branch: (if $meta_branch != "" then $meta_branch elif .branch then .branch else null end)
+    }
+  ' > "$state_file"
 }
 
 foundry_update_state_field() {
   local task_dir="$1"
   local key="$2"
   local value="$3"
+  
   foundry_repair_state_file "$task_dir"
-  python3 - "$task_dir" "$key" "$value" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-key = sys.argv[2]
-value = sys.argv[3]
-state_path = task_dir / "state.json"
-data = {}
-if state_path.exists():
-    try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            data = {}
-    except (json.JSONDecodeError, OSError, TypeError, ValueError):
-        data = {}
-if value == "__NULL__":
-    data[key] = None
-else:
-    data[key] = value
-data["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
+  
+  local state_file="$task_dir/state.json"
+  local now
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  
+  local existing="{}"
+  [[ -f "$state_file" ]] && existing=$(cat "$state_file" 2>/dev/null) || existing="{}"
+  
+  if [[ "$value" == "__NULL__" ]]; then
+    echo "$existing" | jq --arg key "$key" --arg now "$now" '.[$key] = null | .updated_at = $now' > "$state_file"
+  else
+    echo "$existing" | jq --arg key "$key" --arg value "$value" --arg now "$now" '.[$key] = $value | .updated_at = $now' > "$state_file"
+  fi
 }
 
 foundry_set_state_status() {
@@ -403,91 +340,52 @@ foundry_set_state_status() {
   local status="$2"
   local current_step="${3:-}"
   local resume_from="${4:-}"
+  
   foundry_repair_state_file "$task_dir"
-  python3 - "$task_dir" "$status" "$current_step" "$resume_from" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-status = sys.argv[2]
-current_step = sys.argv[3] or None
-resume_from = sys.argv[4] or None
-state_path = task_dir / "state.json"
-if state_path.exists():
-    try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            data = {}
-    except (json.JSONDecodeError, OSError, TypeError, ValueError):
-        data = {}
-else:
-    data = {
-        "task_id": task_dir.name,
-        "workflow": "foundry",
-        "started_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "attempt": 1,
-    }
-data["status"] = status
-data["current_step"] = current_step
-data["resume_from"] = resume_from
-data["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
+  
+  local state_file="$task_dir/state.json"
+  local now
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  
+  local existing="{}"
+  [[ -f "$state_file" ]] && existing=$(cat "$state_file" 2>/dev/null) || existing="{}"
+  
+  echo "$existing" | jq --arg status "$status" \
+    --arg current_step "$current_step" \
+    --arg resume_from "$resume_from" \
+    --arg now "$now" '
+    .status = $status |
+    .current_step = (if $current_step != "" then $current_step else null end) |
+    .resume_from = (if $resume_from != "" then $resume_from else null end) |
+    .updated_at = $now
+  ' > "$state_file"
 }
 
 foundry_increment_attempt() {
   local task_dir="$1"
+  
   foundry_repair_state_file "$task_dir"
-  python3 - "$task_dir" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-state_path = task_dir / "state.json"
-data = {}
-if state_path.exists():
-    try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            data = {}
-    except (json.JSONDecodeError, OSError, TypeError, ValueError):
-        data = {}
-data["attempt"] = int(data.get("attempt", 1)) + 1
-data["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
+  
+  local state_file="$task_dir/state.json"
+  local now
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  
+  local existing="{}"
+  [[ -f "$state_file" ]] && existing=$(cat "$state_file" 2>/dev/null) || existing="{}"
+  
+  echo "$existing" | jq --arg now "$now" '
+    .attempt = ((.attempt // 1) | tonumber | . + 1) |
+    .updated_at = $now
+  ' > "$state_file"
 }
 
 foundry_state_field() {
   local task_dir="$1"
   local key="$2"
-  python3 - "$task_dir" "$key" <<'PYEOF'
-import json
-import sys
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-key = sys.argv[2]
-state_path = task_dir / "state.json"
-if not state_path.exists():
-    raise SystemExit(0)
-try:
-    data = json.loads(state_path.read_text(encoding="utf-8"))
-except json.JSONDecodeError:
-    raise SystemExit(0)
-value = data.get(key)
-if value is None:
-    raise SystemExit(0)
-print(value)
-PYEOF
+  local state_file="$task_dir/state.json"
+  
+  [[ -f "$state_file" ]] || return 0
+  jq -r --arg key "$key" '.[$key] // empty' "$state_file" 2>/dev/null || true
 }
 
 # ── Atomic task claiming for parallel workers ───────────────────────
@@ -788,81 +686,53 @@ foundry_state_upsert_agent() {
   local output_tokens="${7:-}"
   local cost="${8:-}"
   local call_count="${9:-1}"
+  
   foundry_repair_state_file "$task_dir"
-  python3 - "$task_dir" "$agent" "$status" "$model" "$duration_seconds" "$input_tokens" "$output_tokens" "$cost" "$call_count" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-agent, status, model = sys.argv[2], sys.argv[3], sys.argv[4]
-duration_seconds = sys.argv[5]
-input_tokens = sys.argv[6]
-output_tokens = sys.argv[7]
-cost = sys.argv[8]
-call_count = sys.argv[9]
-
-state_path = task_dir / "state.json"
-data = {}
-if state_path.exists():
-    try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            data = {}
-    except (json.JSONDecodeError, OSError):
-        data = {}
-
-agents = data.get("agents", [])
-if not isinstance(agents, list):
-    agents = []
-
-# Find existing agent entry or create new
-entry = None
-for a in agents:
-    if a.get("agent") == agent:
-        entry = a
-        break
-if entry is None:
-    entry = {"agent": agent}
-    agents.append(entry)
-
-entry["status"] = status
-
-def set_int(key, val):
-    if val:
-        try:
-            entry[key] = int(float(val))
-            return
-        except (ValueError, TypeError):
-            pass
-    entry.setdefault(key, "n/d")
-
-def set_float(key, val):
-    if val:
-        try:
-            entry[key] = round(float(val), 4)
-            return
-        except (ValueError, TypeError):
-            pass
-    entry.setdefault(key, "n/d")
-
-entry["model"] = model if model else entry.get("model", "n/d")
-set_int("duration_seconds", duration_seconds)
-set_int("input_tokens", input_tokens)
-set_int("output_tokens", output_tokens)
-set_float("cost", cost)
-set_int("call_count", call_count)
-
-entry["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-data["agents"] = agents
-data["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
+  
+  local state_file="$task_dir/state.json"
+  local now
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  
+  local existing="{}"
+  [[ -f "$state_file" ]] && existing=$(cat "$state_file" 2>/dev/null) || existing="{}"
+  
+  echo "$existing" | jq --arg agent "$agent" \
+    --arg status "$status" \
+    --arg model "$model" \
+    --argjson duration "${duration_seconds:-0}" \
+    --argjson input "${input_tokens:-0}" \
+    --argjson output "${output_tokens:-0}" \
+    --argjson cost "${cost:-0}" \
+    --argjson call_count "${call_count:-1}" \
+    --arg now "$now" '
+    .agents = (.agents // []) |
+    (first(.agents[] | select(.agent == $agent)) // null) as $existing |
+    if $existing then
+      .agents = [.agents[] | if .agent == $agent then
+        .status = $status |
+        .model = (if $model != "" then $model else .model // "n/d" end) |
+        .duration_seconds = (if $duration > 0 then $duration else .duration_seconds // "n/d" end) |
+        .input_tokens = (if $input > 0 then $input else .input_tokens // "n/d" end) |
+        .output_tokens = (if $output > 0 then $output else .output_tokens // "n/d" end) |
+        .cost = (if $cost > 0 then $cost else .cost // "n/d" end) |
+        .call_count = (if $call_count > 0 then $call_count else .call_count // 1 end) |
+        .updated_at = $now
+      else . end]
+    else
+      .agents += [{
+        agent: $agent,
+        status: $status,
+        model: (if $model != "" then $model else "n/d" end),
+        duration_seconds: (if $duration > 0 then $duration else "n/d" end),
+        input_tokens: (if $input > 0 then $input else "n/d" end),
+        output_tokens: (if $output > 0 then $output else "n/d" end),
+        cost: (if $cost > 0 then $cost else "n/d" end),
+        call_count: (if $call_count > 0 then $call_count else 1 end),
+        updated_at: $now
+      }]
+    end |
+    .updated_at = $now
+  ' > "$state_file"
 }
 
 # Write all planned agents to state.json as "pending" + set profile
@@ -872,55 +742,32 @@ foundry_state_set_planned_agents() {
   local profile="$2"
   shift 2
   local agents=("$@")
+  
   foundry_repair_state_file "$task_dir"
-  python3 - "$task_dir" "$profile" "${agents[@]}" <<'PYEOF'
-import json
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
-
-task_dir = Path(sys.argv[1])
-profile = sys.argv[2]
-planned_agents = sys.argv[3:]
-
-state_path = task_dir / "state.json"
-data = {}
-if state_path.exists():
-    try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            data = {}
-    except (json.JSONDecodeError, OSError):
-        data = {}
-
-# Preserve existing agent entries (planner may already be "done")
-existing = {a["agent"]: a for a in data.get("agents", []) if isinstance(a, dict)}
-
-agents = []
-for name in planned_agents:
-    if name in existing:
-        agents.append(existing[name])
-    else:
-        agents.append({
-            "agent": name,
-            "status": "pending",
-            "model": "",
-            "duration_seconds": 0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "cost": 0,
-            "call_count": 0,
-            "updated_at": ""
-        })
-
-data["agents"] = agents
-data["profile"] = profile
-data["updated_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-with open(state_path, "w", encoding="utf-8") as fh:
-    json.dump(data, fh, ensure_ascii=True, indent=2)
-    fh.write("\n")
-PYEOF
+  
+  local state_file="$task_dir/state.json"
+  local now
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  
+  local existing="{}"
+  [[ -f "$state_file" ]] && existing=$(cat "$state_file" 2>/dev/null) || existing="{}"
+  
+  local agents_json="[]"
+  for name in "${agents[@]}"; do
+    local existing_agent
+    existing_agent=$(echo "$existing" | jq --arg name "$name" 'first(.agents[]? | select(.agent == $name)) // null' 2>/dev/null)
+    if [[ "$existing_agent" != "null" && -n "$existing_agent" ]]; then
+      agents_json=$(echo "$agents_json" | jq --argjson agent "$existing_agent" '. + [$agent]')
+    else
+      agents_json=$(echo "$agents_json" | jq --arg name "$name" '. + [{agent: $name, status: "pending", model: "", duration_seconds: 0, input_tokens: 0, output_tokens: 0, cost: 0, call_count: 0, updated_at: ""}]')
+    fi
+  done
+  
+  echo "$existing" | jq --argjson agents "$agents_json" --arg profile "$profile" --arg now "$now" '
+    .agents = $agents |
+    .profile = $profile |
+    .updated_at = $now
+  ' > "$state_file"
 }
 
 foundry_create_task_dir() {
@@ -1300,16 +1147,7 @@ foundry_qa_unanswered_count() {
   local qa_file
   qa_file=$(foundry_qa_file "$task_dir")
   [[ -f "$qa_file" ]] || { echo 0; return; }
-  python3 - "$qa_file" <<'PYEOF'
-import json, sys
-try:
-    data = json.loads(open(sys.argv[1]).read())
-    questions = data.get("questions", [])
-    count = sum(1 for q in questions if q.get("answer") is None)
-    print(count)
-except Exception:
-    print(0)
-PYEOF
+  jq '[.questions[]? | select(.answer == null)] | length' "$qa_file" 2>/dev/null || echo 0
 }
 
 # Count unanswered BLOCKING questions in qa.json.
@@ -1319,17 +1157,7 @@ foundry_qa_blocking_unanswered_count() {
   local qa_file
   qa_file=$(foundry_qa_file "$task_dir")
   [[ -f "$qa_file" ]] || { echo 0; return; }
-  python3 - "$qa_file" <<'PYEOF'
-import json, sys
-try:
-    data = json.loads(open(sys.argv[1]).read())
-    questions = data.get("questions", [])
-    count = sum(1 for q in questions
-                if q.get("priority") == "blocking" and q.get("answer") is None)
-    print(count)
-except Exception:
-    print(0)
-PYEOF
+  jq '[.questions[]? | select(.priority == "blocking" and .answer == null)] | length' "$qa_file" 2>/dev/null || echo 0
 }
 
 # Count total questions and answered questions in qa.json.
@@ -1339,17 +1167,7 @@ foundry_qa_progress() {
   local qa_file
   qa_file=$(foundry_qa_file "$task_dir")
   [[ -f "$qa_file" ]] || { echo "0/0"; return; }
-  python3 - "$qa_file" <<'PYEOF'
-import json, sys
-try:
-    data = json.loads(open(sys.argv[1]).read())
-    questions = data.get("questions", [])
-    total = len(questions)
-    answered = sum(1 for q in questions if q.get("answer") is not None)
-    print(f"{answered}/{total}")
-except Exception:
-    print("0/0")
-PYEOF
+  jq -r '"\([.questions[]? | select(.answer != null)] | length)/\(.questions | length)"' "$qa_file" 2>/dev/null || echo "0/0"
 }
 
 # ── Q&A Timeout Strategy (Section 13 of openspec-human-in-the-loop.md) ──────
@@ -1368,52 +1186,45 @@ PYEOF
 # Returns 0 on parse failure (no timeout).
 _foundry_parse_duration_seconds() {
   local raw="${1:-0}"
-  python3 - "$raw" <<'PYEOF'
-import re, sys
-
-raw = sys.argv[1].strip()
-if not raw or raw == "0":
-    print(0)
-    sys.exit(0)
-
-# Pure integer → seconds
-if raw.isdigit():
-    print(int(raw))
-    sys.exit(0)
-
-total = 0
-for m in re.finditer(r'(\d+)\s*([hHmMsS]?)', raw):
-    val, unit = int(m.group(1)), m.group(2).lower()
-    if unit == 'h':
-        total += val * 3600
-    elif unit == 'm':
-        total += val * 60
-    elif unit == 's' or unit == '':
-        total += val
-if total == 0:
-    print(0)
-else:
-    print(total)
-PYEOF
+  local total=0
+  
+  [[ -z "$raw" || "$raw" == "0" ]] && { echo 0; return; }
+  
+  if [[ "$raw" =~ ^[0-9]+$ ]]; then
+    echo "$raw"
+    return
+  fi
+  
+  while [[ "$raw" =~ ([0-9]+)([hHmMsS]?) ]]; do
+    local val="${BASH_REMATCH[1]}"
+    local unit="${BASH_REMATCH[2],,}"
+    case "$unit" in
+      h) total=$((total + val * 3600)) ;;
+      m) total=$((total + val * 60)) ;;
+      s|"") total=$((total + val)) ;;
+    esac
+    raw="${raw#*${BASH_REMATCH[0]}}"
+  done
+  
+  echo "$total"
 }
 
 # Format seconds into a human-readable string (e.g. 3600 → "1h", 5400 → "1h30m").
 _foundry_format_duration() {
   local secs="${1:-0}"
-  python3 - "$secs" <<'PYEOF'
-import sys
-s = int(sys.argv[1])
-if s <= 0:
-    print("0s")
-    sys.exit(0)
-h, rem = divmod(s, 3600)
-m, sec = divmod(rem, 60)
-parts = []
-if h: parts.append(f"{h}h")
-if m: parts.append(f"{m}m")
-if sec: parts.append(f"{sec}s")
-print("".join(parts) or "0s")
-PYEOF
+  local result=""
+  
+  [[ "$secs" -le 0 ]] && { echo "0s"; return; }
+  
+  local h=$((secs / 3600))
+  local m=$(((secs % 3600) / 60))
+  local s=$((secs % 60))
+  
+  [[ "$h" -gt 0 ]] && result="${result}${h}h"
+  [[ "$m" -gt 0 ]] && result="${result}${m}m"
+  [[ "$s" -gt 0 ]] && result="${result}${s}s"
+  
+  echo "${result:-0s}"
 }
 
 # Read qa_timeout config from pipeline-plan.json (or task-level plan).
