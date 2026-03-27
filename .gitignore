@@ -55,3 +55,4 @@ agentic-development/tests/e2e-agents/test-results/
 
 # Doctor root cause reports (auto-generated)
 agentic-development/doctor/root-cause-*.md
+agentic-development/monitor/node_modules/
