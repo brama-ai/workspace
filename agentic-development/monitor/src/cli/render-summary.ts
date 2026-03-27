@@ -11,7 +11,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, unlink
 import { join, dirname } from "node:path";
 import { env, argv, exit } from "node:process";
 import { tmpdir } from "node:os";
-import { calculateCost } from "../state/telemetry.js";
+import { calculateCost, getModelPricing, estimateUsage, PROVIDER_LIMITS, type UsageEstimate } from "../state/telemetry.js";
 
 const REPO_ROOT = env.REPO_ROOT || process.cwd();
 
@@ -193,6 +193,68 @@ function renderTable(rows: AgentRow[], workflow: string): string {
   for (const [model, item] of Array.from(byModel.entries()).sort()) {
     lines.push(`| ${model} | ${item.agents.join(", ")} | ${item.input} | ${item.output} | ${money(item.price)} |`);
   }
+
+  // Provider usage / limits
+  const byProvider = new Map<string, { totalTokens: number; totalCost: number; models: string[] }>();
+  for (const row of rows) {
+    const pricing = getModelPricing(row.model);
+    const p = byProvider.get(pricing.provider) || { totalTokens: 0, totalCost: 0, models: [] };
+    const rowTokens = row.tokens.input_tokens + row.tokens.output_tokens + row.tokens.cache_read;
+    p.totalTokens += rowTokens;
+    p.totalCost += row.cost;
+    if (!p.models.includes(row.model)) p.models.push(row.model);
+    byProvider.set(pricing.provider, p);
+  }
+
+  lines.push("");
+  lines.push("## Provider Usage");
+  lines.push("");
+  lines.push("| Provider | Billing | Tokens Used | Cost | Window % | Monthly % | Status |");
+  lines.push("|----------|---------|------------:|-----:|---------:|---------:|--------|");
+
+  for (const [provider, data] of Array.from(byProvider.entries()).sort()) {
+    const sample = getModelPricing(data.models[0]);
+    const usage = estimateUsage(data.models[0], data.totalTokens, data.totalCost);
+    const tokensStr = data.totalTokens > 1_000_000
+      ? `${(data.totalTokens / 1_000_000).toFixed(1)}M`
+      : data.totalTokens > 1_000
+        ? `${(data.totalTokens / 1_000).toFixed(1)}K`
+        : `${data.totalTokens}`;
+
+    let windowStr = "-";
+    if (usage.windowUsagePercent !== null) {
+      windowStr = `${usage.windowUsagePercent.toFixed(1)}%`;
+    }
+
+    let monthlyStr = "-";
+    if (usage.monthlyUsagePercent !== null) {
+      monthlyStr = `${usage.monthlyUsagePercent.toFixed(1)}%`;
+    }
+
+    let status = "OK";
+    if (usage.windowUsagePercent !== null && usage.windowUsagePercent > 80) {
+      status = "WARN: near window limit";
+    } else if (usage.windowUsagePercent !== null && usage.windowUsagePercent > 95) {
+      status = "CRITICAL: window exhausted";
+    } else if (usage.monthlyUsagePercent !== null && usage.monthlyUsagePercent > 80) {
+      status = "WARN: near budget limit";
+    } else if (usage.monthlyUsagePercent !== null && usage.monthlyUsagePercent > 95) {
+      status = "CRITICAL: budget exhausted";
+    }
+
+    lines.push(`| ${provider} | ${sample.billing} | ${tokensStr} | ${money(data.totalCost)} | ${windowStr} | ${monthlyStr} | ${status} |`);
+  }
+
+  // Total row
+  const totalTokens = rows.reduce((s, r) => s + r.tokens.input_tokens + r.tokens.output_tokens + r.tokens.cache_read, 0);
+  const totalCost = rows.reduce((s, r) => s + r.cost, 0);
+  const totalDuration = rows.reduce((s, r) => s + r.duration_seconds, 0);
+  const totalTokensStr = totalTokens > 1_000_000
+    ? `${(totalTokens / 1_000_000).toFixed(1)}M`
+    : `${(totalTokens / 1_000).toFixed(1)}K`;
+
+  lines.push("");
+  lines.push(`**Totals:** ${totalTokensStr} tokens | ${money(totalCost)} cost | ${dur(totalDuration)} duration`);
 
   // Tools by agent
   lines.push("");

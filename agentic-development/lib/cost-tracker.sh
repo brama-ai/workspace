@@ -207,51 +207,15 @@ write_telemetry_record() {
 
 render_builder_summary_block() {
   local slug="$1"
-  local task_dir
-  task_dir=$(foundry_task_dir_for_slug "$slug" 2>/dev/null || true)
-  [[ -n "$task_dir" ]] || task_dir="$FOUNDRY_TASK_ROOT/${slug}--foundry"
-  local artifacts_dir="$task_dir/artifacts"
-  local checkpoint_file="$artifacts_dir/checkpoint.json"
-  local telemetry_dir="$artifacts_dir/telemetry"
+  local ts_script="$REPO_ROOT/agentic-development/monitor/src/cli/render-summary.ts"
   
-  [[ -f "$checkpoint_file" ]] || { echo "No checkpoint file found"; return 1; }
-  
-  local workflow
-  workflow=$(jq -r '.workflow // "builder" | ascii_upcase[:1] + .[1:]' "$checkpoint_file" 2>/dev/null) || workflow="Builder"
-  
-  echo "**Workflow:** $workflow"
-  echo ""
-  echo "## Telemetry"
-  echo ""
-  echo "| Agent | Model | Input | Output | Price | Time |"
-  echo "|-------|-------|------:|-------:|------:|-----:|"
-  
-  local total_cost=0 total_input=0 total_output=0
-  
-  for tfile in "$telemetry_dir"/*.json; do
-    [[ -f "$tfile" ]] || continue
-    local agent model input output cost duration
-    agent=$(jq -r '.agent // "—"' "$tfile")
-    model=$(jq -r '.model // "—"' "$tfile")
-    input=$(jq -r '.tokens.input_tokens // 0' "$tfile")
-    output=$(jq -r '.tokens.output_tokens // 0' "$tfile")
-    cost=$(jq -r '.cost // 0' "$tfile")
-    duration=$(jq -r '.duration_seconds // 0' "$tfile")
-    
-    local dur_str="${duration}s"
-    if [[ "$duration" -ge 60 ]]; then
-      dur_str="$((duration / 60))m $((duration % 60))s"
-    fi
-    
-    printf "| %s | %s | %s | %s | \$%.4f | %s |\n" "$agent" "$model" "$input" "$output" "$cost" "$dur_str"
-    
-    total_cost=$(awk "BEGIN{print $total_cost + $cost}")
-    total_input=$((total_input + input))
-    total_output=$((total_output + output))
-  done
-  
-  echo ""
-  printf "**Total:** Input=%s Output=%s Cost=\$%.4f\n" "$total_input" "$total_output" "$total_cost"
+  if [[ -f "$ts_script" ]]; then
+    REPO_ROOT="$REPO_ROOT" npx tsx "$ts_script" foundry "$slug"
+  else
+    echo "**Workflow:** Foundry"
+    echo ""
+    echo "_render-summary.ts not found_"
+  fi
 }
 
 render_ultraworks_summary_block() {
