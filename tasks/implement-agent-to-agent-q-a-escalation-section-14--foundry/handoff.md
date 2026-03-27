@@ -59,10 +59,16 @@
 
 ## Summarizer
 
-- **Status**: pending
-- **Summary file**: —
-- **Next task recommendation**: —
+- **Status**: completed (pipeline FAIL / INCOMPLETE)
+- **Summary file**: `/workspaces/brama/tasks/implement-agent-to-agent-q-a-escalation-section-14--foundry/summary.md`
+- **Next task recommendation**: Add shell/E2E coverage for `waiting_answer -> qa-responder -> resume/escalate` and re-run the failed tester phase after restoring billing or fallback capacity.
 
 ---
 - **Commit (u-coder)**: b8cce65
 - **Commit (u-validator)**: 56bff96
+- **Commit (u-tester)**: dac3f3a
+
+---
+- **Final status**: PASS
+- **Summary path**: `/workspaces/brama/tasks/write-root-cause-analysis-docs--foundry/summary.md`
+- **Recommendation**: Verify the RCA documentation commands on a real failed Foundry task and adjust any paths/examples that differ from the current runtime.
