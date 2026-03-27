@@ -2810,7 +2810,7 @@ main() {
 
       echo ""
     elif [[ $run_exit -eq 75 ]]; then
-      # HITL: Agent is waiting for answers — pipeline paused
+      # HITL: Agent is waiting for answers
       local agent_dur=$(( $(date +%s) - agent_start ))
 
       # Auto-commit agent's partial work
@@ -2825,15 +2825,34 @@ main() {
 
       emit_event "TASK_WAITING" "agent=${agent}|duration=${agent_dur}s"
 
-      # Move task to waiting_answer state (already done in run_agent, but ensure it)
-      if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
-        foundry_set_state_status "$TASK_DIR" "waiting_answer" "$agent" "$agent"
+      # Check if continue_on_wait=true — pipeline continues to next agent
+      local _continue_on_wait="false"
+      if [[ -n "$TASK_DIR" ]]; then
+        local _task_plan="$TASK_DIR/pipeline-plan.json"
+        if [[ -f "$_task_plan" ]]; then
+          _continue_on_wait=$(jq -r '.continue_on_wait // false' "$_task_plan" 2>/dev/null || echo "false")
+        elif [[ -f "$PLAN_FILE" ]]; then
+          _continue_on_wait=$(jq -r '.continue_on_wait // false' "$PLAN_FILE" 2>/dev/null || echo "false")
+        fi
       fi
 
-      echo -e "${YELLOW}Pipeline paused at agent: ${agent} (waiting for answers)${NC}"
-      echo -e "${YELLOW}Answer questions: ./agentic-development/foundry.sh answer ${TASK_SLUG:-<slug>}${NC}"
-      echo -e "${YELLOW}Resume pipeline:  ./agentic-development/foundry.sh resume-qa ${TASK_SLUG:-<slug>}${NC}"
-      break
+      if [[ "$_continue_on_wait" == "true" ]]; then
+        # Pipeline continues — task stays in waiting_answer but next agents run
+        echo -e "${CYAN}  continue_on_wait=true — continuing to next agent${NC}"
+        echo -e "${YELLOW}  Agent ${agent} waiting for answers in background${NC}"
+        echo ""
+        # Don't break — continue the loop
+      else
+        # Move task to waiting_answer state (already done in run_agent, but ensure it)
+        if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
+          foundry_set_state_status "$TASK_DIR" "waiting_answer" "$agent" "$agent"
+        fi
+
+        echo -e "${YELLOW}Pipeline paused at agent: ${agent} (waiting for answers)${NC}"
+        echo -e "${YELLOW}Answer questions: ./agentic-development/foundry.sh answer ${TASK_SLUG:-<slug>}${NC}"
+        echo -e "${YELLOW}Resume pipeline:  ./agentic-development/foundry.sh resume-qa ${TASK_SLUG:-<slug>}${NC}"
+        break
+      fi
     else
       local agent_dur=$(( $(date +%s) - agent_start ))
 

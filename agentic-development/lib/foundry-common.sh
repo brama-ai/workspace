@@ -1352,6 +1352,368 @@ except Exception:
 PYEOF
 }
 
+# ── Q&A Timeout Strategy (Section 13 of openspec-human-in-the-loop.md) ──────
+#
+# Reads qa_timeout, qa_on_timeout, qa_reminder_at from pipeline-plan.json.
+# Per-question timeout override supported via qa.json fields: timeout, on_timeout, default_answer.
+#
+# Strategies:
+#   fail     (default) — set task status=failed, stop_reason=qa_timeout
+#   skip               — mark unanswered questions as skipped, continue pipeline
+#   fallback           — use agent's default_answer from qa.json, continue pipeline
+#
+# Reminders sent via Telegram at 50% and 90% of timeout.
+
+# Parse a human-readable duration string (e.g. "4h", "30m", "1h30m", "3600") into seconds.
+# Returns 0 on parse failure (no timeout).
+_foundry_parse_duration_seconds() {
+  local raw="${1:-0}"
+  python3 - "$raw" <<'PYEOF'
+import re, sys
+
+raw = sys.argv[1].strip()
+if not raw or raw == "0":
+    print(0)
+    sys.exit(0)
+
+# Pure integer → seconds
+if raw.isdigit():
+    print(int(raw))
+    sys.exit(0)
+
+total = 0
+for m in re.finditer(r'(\d+)\s*([hHmMsS]?)', raw):
+    val, unit = int(m.group(1)), m.group(2).lower()
+    if unit == 'h':
+        total += val * 3600
+    elif unit == 'm':
+        total += val * 60
+    elif unit == 's' or unit == '':
+        total += val
+if total == 0:
+    print(0)
+else:
+    print(total)
+PYEOF
+}
+
+# Format seconds into a human-readable string (e.g. 3600 → "1h", 5400 → "1h30m").
+_foundry_format_duration() {
+  local secs="${1:-0}"
+  python3 - "$secs" <<'PYEOF'
+import sys
+s = int(sys.argv[1])
+if s <= 0:
+    print("0s")
+    sys.exit(0)
+h, rem = divmod(s, 3600)
+m, sec = divmod(rem, 60)
+parts = []
+if h: parts.append(f"{h}h")
+if m: parts.append(f"{m}m")
+if sec: parts.append(f"{sec}s")
+print("".join(parts) or "0s")
+PYEOF
+}
+
+# Read qa_timeout config from pipeline-plan.json (or task-level plan).
+# Returns timeout in seconds (0 = no timeout).
+foundry_qa_timeout_seconds() {
+  local task_dir="$1"
+  local plan_file="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/pipeline-plan.json"
+  local raw_timeout="4h"  # default
+
+  # Try task-level plan first, then repo-root plan
+  local task_plan="$task_dir/pipeline-plan.json"
+  if [[ -f "$task_plan" ]]; then
+    local t
+    t=$(jq -r '.qa_timeout // empty' "$task_plan" 2>/dev/null || true)
+    [[ -n "$t" ]] && raw_timeout="$t"
+  elif [[ -f "$plan_file" ]]; then
+    local t
+    t=$(jq -r '.qa_timeout // empty' "$plan_file" 2>/dev/null || true)
+    [[ -n "$t" ]] && raw_timeout="$t"
+  fi
+
+  _foundry_parse_duration_seconds "$raw_timeout"
+}
+
+# Read qa_on_timeout config (fail|skip|fallback). Default: fail.
+foundry_qa_on_timeout() {
+  local task_dir="$1"
+  local plan_file="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/pipeline-plan.json"
+  local strategy="fail"
+
+  local task_plan="$task_dir/pipeline-plan.json"
+  if [[ -f "$task_plan" ]]; then
+    local s
+    s=$(jq -r '.qa_on_timeout // empty' "$task_plan" 2>/dev/null || true)
+    [[ -n "$s" ]] && strategy="$s"
+  elif [[ -f "$plan_file" ]]; then
+    local s
+    s=$(jq -r '.qa_on_timeout // empty' "$plan_file" 2>/dev/null || true)
+    [[ -n "$s" ]] && strategy="$s"
+  fi
+
+  echo "$strategy"
+}
+
+# Read qa_reminder_at config (array of percentages like ["50%","90%"]).
+# Returns space-separated list of integer percentages. Default: "50 90".
+foundry_qa_reminder_at() {
+  local task_dir="$1"
+  local plan_file="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/pipeline-plan.json"
+  local reminders="50 90"
+
+  local task_plan="$task_dir/pipeline-plan.json"
+  local raw=""
+  if [[ -f "$task_plan" ]]; then
+    raw=$(jq -r '.qa_reminder_at // empty | if type == "array" then .[] else . end' "$task_plan" 2>/dev/null || true)
+  elif [[ -f "$plan_file" ]]; then
+    raw=$(jq -r '.qa_reminder_at // empty | if type == "array" then .[] else . end' "$plan_file" 2>/dev/null || true)
+  fi
+
+  if [[ -n "$raw" ]]; then
+    # Strip % signs, collect as space-separated integers
+    reminders=$(echo "$raw" | tr -d '%' | tr '\n' ' ' | xargs)
+  fi
+
+  echo "$reminders"
+}
+
+# Apply the timeout strategy to a waiting_answer task.
+# Strategy: fail | skip | fallback
+# Returns:
+#   0  — pipeline should continue (skip or fallback applied)
+#   1  — pipeline should stop (fail strategy)
+foundry_qa_apply_timeout_strategy() {
+  local task_dir="$1"
+  local strategy="${2:-fail}"
+  local task_slug="${3:-$(basename "$task_dir")}"
+
+  local qa_file="$task_dir/qa.json"
+
+  case "$strategy" in
+    skip)
+      # Mark all unanswered questions as skipped
+      if [[ -f "$qa_file" ]]; then
+        python3 - "$qa_file" <<'PYEOF'
+import json, sys
+from datetime import datetime, timezone
+
+path = sys.argv[1]
+try:
+    data = json.loads(open(path).read())
+except Exception:
+    sys.exit(0)
+
+now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+changed = False
+for q in data.get("questions", []):
+    if q.get("answer") is None:
+        q["answer"] = "__skipped__"
+        q["answered_at"] = now
+        q["answered_by"] = "system:timeout_skip"
+        changed = True
+
+if changed:
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=True, indent=2)
+        fh.write("\n")
+PYEOF
+      fi
+      # Update state: mark agent as skipped_qa, continue
+      foundry_update_state_field "$task_dir" "qa_timeout_action" "skip"
+      pipeline_task_append_event "$task_dir" "qa_timeout_skip" \
+        "QA timeout: unanswered questions skipped, pipeline continues" ""
+      return 0
+      ;;
+
+    fallback)
+      # Use default_answer from qa.json per-question, or mark as skipped if none
+      if [[ -f "$qa_file" ]]; then
+        python3 - "$qa_file" <<'PYEOF'
+import json, sys
+from datetime import datetime, timezone
+
+path = sys.argv[1]
+try:
+    data = json.loads(open(path).read())
+except Exception:
+    sys.exit(0)
+
+now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+changed = False
+for q in data.get("questions", []):
+    if q.get("answer") is None:
+        default = q.get("default_answer")
+        if default:
+            q["answer"] = default
+            q["answered_at"] = now
+            q["answered_by"] = "system:timeout_fallback"
+        else:
+            q["answer"] = "__skipped__"
+            q["answered_at"] = now
+            q["answered_by"] = "system:timeout_skip"
+        changed = True
+
+if changed:
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=True, indent=2)
+        fh.write("\n")
+PYEOF
+      fi
+      foundry_update_state_field "$task_dir" "qa_timeout_action" "fallback"
+      pipeline_task_append_event "$task_dir" "qa_timeout_fallback" \
+        "QA timeout: default answers applied, pipeline continues" ""
+      return 0
+      ;;
+
+    fail|*)
+      # Default: fail the task
+      foundry_update_state_field "$task_dir" "stop_reason" "qa_timeout"
+      foundry_set_state_status "$task_dir" "failed" "" ""
+      pipeline_task_append_event "$task_dir" "qa_timeout" \
+        "QA timeout expired: task failed (strategy=fail)" ""
+      return 1
+      ;;
+  esac
+}
+
+# Check if a waiting_answer task has timed out.
+# Sends Telegram reminders at configured percentages.
+# Applies timeout strategy when expired.
+# Returns:
+#   0  — not timed out (or no timeout configured)
+#   1  — timed out and strategy=fail applied
+#   2  — timed out and strategy=skip/fallback applied (pipeline can continue)
+foundry_qa_check_timeout() {
+  local task_dir="$1"
+  local task_slug="${2:-$(basename "$task_dir")}"
+
+  # Only act on waiting_answer tasks
+  local status
+  status=$(foundry_state_field "$task_dir" status 2>/dev/null || echo "")
+  [[ "$status" == "waiting_answer" ]] || return 0
+
+  local waiting_since
+  waiting_since=$(foundry_state_field "$task_dir" waiting_since 2>/dev/null || echo "")
+  [[ -n "$waiting_since" ]] || return 0
+
+  local timeout_secs
+  timeout_secs=$(foundry_qa_timeout_seconds "$task_dir")
+  # 0 = no timeout
+  [[ "$timeout_secs" -gt 0 ]] 2>/dev/null || return 0
+
+  # Calculate elapsed seconds
+  local elapsed_secs
+  elapsed_secs=$(python3 - "$waiting_since" <<'PYEOF'
+import sys
+from datetime import datetime, timezone
+
+raw = sys.argv[1]
+try:
+    # Handle both Z and +00:00 suffixes
+    raw = raw.replace("Z", "+00:00")
+    since = datetime.fromisoformat(raw)
+    now = datetime.now(timezone.utc)
+    print(int((now - since).total_seconds()))
+except Exception:
+    print(0)
+PYEOF
+)
+
+  [[ "$elapsed_secs" -gt 0 ]] 2>/dev/null || return 0
+
+  local strategy
+  strategy=$(foundry_qa_on_timeout "$task_dir")
+
+  local reminder_percents
+  reminder_percents=$(foundry_qa_reminder_at "$task_dir")
+
+  local unanswered
+  unanswered=$(foundry_qa_unanswered_count "$task_dir")
+
+  # Check if we should send reminders
+  for pct in $reminder_percents; do
+    local threshold_secs=$(( timeout_secs * pct / 100 ))
+    local reminder_sent_key="qa_reminder_sent_${pct}"
+    local already_sent
+    already_sent=$(foundry_state_field "$task_dir" "$reminder_sent_key" 2>/dev/null || echo "")
+
+    if [[ "$elapsed_secs" -ge "$threshold_secs" && -z "$already_sent" ]]; then
+      # Send reminder
+      local elapsed_human
+      elapsed_human=$(_foundry_format_duration "$elapsed_secs")
+      if [[ -f "${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/agentic-development/lib/foundry-telegram.sh" ]]; then
+        # shellcheck source=/dev/null
+        source "${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/agentic-development/lib/foundry-telegram.sh"
+        send_telegram_hitl_timeout_warning "$task_slug" "$elapsed_human" "$unanswered" "$pct"
+      fi
+      foundry_update_state_field "$task_dir" "$reminder_sent_key" "true"
+      pipeline_task_append_event "$task_dir" "qa_reminder" \
+        "QA timeout reminder sent at ${pct}% (elapsed: ${elapsed_human})" ""
+    fi
+  done
+
+  # Check if timeout has expired
+  if [[ "$elapsed_secs" -ge "$timeout_secs" ]]; then
+    local elapsed_human
+    elapsed_human=$(_foundry_format_duration "$elapsed_secs")
+
+    # Send expiry notification
+    if [[ -f "${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/agentic-development/lib/foundry-telegram.sh" ]]; then
+      # shellcheck source=/dev/null
+      source "${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/agentic-development/lib/foundry-telegram.sh"
+      send_telegram_hitl_timeout_expired "$task_slug" "$strategy"
+    fi
+
+    # Apply strategy
+    if foundry_qa_apply_timeout_strategy "$task_dir" "$strategy" "$task_slug"; then
+      return 2  # skip/fallback: pipeline can continue
+    else
+      return 1  # fail: pipeline stopped
+    fi
+  fi
+
+  return 0
+}
+
+# Background timeout monitor for waiting_answer tasks.
+# Polls all waiting_answer tasks every POLL_INTERVAL seconds.
+# Exits when no more waiting tasks remain.
+# Args: poll_interval (default 60s)
+foundry_qa_timeout_monitor() {
+  local poll_interval="${1:-60}"
+  local tasks_root="${PIPELINE_TASKS_ROOT:-${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/tasks}"
+
+  while true; do
+    local found_waiting=false
+    local task_dir
+
+    for task_dir in "$tasks_root"/*--foundry*/; do
+      [[ -d "$task_dir" ]] || continue
+      local status
+      status=$(foundry_state_field "$task_dir" status 2>/dev/null || echo "")
+      [[ "$status" == "waiting_answer" ]] || continue
+
+      found_waiting=true
+      local slug
+      slug=$(basename "$task_dir")
+      slug="${slug%%--foundry*}"
+
+      foundry_qa_check_timeout "$task_dir" "$slug" || true
+    done
+
+    # Exit if no waiting tasks remain
+    if [[ "$found_waiting" == false ]]; then
+      break
+    fi
+
+    sleep "$poll_interval"
+  done
+}
+
 # Mark state.json fields for waiting_answer status.
 # Sets: status=waiting_answer, waiting_agent, waiting_since, questions_count, questions_answered.
 foundry_set_waiting_answer() {
@@ -1391,4 +1753,84 @@ with open(state_path, "w", encoding="utf-8") as fh:
     json.dump(data, fh, ensure_ascii=True, indent=2)
     fh.write("\n")
 PYEOF
+}
+
+# Handle a waiting_answer event from an agent (exit code 75).
+#
+# Validates qa.json, updates state.json to waiting_answer, checks continue_on_wait
+# from pipeline-plan.json, and starts the background timeout monitor.
+#
+# Returns:
+#   0  — continue_on_wait=true (pipeline continues to next agent)
+#   75 — pipeline paused (default behavior)
+foundry_handle_waiting_answer() {
+  local agent="$1"
+  local task_dir="$2"
+
+  local qa_file
+  qa_file=$(foundry_qa_file "$task_dir")
+
+  # Validate qa.json exists and has unanswered questions
+  if [[ ! -f "$qa_file" ]]; then
+    echo "  [HITL] Warning: agent ${agent} exited 75 but qa.json not found at ${qa_file}" >&2
+    return 75
+  fi
+
+  local unanswered
+  unanswered=$(foundry_qa_unanswered_count "$task_dir")
+
+  if [[ "$unanswered" -eq 0 ]]; then
+    echo "  [HITL] Warning: agent ${agent} exited 75 but no unanswered questions in qa.json" >&2
+    return 75
+  fi
+
+  # Update state.json to waiting_answer
+  foundry_set_waiting_answer "$task_dir" "$agent" "$unanswered"
+
+  # Emit event
+  pipeline_task_append_event "$task_dir" "waiting_answer" \
+    "Agent ${agent} has ${unanswered} unanswered question(s)" "$agent"
+
+  # Start background timeout monitor (if not already running for this task)
+  local monitor_pid_file="$task_dir/.qa_timeout_monitor.pid"
+  local already_running=false
+  if [[ -f "$monitor_pid_file" ]]; then
+    local old_pid
+    old_pid=$(cat "$monitor_pid_file" 2>/dev/null || echo "")
+    if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
+      already_running=true
+    fi
+  fi
+
+  if [[ "$already_running" == false ]]; then
+    # Source self to get access to foundry_qa_check_timeout in subshell
+    local _self="${BASH_SOURCE[0]}"
+    (
+      # shellcheck source=/dev/null
+      source "$_self"
+      foundry_qa_timeout_monitor 60
+    ) &
+    local monitor_pid=$!
+    echo "$monitor_pid" > "$monitor_pid_file"
+  fi
+
+  # Check if profile allows continuing without answers
+  local plan_file="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/pipeline-plan.json"
+  local task_plan="$task_dir/pipeline-plan.json"
+  local continue_on_wait="false"
+
+  if [[ -f "$task_plan" ]]; then
+    continue_on_wait=$(jq -r '.continue_on_wait // false' "$task_plan" 2>/dev/null || echo "false")
+  elif [[ -f "$plan_file" ]]; then
+    continue_on_wait=$(jq -r '.continue_on_wait // false' "$plan_file" 2>/dev/null || echo "false")
+  fi
+
+  if [[ "$continue_on_wait" == "true" ]]; then
+    # Mark agent for later resume
+    foundry_update_state_field "$task_dir" "resume_from" "$agent"
+    return 0  # Continue pipeline
+  fi
+
+  # Default: pause pipeline
+  return 75
 }
