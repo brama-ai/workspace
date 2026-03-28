@@ -465,6 +465,7 @@ e2e-inner: e2e-prepare e2e-env-check
 		KNOWLEDGE_URL=$${KNOWLEDGE_URL:-http://localhost:18083} \
 		NEWS_URL=$${NEWS_URL:-http://localhost:18084} \
 		HELLO_URL=$${HELLO_URL:-http://localhost:18085} \
+		DEV_REPORTER_URL=$${DEV_REPORTER_URL:-http://localhost:18087} \
 		OPENCLAW_URL=$${OPENCLAW_URL:-http://localhost:28789} \
 		npx codeceptjs run --steps
 
@@ -476,6 +477,7 @@ e2e-smoke-inner: e2e-prepare e2e-env-check
 		KNOWLEDGE_URL=$${KNOWLEDGE_URL:-http://localhost:18083} \
 		NEWS_URL=$${NEWS_URL:-http://localhost:18084} \
 		HELLO_URL=$${HELLO_URL:-http://localhost:18085} \
+		DEV_REPORTER_URL=$${DEV_REPORTER_URL:-http://localhost:18087} \
 		OPENCLAW_URL=$${OPENCLAW_URL:-http://localhost:28789} \
 		npx codeceptjs run --steps --grep @smoke
 
