@@ -1497,10 +1497,35 @@ _kill_process_tree() {
   kill "$pid" 2>/dev/null || true
 }
 
+# Kill the entire agent process group plus tee and any remaining children.
+# When agent is launched with setsid, all child processes share the same PGID.
+# Killing by -PGID ensures opencode/script/timeout are all terminated, not just tee.
+# Args: agent_pgid tee_pid
+_kill_agent_tree() {
+  local pgid="$1"
+  local tee_pid="$2"
+
+  # Kill entire process group (opencode + script + timeout + subshells)
+  if [[ -n "$pgid" && "$pgid" -gt 0 ]]; then
+    kill -- "-${pgid}" 2>/dev/null || true
+  fi
+
+  # Kill tee explicitly (it may be in the parent shell's process group)
+  if [[ -n "$tee_pid" && "$tee_pid" -gt 0 ]]; then
+    kill "$tee_pid" 2>/dev/null || true
+  fi
+
+  # Sweep any remaining children of tee (belt-and-suspenders)
+  if [[ -n "$tee_pid" && "$tee_pid" -gt 0 ]]; then
+    pkill -P "$tee_pid" 2>/dev/null || true
+  fi
+}
+
 monitor_agent_loop() {
   local log_file="$1"
   local agent="$2"
   local agent_pid="$3"
+  local agent_pgid="${4:-}"
   local check_interval=60
   # Agents that run long shell commands (docker build, make test) need more
   # stall tolerance — their log won't grow while the subprocess runs.
@@ -1547,8 +1572,8 @@ monitor_agent_loop() {
         local stall_duration=$((20 + (stall_count - 1) * current_interval))
         debug_log "stall" "STALL DETECTED (minimal output)" "agent=$agent" "duration=${stall_duration}s" "lines=$log_lines" "pid=$agent_pid"
         echo "LOOP_DETECTED:stall:Log not growing for ${stall_duration}s (minimal output: ${log_lines} lines)" > "${log_file}.loop"
-        debug_log "kill" "Killing stalled agent tree" "pid=$agent_pid"
-        _kill_process_tree "$agent_pid"
+        debug_log "kill" "Killing stalled agent tree" "pid=$agent_pid" "pgid=$agent_pgid"
+        _kill_agent_tree "$agent_pgid" "$agent_pid"
         debug_log "kill" "Kill complete" "pid=$agent_pid"
         return
       fi
@@ -1558,8 +1583,8 @@ monitor_agent_loop() {
         local stall_duration=$((40 + (stall_count - 2) * check_interval))  # 2 * 20s + rest * 60s
         debug_log "stall" "STALL DETECTED (normal)" "agent=$agent" "duration=${stall_duration}s" "stall_count=$stall_count" "threshold=$stall_threshold"
         echo "LOOP_DETECTED:stall:Log not growing for ${stall_duration}s" > "${log_file}.loop"
-        debug_log "kill" "Killing stalled agent tree" "pid=$agent_pid"
-        _kill_process_tree "$agent_pid"
+        debug_log "kill" "Killing stalled agent tree" "pid=$agent_pid" "pgid=$agent_pgid"
+        _kill_agent_tree "$agent_pgid" "$agent_pid"
         debug_log "kill" "Kill complete" "pid=$agent_pid"
         return
       fi
@@ -1576,7 +1601,7 @@ monitor_agent_loop() {
         unique_errors=$(tail -100 "$log_file" 2>/dev/null | grep -iE 'error|failed|exception' | sort -u | wc -l | tr -d ' ')
         if [[ "$unique_errors" -lt 3 ]]; then
           echo "LOOP_DETECTED:repeated_errors:${recent_errors} errors with only ${unique_errors} unique patterns" > "${log_file}.loop"
-          _kill_process_tree "$agent_pid"
+          _kill_agent_tree "$agent_pgid" "$agent_pid"
           return
         fi
       fi
@@ -1595,7 +1620,7 @@ monitor_agent_loop() {
         prev_errors=$(sed -n '1,50p' "$log_file" 2>/dev/null | grep -iE 'error|ERROR' 2>/dev/null | wc -l | tr -d ' ')
         if [[ "$recent_errors" -ge "$prev_errors" && "$recent_errors" -gt 0 ]]; then
           echo "LOOP_DETECTED:iteration_limit:${make_runs} make runs, errors not decreasing (${prev_errors}->${recent_errors})" > "${log_file}.loop"
-          _kill_process_tree "$agent_pid"
+          _kill_agent_tree "$agent_pgid" "$agent_pid"
           return
         fi
       fi
@@ -1714,20 +1739,30 @@ run_agent() {
       run_cmd="timeout ${agent_timeout} ${run_cmd}"
     fi
     debug_log "process" "Spawning agent process" "agent=$agent" "model=$current_model" "attempt=$attempt/$max_attempts" "pid=pending" "timeout=${agent_timeout}s"
+    # Use setsid to place the agent command in its own process group so that
+    # kill -PGID can terminate opencode/script/timeout together, not just tee.
+    # The setsid'd shell writes its own PID (= new PGID) to a temp file before exec.
+    local pgid_file
+    pgid_file=$(mktemp)
     if command -v script &>/dev/null; then
-      (cd "$REPO_ROOT" && script -qc "$run_cmd" /dev/null) \
+      setsid bash -c "echo \$\$ > $(printf '%q' "$pgid_file"); cd $(printf '%q' "$REPO_ROOT") && exec script -qc $(printf '%q' "$run_cmd") /dev/null" \
         < /dev/null 2>&1 | tee "$log_file" &
     else
-      (cd "$REPO_ROOT" && eval "$run_cmd") \
+      setsid bash -c "echo \$\$ > $(printf '%q' "$pgid_file"); cd $(printf '%q' "$REPO_ROOT") && exec $run_cmd" \
         < /dev/null 2>&1 | tee "$log_file" &
     fi
     local agent_pid=$!
-    debug_log "process" "Agent process spawned" "agent=$agent" "tee_pid=$agent_pid"
+    # Give setsid a moment to write its PID, then read the PGID
+    sleep 0.1
+    local agent_pgid
+    agent_pgid=$(cat "$pgid_file" 2>/dev/null || echo "")
+    rm -f "$pgid_file"
+    debug_log "process" "Agent process spawned" "agent=$agent" "tee_pid=$agent_pid" "pgid=$agent_pgid"
 
     # Start loop monitor in background
-    monitor_agent_loop "$log_file" "$agent" "$agent_pid" &
+    monitor_agent_loop "$log_file" "$agent" "$agent_pid" "$agent_pgid" &
     local monitor_pid=$!
-    debug_log "process" "Loop monitor started" "agent=$agent" "monitor_pid=$monitor_pid" "agent_pid=$agent_pid"
+    debug_log "process" "Loop monitor started" "agent=$agent" "monitor_pid=$monitor_pid" "agent_pid=$agent_pid" "pgid=$agent_pgid"
 
     # Wait for agent to finish
     wait "$agent_pid" 2>/dev/null || exit_code=$?
@@ -1736,6 +1771,11 @@ run_agent() {
     # Kill monitor
     kill "$monitor_pid" 2>/dev/null
     wait "$monitor_pid" 2>/dev/null
+
+    # Cleanup any remaining processes in the agent's process group
+    if [[ -n "$agent_pgid" && "$agent_pgid" -gt 0 ]]; then
+      kill -- "-${agent_pgid}" 2>/dev/null || true
+    fi
 
     local agent_end_epoch
     agent_end_epoch=$(date +%s)
