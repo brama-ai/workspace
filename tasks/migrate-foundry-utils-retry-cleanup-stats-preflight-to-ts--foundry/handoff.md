@@ -74,10 +74,17 @@ Port the utility bash scripts to TypeScript and wire them into foundry.ts CLI.
 
 ## Validator
 
-- **Status**: pending
-- **PHPStan**: —
-- **CS-check**: —
-- **Files fixed**: —
+- **Status**: done
+- **App**: `agentic-development/monitor` (TypeScript project — not a PHP app)
+- **TypeScript build**: pass (`npm run build` succeeded)
+- **TypeScript type-check**: pass (`tsc --noEmit` succeeded)
+- **CS-check**: N/A (no PHP cs-fixer for TypeScript project)
+- **PHPStan**: N/A (not a PHP project)
+- **Test failures**: 7 pre-existing failures (unrelated to this migration — noted in Coder deviations)
+  - `actions.test.ts` (5 failures): archiveTask summary guard order
+  - `tasks.test.ts` (1 failure): sort order
+  - `task-state-v2.test.ts` (1 failure): createDefaultState status
+- **Files fixed**: none (no errors found)
 
 ## Tester
 
@@ -104,3 +111,4 @@ Port the utility bash scripts to TypeScript and wire them into foundry.ts CLI.
 
 ---
 
+- **Commit (u-coder)**: 673ff08
