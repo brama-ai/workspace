@@ -135,6 +135,64 @@ describe("task lifecycle", () => {
     });
   });
 
+  describe("blocked_by dependencies", () => {
+    async function getPromote() {
+      const mod = await import("../cli/batch.js");
+      return mod.promoteNextTodoToPending;
+    }
+
+    it("skips todo task when blocked_by dependency is not completed", async () => {
+      createTask(testRoot, "dep-task", { status: "in_progress" });
+      createTask(testRoot, "blocked-task", { status: "todo", blocked_by: ["dep-task"] });
+
+      const promote = await getPromote();
+      const result = promote();
+      expect(result).toBeNull();
+
+      const state = readTaskState(join(testRoot, "blocked-task--foundry"));
+      expect(state?.status).toBe("todo"); // still blocked
+    });
+
+    it("promotes todo task when all blocked_by dependencies are completed", async () => {
+      createTask(testRoot, "dep-done", { status: "completed" });
+      createTask(testRoot, "ready-task", { status: "todo", blocked_by: ["dep-done"] });
+
+      const promote = await getPromote();
+      const result = promote();
+      expect(result).not.toBeNull();
+
+      const state = readTaskState(join(testRoot, "ready-task--foundry"));
+      expect(state?.status).toBe("pending");
+    });
+
+    it("promotes unblocked task even when blocked tasks exist", async () => {
+      createTask(testRoot, "dep-wip", { status: "in_progress" });
+      createTask(testRoot, "blocked", { status: "todo", blocked_by: ["dep-wip"], priority: 1 });
+      createTask(testRoot, "free-task", { status: "todo", priority: 2 });
+
+      const promote = await getPromote();
+      const result = promote();
+      expect(result).not.toBeNull();
+
+      // free-task should be promoted (not blocked)
+      const freeState = readTaskState(join(testRoot, "free-task--foundry"));
+      expect(freeState?.status).toBe("pending");
+
+      // blocked should remain todo
+      const blockedState = readTaskState(join(testRoot, "blocked--foundry"));
+      expect(blockedState?.status).toBe("todo");
+    });
+
+    it("handles missing dependency task dir gracefully", async () => {
+      // blocked_by references a task that doesn't exist
+      createTask(testRoot, "orphan", { status: "todo", blocked_by: ["nonexistent"] });
+
+      const promote = await getPromote();
+      const result = promote();
+      expect(result).toBeNull(); // can't verify dep = stays blocked
+    });
+  });
+
   describe("state transitions", () => {
     it("todo → pending → in_progress → completed", () => {
       const taskDir = createTask(testRoot, "full-lifecycle", { status: "todo" });

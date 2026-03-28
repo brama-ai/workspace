@@ -267,6 +267,7 @@ export function promoteNextTodoToPending(): string | null {
   }
 
   // Collect todo tasks with priority (from state.json or task.md header)
+  // Skip tasks blocked by incomplete dependencies
   const candidates: Array<{ priority: number; taskDir: string; slug: string }> = [];
   for (const entry of entries) {
     if (!entry.endsWith("--foundry")) continue;
@@ -274,8 +275,22 @@ export function promoteNextTodoToPending(): string | null {
     const state = readTaskState(taskDir);
     if (!state || state.status !== "todo") continue;
 
+    // Check blocked_by: skip if any dependency is not completed
+    const blockedBy = state.blocked_by;
+    if (blockedBy?.length) {
+      const allDone = blockedBy.every((dep) => {
+        const depDir = join(tasksRoot, `${dep}--foundry`);
+        const depState = readTaskState(depDir);
+        return depState?.status === "completed";
+      });
+      if (!allDone) {
+        logBatch(`promoteNextTodoToPending: ${entry} blocked by unfinished deps: ${blockedBy.join(", ")}`);
+        continue;
+      }
+    }
+
     // Priority: state.json.priority > task.md "priority: N" > default 1
-    let priority = (state as any).priority ?? 1;
+    let priority = state.priority ?? 1;
     const taskFile = join(taskDir, "task.md");
     if (priority === 1 && existsSync(taskFile)) {
       const firstLine = readFileSync(taskFile, "utf8").split("\n")[0] || "";

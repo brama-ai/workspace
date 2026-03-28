@@ -207,12 +207,67 @@ Agent name in env: strip `u-` prefix, uppercase, hyphens to underscores.
 - On **retry**: failed → todo (goes back to queue)
 - On **`foundry run`**: bypasses todo/pending, goes straight to in_progress (direct execution)
 
+### Task dependencies (`blocked_by`)
+
+Tasks can declare dependencies on other tasks via `blocked_by` in state.json:
+
+```json
+{
+  "status": "todo",
+  "priority": 3,
+  "blocked_by": ["migrate-utils-to-ts", "add-integration-tests"]
+}
+```
+
+**Rules:**
+- `blocked_by` is an array of task slugs (without `--foundry` suffix)
+- A blocked task stays in `todo` until ALL dependencies have `status: "completed"`
+- If a dependency task dir doesn't exist → treated as not completed (stays blocked)
+- Unblocked tasks are promoted normally by priority
+- `foundry run` (direct execution) ignores `blocked_by` — only affects batch/headless queue
+
+**Use case:** Task P3 "delete bash scripts" depends on P2 "migrate utils to TS". Without `blocked_by`, the queue would start P3 before P2 is done.
+
+### Two applications: TUI Monitor vs Headless Worker
+
+Foundry has two separate applications that work together:
+
+| | **TUI Monitor** (`foundry monitor`) | **Headless Worker** (`foundry headless`) |
+|---|---|---|
+| **Purpose** | Visual dashboard + auto-watcher | Pipeline executor |
+| **What it does** | Shows task status, process health, logs; promotes todo→pending; starts headless when needed | Claims pending tasks, runs agent pipeline, writes state.json |
+| **Singleton** | Yes — `.monitor.lock` (only 1 TUI at a time) | Yes — `.batch.lock` (only 1 headless pool) |
+| **Writes state.json** | Only promote (todo→pending) | Full lifecycle (pending→in_progress→completed/failed) |
+| **Runs agents** | No — delegates to headless | Yes — via runner.ts → executor.ts |
+| **Entrypoint** | `monitor/src/index.tsx` → `App.tsx` | `monitor/src/cli/batch.ts` → `cmdHeadless()` |
+| **Auto-start** | TUI detects todo tasks → starts headless via tmux | Headless polls tasks/ every 15s |
+
+**Interaction flow:**
+```
+TUI (auto-watcher 15s)              Headless (poll 15s)
+│                                    │
+├─ detect todo tasks                 │
+├─ promoteNextTodoToPending()        │
+├─ if no headless → ensureHeadless() │
+│                                    ├─ promoteNextTodoToPending()
+│                                    ├─ claimNextPendingTask()
+│                                    ├─ runPipeline() → agents
+│                                    ├─ state: completed/failed
+│                                    └─ next iteration...
+└─ refresh display
+```
+
+Both TUI and headless call `promoteNextTodoToPending()` — this is safe because:
+- The function checks for existing pending tasks (single-slot gate)
+- State transitions are atomic (write to state.json)
+- Lock files prevent double-claiming
+
 ### State files
 
 | File | Purpose | Analogy |
 |------|---------|---------|
 | `task.md` | Task description (input) | Request body |
-| `state.json` | Current status, agents, worker | Process status |
+| `state.json` | Current status, agents, worker, blocked_by | Process status |
 | `events.jsonl` | Timestamped event stream | Access log |
 | `summary.md` | Final output (response) | Response body |
 | `handoff.md` | Inter-agent context | Shared memory |

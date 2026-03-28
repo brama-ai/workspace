@@ -50,6 +50,10 @@ export interface TaskState {
   questions_count?: number;
   worker_id?: string;
   branch?: string;
+  /** Task slugs that must be completed before this task can start */
+  blocked_by?: string[];
+  /** Numeric priority (lower = higher priority: P1 runs before P2) */
+  priority?: number;
 }
 
 export interface QAPair {
