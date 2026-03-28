@@ -127,11 +127,17 @@ From `agentic-development/`:
 
 ## Summarizer
 
-- **Status**: pending
-- **Summary file**: —
-- **Next task recommendation**: —
+- **Status**: done
+- **Summary file**: `/workspaces/brama/tasks/delete-all-legacy-bash-scripts-after-ts-migration--foundry/summary.md`
+- **Next task recommendation**: Мігрувати `ultraworks.sh` та E2E-спеки з залишкових Foundry bash-залежностей на TypeScript
+
+### Final status
+- Pipeline reconciled as `FAIL`: `u-coder` completed the cleanup, but `u-validator` and `u-tester` logs show `Insufficient balance`, so validation/testing remained incomplete despite `checkpoint.json` marking them done.
+- Final summary written to `/workspaces/brama/tasks/delete-all-legacy-bash-scripts-after-ts-migration--foundry/summary.md`.
+- Recommendation: restore agent billing, rerun validator/tester, then create the follow-up task to remove remaining `ultraworks.sh` and E2E bash dependencies.
 
 ---
 
 - **Commit (u-coder)**: d30b1b8
 - **Commit (u-validator)**: ac3827e
+- **Commit (u-tester)**: 5db63ee
