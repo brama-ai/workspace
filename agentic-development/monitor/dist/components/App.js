@@ -6,7 +6,8 @@ import { join, basename } from "node:path";
 import { execSync } from "node:child_process";
 import { readAllTasks } from "../lib/tasks.js";
 import { formatDuration, formatTokens, formatCost } from "../lib/format.js";
-import { startWorkers, stopWorkers, retryFailed, runAutotest, archiveTask, ultraworksLaunch, ultraworksAttach, ultraworksCleanup, findRepoRoot, cleanZombies, runDoctor, runDoctorTask, getProcessStatusAsync, tailLog, getWorkerCount, cycleWorkerCount, } from "../lib/actions.js";
+import { startWorkers, stopWorkers, retryFailed, runAutotest, archiveTask, ultraworksLaunch, ultraworksAttach, ultraworksCleanup, findRepoRoot, cleanZombies, runDoctor, runDoctorTask, getProcessStatusAsync, tailLog, getWorkerCount, cycleWorkerCount, isHeadlessRunning, ensureHeadless, } from "../lib/actions.js";
+import { promoteNextTodoToPending } from "../cli/batch.js";
 const VERSION = "2.4.0";
 const REFRESH_MS = 3000;
 const PROC_REFRESH_MS = 15000; // Process status refresh — less frequent (was 3s, now 15s)
@@ -86,11 +87,37 @@ export function App({ tasksRoot }) {
     const [procStatus, setProcStatus] = useState({ workers: [], zombies: [], lock: null });
     const [procIdx, setProcIdx] = useState(0);
     const [procLogLines, setProcLogLines] = useState([]);
+    // Auto-watcher tick counter (triggers every ~5 refreshes = 15s)
+    const autoWatchCounter = React.useRef(0);
     // Refresh task data periodically (fast — pure file reads)
+    // Also runs auto-watcher: if todo tasks exist but no headless → start it
     useEffect(() => {
         const refreshTasks = () => {
-            setData(readAllTasks(root));
+            const freshData = readAllTasks(root);
+            setData(freshData);
             setTick((t) => t + 1);
+            // Auto-watcher: every 5th refresh (~15s) check for orphaned todo tasks
+            autoWatchCounter.current++;
+            if (autoWatchCounter.current >= 5) {
+                autoWatchCounter.current = 0;
+                try {
+                    const hasTodo = freshData.tasks.some((t) => t.status === "todo");
+                    const hasPendingOrRunning = freshData.tasks.some((t) => t.status === "pending" || t.status === "in_progress");
+                    if (hasTodo && !hasPendingOrRunning) {
+                        // Always promote todo→pending (regardless of headless state)
+                        const promoted = promoteNextTodoToPending();
+                        if (promoted) {
+                            setMsg("Promoted todo → pending");
+                            // Ensure headless is running to pick it up
+                            if (!isHeadlessRunning()) {
+                                ensureHeadless(repoRoot);
+                                setMsg("Auto-started headless for pending task");
+                            }
+                        }
+                    }
+                }
+                catch { /* ignore */ }
+            }
         };
         refreshTasks();
         const id = setInterval(refreshTasks, REFRESH_MS);

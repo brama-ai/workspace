@@ -145,23 +145,30 @@ export function App({ tasksRoot }: Props) {
       setData(freshData);
       setTick((t) => t + 1);
 
-      // Auto-watcher: every 5th refresh (~15s) check for orphaned todo tasks
+      // Auto-watcher: every 5th refresh (~15s)
+      // 1. Promote todo→pending if no pending exists
+      // 2. Ensure headless running if pending tasks exist without in_progress
       autoWatchCounter.current++;
       if (autoWatchCounter.current >= 5) {
         autoWatchCounter.current = 0;
         try {
           const hasTodo = freshData.tasks.some((t) => t.status === "todo");
-          const hasPendingOrRunning = freshData.tasks.some((t) => t.status === "pending" || t.status === "in_progress");
-          if (hasTodo && !hasPendingOrRunning) {
-            // Always promote todo→pending (regardless of headless state)
+          const hasPending = freshData.tasks.some((t) => t.status === "pending");
+          const hasRunning = freshData.tasks.some((t) => t.status === "in_progress");
+
+          // Step 1: promote todo→pending if slot is free
+          if (hasTodo && !hasPending && !hasRunning) {
             const promoted = promoteNextTodoToPending();
             if (promoted) {
               setMsg("Promoted todo → pending");
-              // Ensure headless is running to pick it up
-              if (!isHeadlessRunning()) {
-                ensureHeadless(repoRoot);
-                setMsg("Auto-started headless for pending task");
-              }
+            }
+          }
+
+          // Step 2: ensure headless if pending exists but nothing running
+          if ((hasPending || freshData.tasks.some((t) => t.status === "pending")) && !hasRunning) {
+            if (!isHeadlessRunning()) {
+              ensureHeadless(repoRoot);
+              setMsg("Auto-started headless for pending task");
             }
           }
         } catch { /* ignore */ }

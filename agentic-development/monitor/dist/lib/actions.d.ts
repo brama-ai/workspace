@@ -10,7 +10,18 @@ export interface CmdResult {
 export declare function getWorkerCount(repoRoot: string): number;
 export declare function setWorkerCount(repoRoot: string, count: number): CmdResult;
 export declare function cycleWorkerCount(repoRoot: string): CmdResult;
+/** Check if foundry headless is running (not just TUI or tmux session) */
+export declare function isHeadlessRunning(): boolean;
+/**
+ * Start foundry headless workers.
+ * If already running → increment worker count instead.
+ */
 export declare function startWorkers(repoRoot: string): CmdResult;
+/**
+ * Ensure headless is running. If not → start it.
+ * Called by auto-watcher when todo tasks exist but no headless process.
+ */
+export declare function ensureHeadless(repoRoot: string): CmdResult | null;
 export declare function stopWorkers(repoRoot: string): CmdResult;
 export declare function retryFailed(repoRoot: string): CmdResult;
 export declare function runAutotest(repoRoot: string, smoke: boolean): CmdResult;

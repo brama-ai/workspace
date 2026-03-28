@@ -152,7 +152,40 @@ export function cycleWorkerCount(repoRoot) {
 function foundryPath(repoRoot) {
     return join(repoRoot, "agentic-development", "foundry");
 }
+/** Check if foundry headless is running (not just TUI or tmux session) */
+export function isHeadlessRunning() {
+    try {
+        // Look for actual headless process: "foundry headless" or "foundry-batch"
+        // Exclude tmux sessions (foundry-monitor, foundry-headless session names)
+        const out = execSync("ps -eo pid,args | grep -E 'foundry (headless|batch)|foundry-batch' | grep -v grep | grep -v tmux | grep -v 'capture-pane'", { stdio: "pipe", encoding: "utf-8", timeout: 3000 }).trim();
+        return out.length > 0;
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * Start foundry headless workers.
+ * If already running → increment worker count instead.
+ */
 export function startWorkers(repoRoot) {
+    if (isHeadlessRunning()) {
+        // Already running → bump workers +1
+        const current = getWorkerCount(repoRoot);
+        const next = Math.min(current + 1, MAX_WORKERS);
+        setWorkerCount(repoRoot, next);
+        return { session: "foundry-headless", attachCmd: "tmux attach -t foundry-headless", message: `Headless running, workers: ${current} → ${next}` };
+    }
+    const cmd = `"${foundryPath(repoRoot)}" headless`;
+    return runInTmux("foundry-headless", cmd, repoRoot);
+}
+/**
+ * Ensure headless is running. If not → start it.
+ * Called by auto-watcher when todo tasks exist but no headless process.
+ */
+export function ensureHeadless(repoRoot) {
+    if (isHeadlessRunning())
+        return null;
     const cmd = `"${foundryPath(repoRoot)}" headless`;
     return runInTmux("foundry-headless", cmd, repoRoot);
 }

@@ -783,18 +783,17 @@ export async function cmdHeadless(args: string[]): Promise<number> {
   const watchInterval = parseInt((values["watch-interval"] as string) || "15", 10);
   const stopOnFailure = values["no-stop-on-failure"] !== true;
 
-  // Check if already running
-  try {
-    const pgrep = execSync("pgrep -f 'foundry.*headless'", { stdio: "pipe" }).toString().trim();
-    if (pgrep) {
-      const pids = pgrep.split("\n").filter((p) => p !== String(process.pid));
-      if (pids.length > 0) {
-        console.log("Foundry headless already running");
+  // Check if already running (use lock file, not pgrep — avoids false positives from tmux)
+  if (existsSync(LOCKFILE)) {
+    try {
+      const lockPid = parseInt(readFileSync(LOCKFILE, "utf8").trim(), 10);
+      if (lockPid > 0 && lockPid !== process.pid && existsSync(`/proc/${lockPid}`)) {
+        console.log(`Foundry headless already running (PID ${lockPid})`);
         return 0;
       }
-    }
-  } catch {
-    // Not running
+      // Stale lock — clean up
+      unlinkSync(LOCKFILE);
+    } catch { /* ignore */ }
   }
 
   const runtimeDir = join(REPO_ROOT, "agentic-development", "runtime", "logs");
