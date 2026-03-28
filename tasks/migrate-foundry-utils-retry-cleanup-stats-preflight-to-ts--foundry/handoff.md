@@ -105,11 +105,12 @@ Port the utility bash scripts to TypeScript and wire them into foundry.ts CLI.
 
 ## Summarizer
 
-- **Status**: pending
-- **Summary file**: —
-- **Next task recommendation**: —
+- **Status**: done
+- **Summary file**: `/workspaces/brama/tasks/migrate-foundry-utils-retry-cleanup-stats-preflight-to-ts--foundry/summary.md`
+- **Next task recommendation**: `Відновити tester-етап і стабілізувати тестовий пакет agentic-development/monitor`
 
 ---
 
 - **Commit (u-coder)**: 673ff08
 - **Commit (u-validator)**: 4e6463c
+- **Commit (u-tester)**: 769f06f
