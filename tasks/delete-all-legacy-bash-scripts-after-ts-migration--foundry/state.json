@@ -4,9 +4,9 @@
   "started_at": "2026-03-28T20:18:30Z",
   "attempt": 1,
   "status": "in_progress",
-  "current_step": "u-coder",
-  "resume_from": "u-coder",
-  "updated_at": "2026-03-28T20:29:51Z",
+  "current_step": "u-validator",
+  "resume_from": "u-validator",
+  "updated_at": "2026-03-28T20:31:46Z",
   "task_file": "/workspaces/brama/tasks/delete-all-legacy-bash-scripts-after-ts-migration--foundry/task.md",
   "branch": "pipeline/delete-all-legacy-bash-scripts-after-ts-migration",
   "agents": [
@@ -15,7 +15,7 @@
       "attempt": 1,
       "status": "done",
       "model": "anthropic/claude-sonnet-4-6",
-      "duration_seconds": 589,
+      "duration_seconds": 592,
       "input_tokens": 72,
       "output_tokens": 24361,
       "cost": 3.045592,
@@ -26,14 +26,15 @@
     {
       "agent": "u-validator",
       "attempt": 1,
-      "status": "pending",
-      "model": "",
-      "duration_seconds": 0,
+      "status": "done",
+      "model": "opencode-go/kimi-k2.5",
+      "duration_seconds": 2,
       "input_tokens": 0,
       "output_tokens": 0,
       "cost": 0,
-      "call_count": 0,
-      "updated_at": ""
+      "call_count": 1,
+      "updated_at": "2026-03-28T20:31:46Z",
+      "session_id": "ses_2c9dac6faffex8IBzFw7SeLbns"
     },
     {
       "agent": "u-tester",
