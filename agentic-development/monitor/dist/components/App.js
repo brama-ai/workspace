@@ -472,7 +472,9 @@ function TaskLine({ task, cursor }) {
     if (task.status === "in_progress" && task.branchName && !task.branchExists) {
         warnings.push("⚠ no branch");
     }
-    const failedAgent = (task.agents ?? []).find(a => a.status === "failed" || a.status === "error");
+    // 9.3: Filter by current attempt to avoid showing stale failures from prior retries
+    const currentAttemptNum = task.attempt ?? 1;
+    const failedAgent = (task.agents ?? []).find(a => (a.status === "failed" || a.status === "error") && (a.attempt ?? 1) === currentAttemptNum);
     if (failedAgent)
         warnings.push(`✗ ${failedAgent.agent}`);
     let suffix = "";
@@ -502,13 +504,31 @@ function TaskLine({ task, cursor }) {
     return (_jsxs(Box, { children: [_jsx(Text, { color: "cyan", children: cursor ? "  ▶ " : "    " }), _jsx(Text, { color: wfColor, children: wfBadge }), _jsxs(Text, { color: color, children: [" ", icon] }), _jsxs(Text, { children: [" ", task.title] }), _jsx(Text, { dimColor: true, children: suffix }), warnings.length > 0 && _jsxs(Text, { color: "red", children: [" ", warnings.join(" ")] })] }));
 }
 // ── Agents View ───────────────────────────────────────────────────
+// 12.1: Per-agent attempt history — group agent entries by attempt, show attempt headers
 function AgentsView({ task, cols }) {
     const agents = task.agents ?? [];
-    return (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Text, { bold: true, children: ["  Agents: ", task.title] }), _jsx(Text, { children: " " }), _jsxs(Text, { bold: true, children: ["  ", "Agent".padEnd(14), " ", "Status".padEnd(12), " ", "Duration".padStart(8), " ", "Input".padStart(8), " ", "Output".padStart(8), " ", "Cost".padStart(8), " ", "Calls".padStart(6)] }), _jsxs(Text, { dimColor: true, children: ["  ", "─".repeat(Math.min(cols - 4, 70))] }), agents.length === 0 ? (_jsx(Text, { dimColor: true, children: "  No agent data yet." })) : (agents.map((a) => {
-                const icon = { done: "✓", in_progress: "▸", failed: "✗" }[a.status] ?? "○";
-                const color = { done: "green", in_progress: "yellow", failed: "red" }[a.status];
-                return (_jsxs(Box, { children: [_jsxs(Text, { color: color, children: ["  ", icon, " "] }), _jsx(Text, { children: a.agent.padEnd(13) }), _jsx(Text, { color: color, children: a.status.padEnd(12) }), _jsx(Text, { children: formatDuration(a.durationSeconds).padStart(8) }), _jsx(Text, { children: formatTokens(a.inputTokens).padStart(8) }), _jsx(Text, { children: formatTokens(a.outputTokens).padStart(8) }), _jsx(Text, { children: formatCost(a.cost).padStart(8) }), _jsx(Text, { children: String(a.callCount ?? 1).padStart(6) })] }, a.agent));
-            })), _jsx(Text, { children: " " }), _jsx(Text, { dimColor: true, children: "  q/Esc back" })] }));
+    const currentAttempt = task.attempt ?? 1;
+    // 12.2: Detect rework-requested indicator
+    const reworkAgent = agents.find((a) => (a.status === "rework_requested" || a.status === "waiting_answer") && (a.attempt ?? 1) === currentAttempt);
+    // Group agents by attempt number
+    const attemptGroups = new Map();
+    for (const a of agents) {
+        const att = a.attempt ?? 1;
+        if (!attemptGroups.has(att))
+            attemptGroups.set(att, []);
+        attemptGroups.get(att).push(a);
+    }
+    const sortedAttempts = Array.from(attemptGroups.keys()).sort((x, y) => x - y);
+    return (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Text, { bold: true, children: ["  Agents: ", task.title] }), reworkAgent && (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsxs(Text, { color: "yellow", bold: true, children: ["\u21BB Rework requested by ", reworkAgent.agent, " \u2014 pipeline retrying"] })] })), _jsx(Text, { children: " " }), agents.length === 0 ? (_jsx(Text, { dimColor: true, children: "  No agent data yet." })) : (sortedAttempts.map((att) => {
+                const attAgents = attemptGroups.get(att);
+                const isCurrentAttempt = att === currentAttempt;
+                return (_jsxs(Box, { flexDirection: "column", children: [_jsx(Box, { children: _jsx(Text, { color: isCurrentAttempt ? "cyan" : "white", dimColor: !isCurrentAttempt, bold: isCurrentAttempt, children: "  ── Attempt #" + att + (isCurrentAttempt ? " (current)" : " (history)") + " " + "─".repeat(Math.max(0, Math.min(cols - 4, 50) - 20)) }) }), _jsxs(Text, { bold: true, dimColor: true, children: ["  ", "Agent".padEnd(14), " ", "Status".padEnd(14), " ", "Duration".padStart(8), " ", "Input".padStart(8), " ", "Output".padStart(8), " ", "Cost".padStart(8)] }), attAgents.map((a) => {
+                            const icon = { done: "✓", in_progress: "▸", failed: "✗", rework_requested: "↻", waiting_answer: "⏸" }[a.status] ?? "○";
+                            const color = { done: "green", in_progress: "yellow", failed: "red", rework_requested: "yellow", waiting_answer: "cyan" }[a.status];
+                            const dimmed = !isCurrentAttempt;
+                            return (_jsxs(Box, { children: [_jsxs(Text, { color: color, dimColor: dimmed, children: ["  ", icon, " "] }), _jsx(Text, { dimColor: dimmed, children: a.agent.padEnd(13) }), _jsx(Text, { color: color, dimColor: dimmed, children: a.status.padEnd(14) }), _jsx(Text, { dimColor: dimmed, children: formatDuration(a.durationSeconds).padStart(8) }), _jsx(Text, { dimColor: dimmed, children: formatTokens(a.inputTokens).padStart(8) }), _jsx(Text, { dimColor: dimmed, children: formatTokens(a.outputTokens).padStart(8) }), _jsx(Text, { dimColor: dimmed, children: formatCost(a.cost).padStart(8) })] }, `${a.agent}-${att}`));
+                        }), _jsx(Text, { children: " " })] }, att));
+            })), _jsx(Text, { dimColor: true, children: "  q/Esc back" })] }));
 }
 // ── Logs View ─────────────────────────────────────────────────────
 function LogsView({ task, rows, tick }) {

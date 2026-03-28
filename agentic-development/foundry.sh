@@ -30,6 +30,7 @@ Commands (TypeScript):
   env-check [profile] Run environment checks (TS)
   resume <slug>       Resume a paused task (TS)
   checkpoint <slug>   Show checkpoint summary (TS)
+  supervisor "msg"    Autonomous runner: monitor + auto-fix + retry (TS)
 
 Commands (Bash legacy):
   monitor             Open interactive TUI monitor
@@ -58,7 +59,7 @@ run_command() {
   shift || true
 
   case "$cmd" in
-    run|status|list|counts|preflight|env-check|resume|checkpoint)
+    run|status|list|counts|preflight|env-check|resume|checkpoint|supervisor|runner)
       exec "$TS_CLI" "$cmd" "$@"
       ;;
     monitor)

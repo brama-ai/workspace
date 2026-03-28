@@ -666,7 +666,9 @@ function TaskLine({ task, cursor }: { task: TaskInfo; cursor: boolean }) {
   if (task.status === "in_progress" && task.branchName && !task.branchExists) {
     warnings.push("⚠ no branch");
   }
-  const failedAgent = (task.agents ?? []).find(a => a.status === "failed" || a.status === "error");
+  // 9.3: Filter by current attempt to avoid showing stale failures from prior retries
+  const currentAttemptNum = task.attempt ?? 1;
+  const failedAgent = (task.agents ?? []).find(a => (a.status === "failed" || a.status === "error") && ((a as any).attempt ?? 1) === currentAttemptNum);
   if (failedAgent) warnings.push(`✗ ${failedAgent.agent}`);
 
   let suffix = "";
@@ -701,35 +703,71 @@ function TaskLine({ task, cursor }: { task: TaskInfo; cursor: boolean }) {
 }
 
 // ── Agents View ───────────────────────────────────────────────────
+// 12.1: Per-agent attempt history — group agent entries by attempt, show attempt headers
 function AgentsView({ task, cols }: { task: TaskInfo; cols: number }) {
   const agents = task.agents ?? [];
+  const currentAttempt = task.attempt ?? 1;
+
+  // 12.2: Detect rework-requested indicator
+  const reworkAgent = agents.find(
+    (a: any) => (a.status === "rework_requested" || a.status === "waiting_answer") && (a.attempt ?? 1) === currentAttempt
+  );
+
+  // Group agents by attempt number
+  const attemptGroups = new Map<number, typeof agents>();
+  for (const a of agents) {
+    const att = (a as any).attempt ?? 1;
+    if (!attemptGroups.has(att)) attemptGroups.set(att, []);
+    attemptGroups.get(att)!.push(a);
+  }
+  const sortedAttempts = Array.from(attemptGroups.keys()).sort((x, y) => x - y);
+
   return (
     <Box flexDirection="column">
       <Text bold>  Agents: {task.title}</Text>
+      {reworkAgent && (
+        <Box>
+          <Text>  </Text>
+          <Text color="yellow" bold>↻ Rework requested by {(reworkAgent as any).agent} — pipeline retrying</Text>
+        </Box>
+      )}
       <Text> </Text>
-      <Text bold>  {"Agent".padEnd(14)} {"Status".padEnd(12)} {"Duration".padStart(8)} {"Input".padStart(8)} {"Output".padStart(8)} {"Cost".padStart(8)} {"Calls".padStart(6)}</Text>
-      <Text dimColor>  {"─".repeat(Math.min(cols - 4, 70))}</Text>
       {agents.length === 0 ? (
         <Text dimColor>  No agent data yet.</Text>
       ) : (
-        agents.map((a) => {
-          const icon  = { done: "✓", in_progress: "▸", failed: "✗" }[a.status] ?? "○";
-          const color = { done: "green", in_progress: "yellow", failed: "red" }[a.status];
+        sortedAttempts.map((att) => {
+          const attAgents = attemptGroups.get(att)!;
+          const isCurrentAttempt = att === currentAttempt;
           return (
-            <Box key={a.agent}>
-              <Text color={color as any}>  {icon} </Text>
-              <Text>{a.agent.padEnd(13)}</Text>
-              <Text color={color as any}>{a.status.padEnd(12)}</Text>
-              <Text>{formatDuration(a.durationSeconds).padStart(8)}</Text>
-              <Text>{formatTokens(a.inputTokens).padStart(8)}</Text>
-              <Text>{formatTokens(a.outputTokens).padStart(8)}</Text>
-              <Text>{formatCost(a.cost).padStart(8)}</Text>
-              <Text>{String(a.callCount ?? 1).padStart(6)}</Text>
+            <Box key={att} flexDirection="column">
+              {/* Attempt header separator */}
+              <Box>
+                <Text color={isCurrentAttempt ? "cyan" : "white"} dimColor={!isCurrentAttempt} bold={isCurrentAttempt}>
+                  {"  ── Attempt #" + att + (isCurrentAttempt ? " (current)" : " (history)") + " " + "─".repeat(Math.max(0, Math.min(cols - 4, 50) - 20))}
+                </Text>
+              </Box>
+              <Text bold dimColor>  {"Agent".padEnd(14)} {"Status".padEnd(14)} {"Duration".padStart(8)} {"Input".padStart(8)} {"Output".padStart(8)} {"Cost".padStart(8)}</Text>
+              {attAgents.map((a) => {
+                const icon  = { done: "✓", in_progress: "▸", failed: "✗", rework_requested: "↻", waiting_answer: "⏸" }[a.status] ?? "○";
+                const color = { done: "green", in_progress: "yellow", failed: "red", rework_requested: "yellow", waiting_answer: "cyan" }[a.status];
+                const dimmed = !isCurrentAttempt;
+                return (
+                  <Box key={`${a.agent}-${att}`}>
+                    <Text color={color as any} dimColor={dimmed}>  {icon} </Text>
+                    <Text dimColor={dimmed}>{a.agent.padEnd(13)}</Text>
+                    <Text color={color as any} dimColor={dimmed}>{a.status.padEnd(14)}</Text>
+                    <Text dimColor={dimmed}>{formatDuration(a.durationSeconds).padStart(8)}</Text>
+                    <Text dimColor={dimmed}>{formatTokens(a.inputTokens).padStart(8)}</Text>
+                    <Text dimColor={dimmed}>{formatTokens(a.outputTokens).padStart(8)}</Text>
+                    <Text dimColor={dimmed}>{formatCost(a.cost).padStart(8)}</Text>
+                  </Box>
+                );
+              })}
+              <Text> </Text>
             </Box>
           );
         })
       )}
-      <Text> </Text>
       <Text dimColor>  q/Esc back</Text>
     </Box>
   );

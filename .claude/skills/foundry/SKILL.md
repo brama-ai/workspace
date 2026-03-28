@@ -1,29 +1,49 @@
 ---
 name: foundry
 description: >
-  Delegate a task to the Foundry pipeline, monitor its execution every 60 seconds,
-  auto-fix pipeline errors, and restart until the task completes with summary.md.
-  Triggers on: "delegate", "foundry run", "pipeline", "run task", "delegate to foundry".
+  Delegate a task to the Foundry pipeline. Two modes:
+  (1) Default — launch & monitor every 60s, report completion.
+  (2) Supervisor — autonomous runner: launch, monitor every 3 min,
+      auto-diagnose failures, retry up to 3 times, analyze FAIL summaries.
+  Triggers on: "delegate", "foundry run", "pipeline", "run task", "delegate to foundry",
+  "supervisor", "foundry supervisor".
 ---
 
 # Foundry Task Delegation & Monitoring
 
-Delegate a task to the Foundry pipeline, watch it until completion, fix errors if they occur,
-and ensure the task finishes with a valid `summary.md`.
+> **Read first:** `agentic-development/CONVENTIONS.md` — architecture, FPM analogy, coding rules.
+
+Foundry is a process manager for AI agents (like PHP-FPM for PHP scripts).
+`tasks/` is the request queue, agents are the workers, `summary.md` is the response.
+No summary = crash. PASS summary = success. FAIL summary = valid error response.
+
+**When writing foundry code:** TypeScript first, debug logging in every module,
+`FOUNDRY_DEBUG=true` in `.env` to enable. See `agentic-development/CONVENTIONS.md` for full rules.
+
+## Modes
+
+Determine the mode from the user's request:
+
+| Mode | Trigger | Behavior |
+|------|---------|----------|
+| **default** | `/foundry "task"` | Launch, monitor every 60s, report milestones |
+| **supervisor** | `/foundry supervisor "task"` or user says "supervisor mode", "autonomous" | Launch, monitor every 3 min, auto-fix failures, retry up to 3×, analyze FAIL summaries, write fix proposals |
 
 ## When to Use
 
 - User asks to delegate/run a task through Foundry
 - User says "run this in pipeline", "delegate to foundry", "foundry run"
 - User wants autonomous task execution with oversight
+- User says "supervisor", "supervise", "autonomous mode", "режим супервізора"
 
 ## Success Criteria
 
 A task is considered **successfully completed** when:
 - `tasks/<slug>--foundry/summary.md` exists and is non-empty
 - `tasks/<slug>--foundry/state.json` has `"status": "completed"`
+- Summary contains `PASS` status (supervisor mode also checks this)
 
-## Workflow
+## Workflow — Default Mode
 
 ### Step 1 — Create & Launch Task
 
@@ -107,11 +127,11 @@ cat tasks/<slug>--foundry/artifacts/<failed-agent>/*.log 2>/dev/null | tail -50
 After fixing the issue:
 
 ```bash
-# Resume from failed agent (preserves previous work)
-./agentic-development/foundry.sh restart <slug>
+# Retry (resets to pending, increments attempt)
+./agentic-development/foundry.sh retry <slug>
 
-# OR fresh start if state is corrupted
-./agentic-development/foundry.sh restart <slug> --fresh
+# OR restart headless workers if they died
+./agentic-development/foundry.sh headless
 ```
 
 Then return to **Step 2** (monitor loop).
@@ -134,6 +154,98 @@ When `summary.md` exists and state is `completed`:
    - Any Q&A interactions that occurred
 3. If summary mentions follow-up tasks, present them to the user
 4. Report the git branch: `pipeline/<slug>`
+
+---
+
+## Workflow — Supervisor Mode
+
+Supervisor mode is the fully autonomous version. It handles everything: launch, monitor, diagnose, fix, retry, and report.
+
+### Option A: Use the runner script directly
+
+```bash
+./agentic-development/foundry.sh runner "<task description>" --profile standard --poll 180 --retries 3
+```
+
+For an existing task:
+```bash
+./agentic-development/foundry.sh runner --slug <slug> --poll 180 --retries 3
+```
+
+### Option B: Supervisor loop in Claude Code (preferred — smarter diagnosis)
+
+When the user requests supervisor mode, follow this enhanced loop:
+
+#### S1 — Launch
+
+```bash
+./agentic-development/foundry.sh run "<task description>" --profile <profile>
+```
+
+Note the task slug from the created directory.
+
+#### S2 — Supervisor Monitor Loop (every 3 minutes)
+
+```bash
+# Read state
+STATUS=$(jq -r .status tasks/<slug>--foundry/state.json)
+STEP=$(jq -r .current_step tasks/<slug>--foundry/state.json)
+COST=$(jq '[.agents[]?.cost // 0] | add // 0' tasks/<slug>--foundry/state.json)
+ATTEMPT=$(jq -r '.attempt // 1' tasks/<slug>--foundry/state.json)
+```
+
+Report concisely: `[3m] in_progress | u-coder | $0.45 | attempt 1`
+
+#### S3 — Auto-Fix on Failure
+
+When status is `failed` or `stopped`:
+
+1. **Diagnose** — read events.jsonl + agent logs
+2. **Categorize** — timeout / rate_limit / git_conflict / zombie / agent_error
+3. **Fix automatically:**
+   - **Stale lock** → `rm .claim.lock`
+   - **Zombie** → `./agentic-development/foundry.sh stop && sleep 5`
+   - **Rate limit** → wait 60s
+   - **Timeout** → retry (fallback models will be used)
+   - **Git conflict** → report to user (cannot auto-fix)
+4. **Retry:**
+   ```bash
+   ./agentic-development/foundry.sh retry <slug>
+   ./agentic-development/foundry.sh headless  # ensure workers running
+   ```
+5. Return to S2
+
+#### S4 — Analyze FAIL Summary
+
+When `summary.md` exists but contains `FAIL`:
+
+1. Read the full summary
+2. Extract "Труднощі / Difficulties" and "Рекомендації / Recommendations" sections
+3. **Create fix proposal** — analyze what failed and propose specific next steps:
+   - PHPStan errors → `foundry.sh run --only u-validator "Fix PHPStan errors"`
+   - Test failures → `foundry.sh run --only u-tester "Fix test failures"`
+   - Timeout → suggest splitting task or using `--profile quick-fix`
+   - Git conflicts → show branch name, suggest manual merge
+4. Write proposal to `tasks/<slug>--foundry/fix-proposal.md`
+5. If retries remain (max 3) → auto-retry
+6. If retries exhausted → present proposal to user
+
+#### S5 — Success Report
+
+When `summary.md` exists with `PASS`:
+1. Present summary to user
+2. Report: duration, cost, agents, branch
+3. Note any follow-up recommendations
+
+### Supervisor Stall Detection
+
+If the same status + step persists for more than 10 consecutive polls (30 minutes):
+- Check if workers are alive: `pgrep -f 'foundry-batch\.sh'`
+- If no workers → restart: `./agentic-development/foundry.sh headless`
+- If workers alive but stuck → check for stale locks, zombie processes
+- Report to user after 1 hour of stall
+
+---
 
 ## Important Notes
 
@@ -170,4 +282,7 @@ ps aux | grep foundry-run | grep -v grep
 
 # Pipeline-wide status
 ./agentic-development/foundry.sh status
+
+# Runner (supervisor in terminal)
+./agentic-development/foundry.sh runner "task" --poll 180 --retries 3
 ```

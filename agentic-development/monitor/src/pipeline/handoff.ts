@@ -118,6 +118,8 @@ export function extractBranch(handoffFile: string): string | null {
   return match ? match[1] : null;
 }
 
+// 8.3: createHandoffLink() is kept for backward compatibility but no longer called
+// by initHandoff(). Agents use <task_dir>/handoff.md directly.
 export function createHandoffLink(taskDir: string, pipelineDir: string = PIPELINE_DIR): string {
   const handoffFile = join(taskDir, "handoff.md");
   const linkFile = join(pipelineDir, "handoff.md");
@@ -156,7 +158,8 @@ export function initHandoff(taskDir: string, taskMessage: string, branch: string
 `;
 
   writeHandoff(handoffFile, template);
-  createHandoffLink(taskDir);
+  // 8.3: No longer creating global symlink — handoff is task-scoped
+  // createHandoffLink(taskDir);  // removed
 
   return handoffFile;
 }

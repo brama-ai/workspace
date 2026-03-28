@@ -42,6 +42,13 @@ while IFS= read -r task_dir; do
     now=$(date +%s)
     age_days=$(( (now - mtime) / 86400 ))
     if (( age_days > MAX_DAYS )); then
+      # 10.2: Archive guard — skip tasks with empty or missing summary.md
+      summary_file="$task_dir/summary.md"
+      if [[ ! -s "$summary_file" ]]; then
+        echo "[skip] $(basename "$task_dir") — summary.md is empty or missing (not archiving)"
+        pipeline_task_append_event "$task_dir" "archive_blocked" "Cleanup skipped: summary.md is empty or missing" 2>/dev/null || true
+        continue
+      fi
       remove_path "$task_dir"
     fi
   fi

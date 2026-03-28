@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, renameSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, basename, dirname } from "node:path";
 import { execSync, exec } from "node:child_process";
 import { readState, writeState } from "./task-state.js";
@@ -24,10 +24,25 @@ export function releaseTask(taskDir) {
     writeState(taskDir, state);
 }
 export function archiveTask(taskDir) {
+    // 10.1: Archive guard — summary.md must exist and be non-empty
+    const summaryPath = join(taskDir, "summary.md");
+    if (!existsSync(summaryPath) || statSync(summaryPath).size === 0) {
+        // Emit archive_blocked event to events.jsonl
+        const eventsPath = join(taskDir, "events.jsonl");
+        const ts = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+        const event = JSON.stringify({ timestamp: ts, type: "archive_blocked", message: "Cannot archive task: summary.md is empty or missing" });
+        try {
+            const { appendFileSync } = require("node:fs");
+            appendFileSync(eventsPath, event + "\n", "utf-8");
+        }
+        catch { }
+        throw new Error("Cannot archive task: summary.md is empty or missing");
+    }
     const state = readState(taskDir);
     if (state.status === "in_progress") {
         const agents = Array.isArray(state.agents) ? state.agents : [];
-        const summarizerDone = agents.some((a) => a.agent?.includes("summarizer") && a.status === "done");
+        const currentAttempt = state.attempt ?? 1;
+        const summarizerDone = agents.some((a) => a.agent?.includes("summarizer") && a.status === "done" && (a.attempt ?? 1) === currentAttempt);
         if (summarizerDone) {
             state.status = "completed";
             state.updated_at = new Date().toISOString().replace(/\.\d+Z$/, "Z");

@@ -30,13 +30,48 @@ source "$REPO_ROOT/agentic-development/lib/foundry-common.sh"
 if [[ "${FOUNDRY_DEBUG:-}" == "true" ]]; then
   trap 'debug_log "CRASH" "Script exited unexpectedly" "line=$LINENO" "exit_code=$?" "command=$BASH_COMMAND"' ERR
 fi
+
+# 6.2: SIGINT/SIGTERM trap — clean up .tmp.* dirs and mark in-progress task as interrupted
+_foundry_run_cleanup() {
+  local sig="${1:-EXIT}"
+  # Remove any ghost temp dirs left by interrupted atomic init
+  local tmp_dir
+  for tmp_dir in "${PIPELINE_TASKS_ROOT:-${REPO_ROOT}/tasks}"/.tmp.*; do
+    [[ -d "$tmp_dir" ]] || continue
+    rm -rf "$tmp_dir"
+  done
+  # Mark in-progress task as interrupted (if we have a task dir)
+  if [[ -n "${TASK_DIR:-}" && -d "${TASK_DIR:-}" ]]; then
+    local cur_status
+    cur_status=$(foundry_state_field "$TASK_DIR" status 2>/dev/null || echo "")
+    if [[ "$cur_status" == "in_progress" ]]; then
+      foundry_set_state_status "$TASK_DIR" "failed" "interrupted" "" 2>/dev/null || true
+      pipeline_task_append_event "$TASK_DIR" "interrupted" "Pipeline interrupted by signal ${sig}" "" 2>/dev/null || true
+    fi
+  fi
+}
+trap '_foundry_run_cleanup INT' SIGINT
+trap '_foundry_run_cleanup TERM' SIGTERM
+
 ensure_foundry_task_root
+
+# 8.4: Clean up stale .opencode/pipeline/handoff.md symlinks from previous runs
+_cleanup_stale_handoff_symlink() {
+  local pipeline_dir="${REPO_ROOT}/.opencode/pipeline"
+  local stale_link="${pipeline_dir}/handoff.md"
+  if [[ -L "$stale_link" ]]; then
+    rm -f "$stale_link"
+  fi
+}
+_cleanup_stale_handoff_symlink
+
 PIPELINE_DIR="$REPO_ROOT/.opencode/pipeline"
 LOG_DIR="$PIPELINE_DIR/logs"
 REPORT_DIR="$PIPELINE_DIR/reports"
-HANDOFF_LINK="$PIPELINE_DIR/handoff.md"       # symlink — agents always read this path
+# 8.1: HANDOFF_LINK removed — agents use $TASK_DIR/handoff.md directly
 HANDOFF_TEMPLATE="$PIPELINE_DIR/handoff-template.md"
 # Actual per-task handoff file is set in init_handoff()
+# 8.1: HANDOFF_FILE points directly to $TASK_DIR/handoff.md — no global symlink
 HANDOFF_FILE=""
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
@@ -1945,6 +1980,14 @@ run_agent() {
 
 build_prompt() {
   local agent="$1"
+  # 8.2: Use task-scoped handoff path. Agents read/write $TASK_DIR/handoff.md directly.
+  # Fall back to legacy path only if TASK_DIR is not set (non-lifecycle runs).
+  local _handoff_path
+  if [[ -n "${TASK_DIR:-}" ]]; then
+    _handoff_path="${TASK_DIR}/handoff.md"
+  else
+    _handoff_path=".opencode/pipeline/handoff.md"
+  fi
 
   case "$agent" in
     u-planner)
@@ -2061,7 +2104,7 @@ Time budget: ~${architect_timeout_min} minutes. Plan your work accordingly.
 
 ## Handoff
 
-Update \`.opencode/pipeline/handoff.md\` with your section:
+Update \`${_handoff_path}\` with your section:
 - Change ID created
 - Apps affected (core, knowledge-agent, hello-agent, news-maker-agent)
 - Whether DB changes (migrations) are needed
@@ -2075,7 +2118,7 @@ Task: ${TASK_MESSAGE}
 
 ## Instructions
 
-1. Read \`.opencode/pipeline/handoff.md\` for context from the architect (if it exists)
+1. Read \`${_handoff_path}\` for context from the architect (if it exists)
 2. Read the full proposal: \`openspec/changes/<id>/proposal.md\`, \`design.md\`, \`tasks.md\`
 3. Read spec deltas in \`openspec/changes/<id>/specs/\`
 4. Implement tasks from \`tasks.md\` sequentially, marking each \`- [x]\` when done
@@ -2102,7 +2145,7 @@ Task: ${TASK_MESSAGE}
 
 ## Handoff
 
-Update \`.opencode/pipeline/handoff.md\` — Coder section:
+Update \`${_handoff_path}\` — Coder section:
 - List every file created or modified
 - List any migration files created
 - Note deviations from the spec (with reasoning)
@@ -2110,7 +2153,7 @@ PROMPT
       ;;
     u-validator)
       cat << PROMPT
-Read \`.opencode/pipeline/handoff.md\` for the task description and full pipeline context.
+Read \`${_handoff_path}\` for the task description and full pipeline context.
 
 ## Instructions
 
@@ -2131,7 +2174,7 @@ Read \`.opencode/pipeline/handoff.md\` for the task description and full pipelin
 
 ## Handoff
 
-Update \`.opencode/pipeline/handoff.md\` — Validator section:
+Update \`${_handoff_path}\` — Validator section:
 - PHPStan result: pass/fail (per app)
 - CS-check result: pass/fail (per app)
 - Files fixed (list)
@@ -2139,7 +2182,7 @@ PROMPT
       ;;
     u-tester)
       cat << PROMPT
-Read \`.opencode/pipeline/handoff.md\` for the task description and full pipeline context.
+Read \`${_handoff_path}\` for the task description and full pipeline context.
 
 ## Instructions
 
@@ -2185,7 +2228,7 @@ Read \`.opencode/pipeline/handoff.md\` for the task description and full pipelin
 
 ## Handoff
 
-Update \`.opencode/pipeline/handoff.md\` — Tester section:
+Update \`${_handoff_path}\` — Tester section:
 - Test results per suite (passed/failed/skipped counts)
 - New tests written (file paths)
 - Tests updated and why
@@ -2194,7 +2237,7 @@ PROMPT
       ;;
     e2e)
       cat << PROMPT
-Read \`.opencode/pipeline/handoff.md\` for the task description and full pipeline context.
+Read \`${_handoff_path}\` for the task description and full pipeline context.
 
 ## Instructions
 
@@ -2229,7 +2272,7 @@ You are the E2E test runner. Your job is to run browser-based E2E tests and repo
 
 ## Handoff
 
-Update \`.opencode/pipeline/handoff.md\` — E2E section:
+Update \`${_handoff_path}\` — E2E section:
 - E2E result: PASS / FAIL / SKIPPED (with reason)
 - Tests run: total/passed/failed/skipped
 - CUJ coverage: checked / gaps found
@@ -2238,7 +2281,7 @@ PROMPT
       ;;
     u-documenter)
       cat << PROMPT
-Read \`.opencode/pipeline/handoff.md\` for the task description and full pipeline context.
+Read \`${_handoff_path}\` for the task description and full pipeline context.
 
 ## Instructions
 
@@ -2263,7 +2306,7 @@ After writing docs, verify:
 
 ## Handoff
 
-Update \`.opencode/pipeline/handoff.md\` — Documenter section:
+Update \`${_handoff_path}\` — Documenter section:
 - Docs created/updated (file paths)
 - Final status: PIPELINE COMPLETE
 PROMPT
@@ -2272,7 +2315,7 @@ PROMPT
       cat << PROMPT
 Task: ${TASK_MESSAGE}
 
-Read \`.opencode/pipeline/handoff.md\` for context from previous pipeline stages (if any).
+Read \`${_handoff_path}\` for context from previous pipeline stages (if any).
 
 ## Instructions
 
@@ -2329,7 +2372,7 @@ Read \`.opencode/pipeline/handoff.md\` for context from previous pipeline stages
 
 ## Handoff
 
-Update \`.opencode/pipeline/handoff.md\` — Merger section:
+Update \`${_handoff_path}\` — Merger section:
 - **Status**: ready | needs-tests | needs-docs | blocked | failed
 - **Merge result**: clean | conflicts-resolved | conflicts-unresolvable | already-up-to-date
 - **Conflicts resolved**: [list with strategy]
@@ -2349,7 +2392,7 @@ Task: Audit the changes from pipeline — ${task_summary}
 
 ## Instructions
 
-1. Read \`.opencode/pipeline/handoff.md\` to understand what was changed
+1. Read \`${_handoff_path}\` to understand what was changed
 2. Read \`.claude/skills/agent-auditor/SKILL.md\` for the audit checklist
 3. Determine which agents/apps were modified
 4. Run the appropriate checklist (PHP or Python) against the changed agents
@@ -2368,7 +2411,7 @@ Task: Audit the changes from pipeline — ${task_summary}
 ## Output
 
 Write audit report to \`.opencode/pipeline/reports/${TIMESTAMP}_audit.md\`
-Update \`.opencode/pipeline/handoff.md\` with audit summary and verdict (PASS/WARN/FAIL)
+Update \`${_handoff_path}\` with audit summary and verdict (PASS/WARN/FAIL)
 PROMPT
       ;;
     u-summarizer)
@@ -2377,7 +2420,7 @@ Task: Create the final task summary for this pipeline run.
 
 ## Instructions
 
-1. Read \`.opencode/pipeline/handoff.md\` for cross-agent context.
+1. Read \`${_handoff_path}\` for cross-agent context.
 2. Read \`${CHECKPOINT_FILE}\` to see which agents actually ran, their statuses, durations, and commits.
 3. Generate the telemetry markdown block via: \`agentic-development/lib/cost-tracker.sh summary-block --workflow builder --task-slug "${TASK_SLUG:-task}"\`
 4. Read the available logs in \`.opencode/pipeline/logs/${TIMESTAMP}_*.log\`.
@@ -2434,7 +2477,7 @@ Task: Create the final task summary for this pipeline run.
 
 ## Handoff
 
-Update \`.opencode/pipeline/handoff.md\` — Summarizer section:
+Update \`${_handoff_path}\` — Summarizer section:
 - Status
 - Summary file path
 - Final recommendation for next task
@@ -2455,19 +2498,16 @@ init_handoff() {
     HANDOFF_FILE="$PIPELINE_DIR/handoff-${TIMESTAMP}-${slug}.md"
   fi
 
-  # Only create new handoff if not resuming (--from)
-  if [[ -n "$FROM_AGENT" && -L "$HANDOFF_LINK" && -f "$HANDOFF_LINK" ]]; then
-    # Resuming: use whatever the symlink points to
-    HANDOFF_FILE="$(readlink -f "$HANDOFF_LINK")"
+  # 8.1: No global symlink — agents use $TASK_DIR/handoff.md directly.
+  # Only create new handoff if not resuming (--from) or if file doesn't exist yet.
+  if [[ -n "$FROM_AGENT" && -f "$HANDOFF_FILE" ]]; then
+    # Resuming: use existing task-scoped handoff file
     echo -e "${BLUE}Using existing handoff file (resuming from ${FROM_AGENT})${NC}"
     echo -e "${DIM}  ${HANDOFF_FILE}${NC}"
     return
   fi
 
-  # Point the symlink to this task's handoff
-  rm -f "$HANDOFF_LINK"
-  ln -s "$HANDOFF_FILE" "$HANDOFF_LINK"
-
+  # Write fresh handoff directly to task dir (no symlink)
   cat > "$HANDOFF_FILE" << EOF
 # Pipeline Handoff
 
@@ -2741,7 +2781,18 @@ main() {
   fi
   for agent in $agents_to_run; do
     debug_log "loop" "=== Agent loop iteration ===" "agent=$agent"
+
+    # 7.2: Assert task.md exists before launching each agent
     if [[ "$TASK_LIFECYCLE" == true && -n "$TASK_DIR" ]]; then
+      if [[ ! -s "$TASK_DIR/task.md" ]]; then
+        echo -e "${RED}✗ task.md is missing or empty in ${TASK_DIR}${NC}"
+        echo -e "${RED}  Pipeline refuses to start agent ${agent} — task.md required${NC}"
+        pipeline_task_append_event "$TASK_DIR" "task_md_missing" "Agent ${agent} refused: task.md missing or empty"
+        foundry_set_state_status "$TASK_DIR" "failed" "task_md_missing" ""
+        failed=true
+        failed_agent="$agent (task_md_missing)"
+        break
+      fi
       foundry_set_state_status "$TASK_DIR" "in_progress" "$agent" "$agent"
     fi
 
@@ -3043,7 +3094,8 @@ main() {
   fi
 
   # Archive per-task handoff to logs dir (survives worktree cleanup)
-  if [[ -f "$HANDOFF_FILE" && "$HANDOFF_FILE" != "$HANDOFF_LINK" ]]; then
+  # 8.1: HANDOFF_LINK no longer exists; copy task-scoped handoff directly
+  if [[ -f "$HANDOFF_FILE" ]]; then
     cp "$HANDOFF_FILE" "$LOG_DIR/${TIMESTAMP}_handoff.md" 2>/dev/null || true
   fi
 

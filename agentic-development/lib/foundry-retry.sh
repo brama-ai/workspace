@@ -43,6 +43,12 @@ list_failed() {
 
 retry_task() {
   local task_dir="$1"
+  # 7.1: Assert task.md exists and is non-empty before allowing retry
+  if [[ ! -s "$task_dir/task.md" ]]; then
+    echo "ERROR: Cannot retry $(basename "$task_dir") — task.md is missing or empty" >&2
+    pipeline_task_append_event "$task_dir" "task_md_missing" "Retry refused: task.md missing or empty"
+    return 1
+  fi
   foundry_increment_attempt "$task_dir"
   foundry_set_state_status "$task_dir" "pending" "" ""
   pipeline_task_append_event "$task_dir" "retry_requested" "Task returned to pending"

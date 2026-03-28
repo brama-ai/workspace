@@ -4,6 +4,8 @@ import { execSync } from "node:child_process";
 
 export interface AgentInfo {
   agent: string;
+  // 9.2: attempt field — each agent entry is keyed by (agent, attempt)
+  attempt?: number;
   status: string;
   model?: string;
   durationSeconds?: number;
@@ -11,6 +13,8 @@ export interface AgentInfo {
   outputTokens?: number;
   cost?: number;
   callCount?: number;
+  updatedAt?: string;
+  sessionId?: string;
 }
 
 export interface QAQuestion {
@@ -118,6 +122,8 @@ function extractPriority(taskDir: string): number {
 function parseAgents(raw: any[]): AgentInfo[] {
   return raw.map((a) => ({
     agent: a.agent ?? a.name ?? "",
+    // 9.2: preserve attempt field from state.json
+    attempt: typeof a.attempt === "number" ? a.attempt : undefined,
     status: a.status ?? "pending",
     model: a.model,
     durationSeconds: typeof a.duration_seconds === "number" ? a.duration_seconds : undefined,
@@ -125,6 +131,8 @@ function parseAgents(raw: any[]): AgentInfo[] {
     outputTokens: typeof a.output_tokens === "number" ? a.output_tokens : undefined,
     cost: typeof a.cost === "number" ? a.cost : undefined,
     callCount: typeof a.call_count === "number" ? a.call_count : undefined,
+    updatedAt: a.updated_at,
+    sessionId: a.session_id,
   }));
 }
 
@@ -250,16 +258,18 @@ export function readAllTasks(root: string): ReadResult {
     let sessionName: string | undefined;
     let worktreePath: string | undefined;
     let branchName: string | undefined;
+    // 11.1: Read metadata from meta.json for both workflows (authoritative source)
+    const meta = readJson(join(taskDir, "meta.json"));
     if (workflow === "ultraworks") {
-      const meta = readJson(join(taskDir, "meta.json"));
       if (meta) {
         sessionName = meta.session_name;
         worktreePath = meta.worktree_path;
         branchName = meta.branch_name;
       }
     } else {
-      // Foundry: branch from state.json
-      branchName = state?.branch;
+      // Foundry: prefer meta.json branch_name, fall back to state.json branch
+      branchName = meta?.branch_name ?? state?.branch;
+      if (meta?.worktree_path) worktreePath = meta.worktree_path;
     }
 
     // Diagnostic info for stale detection

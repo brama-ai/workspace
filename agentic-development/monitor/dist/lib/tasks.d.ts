@@ -1,5 +1,6 @@
 export interface AgentInfo {
     agent: string;
+    attempt?: number;
     status: string;
     model?: string;
     durationSeconds?: number;
@@ -7,6 +8,8 @@ export interface AgentInfo {
     outputTokens?: number;
     cost?: number;
     callCount?: number;
+    updatedAt?: string;
+    sessionId?: string;
 }
 export interface QAQuestion {
     id: string;

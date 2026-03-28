@@ -2,6 +2,7 @@ import { env } from "node:process";
 import { executeAgent, AgentConfig, AgentResult, getTimeout } from "../agents/executor.js";
 import { checkAndCompact, getSessionContextStatus } from "../agents/context-guard.js";
 import { emitEvent, initEventsLog, EventType } from "../state/events.js";
+import { rlog } from "../lib/runtime-logger.js";
 
 const DEBUG = env.FOUNDRY_DEBUG === "true";
 
@@ -54,12 +55,22 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
   const { repoRoot, taskDir, taskMessage, branch, agents } = config;
   const startTime = Date.now();
 
+  const timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 15);
+  const logDir = `${env.FOUNDRY_ROOT || repoRoot}/agentic-development/runtime/logs`;
+
   initEventsLog(`${repoRoot}/.opencode/pipeline`);
 
   emitEvent("PIPELINE_START", {
     branch,
     agents: agents.join(","),
     profile: config.profile,
+  });
+
+  rlog("pipeline_start", {
+    branch,
+    agents,
+    profile: config.profile,
+    logDir,
   });
 
   debug("pipeline start", { branch, agents, profile: config.profile });
@@ -69,9 +80,6 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
   let totalCost = 0;
   let hitlWaiting = false;
   let waitingAgent: string | null = null;
-
-  const timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 15);
-  const logDir = `${repoRoot}/.opencode/pipeline/logs`;
 
   for (const agent of agents) {
     // Check context size and auto-compact if needed (protects GLM, Kimi etc.)
@@ -91,6 +99,7 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
 
     debug("running agent", agent);
 
+    rlog("agent_start", { agent, task: taskMessage });
     emitEvent("AGENT_START", { agent, task: taskMessage });
 
     const agentConfig: AgentConfig = {
@@ -119,6 +128,7 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
         duration: result.duration,
         cost: result.tokensUsed.cost,
       });
+      rlog("agent_end", { agent, status: "done", duration: result.duration, cost: result.tokensUsed.cost });
       debug("agent completed", agent, "duration", result.duration);
       continue;
     }
@@ -127,6 +137,7 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
       hitlWaiting = true;
       waitingAgent = agent;
       emitEvent("TASK_WAITING", { agent, duration: result.duration });
+      rlog("agent_end", { agent, status: "hitl_waiting", duration: result.duration }, "WARN");
       debug("agent waiting for HITL", agent);
 
       const continueOnWait = getContinueOnWait(taskDir);
@@ -143,6 +154,7 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
       exitCode: result.exitCode,
       duration: result.duration,
     });
+    rlog("agent_end", { agent, status: "failed", exitCode: result.exitCode, duration: result.duration }, "ERROR");
     debug("agent failed", agent, "exitCode", result.exitCode);
     break;
   }
@@ -158,6 +170,14 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
     failedAgent: failedAgent || "",
     totalCost,
   });
+
+  rlog("pipeline_end", {
+    success,
+    duration,
+    completedAgents: completedAgents.length,
+    failedAgent: failedAgent || null,
+    totalCost,
+  }, success ? "INFO" : "ERROR");
 
   debug("pipeline end", { success, duration, completedAgents: completedAgents.length });
 
@@ -218,7 +238,7 @@ function buildPrompt(agent: string, config: PipelineConfig): string {
     "u-tester": `Run tests and fix any failures`,
     "u-auditor": `Audit the changes for quality and compliance`,
     "u-documenter": `Write documentation for the changes`,
-    "u-summarizer": `Create a summary of all changes made`,
+    "u-summarizer": `Create the final task summary for this pipeline run. Write the markdown summary to \`${taskDir}/summary.md\`. Read \`${taskDir}/handoff.md\` for cross-agent context. Report in Ukrainian. Include: status (PASS/FAIL), what was done, difficulties, recommendations.`,
     "u-investigator": `Investigate the issue: ${taskMessage}`,
     "u-merger": `Merge the branch ${branch} and resolve conflicts`,
   };

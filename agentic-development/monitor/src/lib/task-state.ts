@@ -41,7 +41,9 @@ export interface TaskState {
 
 export interface AgentRun {
   agent: string;
-  status: "initialized" | "in_progress" | "done" | "failed" | "skipped";
+  // 9.2: attempt field — each agent entry is keyed by (agent, attempt)
+  attempt?: number;
+  status: "initialized" | "in_progress" | "done" | "failed" | "skipped" | "waiting_answer";
   model?: string;
   duration_seconds?: number;
   input_tokens?: number;
@@ -50,6 +52,8 @@ export interface AgentRun {
   call_count?: number;
   started_at?: string;
   completed_at?: string;
+  updated_at?: string;
+  session_id?: string;
 }
 
 export interface TaskCounts {
@@ -238,14 +242,17 @@ export function recordAgentRun(
   if (!state.agents) state.agents = [];
   
   const now = new Date().toISOString();
-  let agentRun = state.agents.find(a => a.agent === agent);
+  // 9.2: Append with attempt field — find entry matching (agent, currentAttempt)
+  const currentAttempt = state.attempt ?? 1;
+  let agentRun = state.agents.find(a => a.agent === agent && (a.attempt ?? 1) === currentAttempt);
   
   if (!agentRun) {
-    agentRun = { agent, status: "initialized" };
+    agentRun = { agent, attempt: currentAttempt, status: "initialized" };
     state.agents.push(agentRun);
   }
   
   agentRun.status = status;
+  agentRun.attempt = currentAttempt;
   if (model) agentRun.model = model;
   if (durationSeconds !== undefined) agentRun.duration_seconds = durationSeconds;
   if (inputTokens !== undefined) agentRun.input_tokens = inputTokens;
@@ -262,7 +269,7 @@ export function recordAgentRun(
   
   state.current_step = agent;
   writeState(taskDir, state);
-  debug(`  → agent ${agent} recorded as ${status}`);
+  debug(`  → agent ${agent} (attempt ${currentAttempt}) recorded as ${status}`);
 }
 
 export function setWorkerId(taskDir: string, workerId: string): void {

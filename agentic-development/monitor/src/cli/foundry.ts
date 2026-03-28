@@ -47,6 +47,7 @@ import {
   renderCheckpointSummary 
 } from "../pipeline/checkpoint.js";
 import { emitEvent, initEventsLog } from "../state/events.js";
+import { cmdSupervisor } from "./supervisor.js";
 
 function showHelp(): void {
   console.log(`
@@ -71,6 +72,7 @@ Commands:
   resume <slug>    Resume a paused task
   answer <slug>    Answer pending questions
   checkpoint       Show checkpoint summary
+  supervisor       Autonomous runner (monitor + auto-fix + retry)
 
 Run Options:
   --task-file <path>     Read task from file
@@ -98,6 +100,8 @@ Examples:
   foundry run --only validator "Run PHPStan"
   foundry status my-task
   foundry resume my-task
+  foundry supervisor "Add feature" --poll 120 --retries 5
+  foundry supervisor --slug my-task
   foundry list
 `);
 }
@@ -393,6 +397,10 @@ async function main(): Promise<void> {
       break;
     case "checkpoint":
       exitCode = cmdCheckpoint(args);
+      break;
+    case "supervisor":
+    case "runner":
+      exitCode = await cmdSupervisor(args);
       break;
     default:
       console.error(`Unknown command: ${cmd}`);

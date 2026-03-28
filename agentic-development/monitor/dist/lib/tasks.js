@@ -42,6 +42,8 @@ function extractPriority(taskDir) {
 function parseAgents(raw) {
     return raw.map((a) => ({
         agent: a.agent ?? a.name ?? "",
+        // 9.2: preserve attempt field from state.json
+        attempt: typeof a.attempt === "number" ? a.attempt : undefined,
         status: a.status ?? "pending",
         model: a.model,
         durationSeconds: typeof a.duration_seconds === "number" ? a.duration_seconds : undefined,
@@ -49,6 +51,8 @@ function parseAgents(raw) {
         outputTokens: typeof a.output_tokens === "number" ? a.output_tokens : undefined,
         cost: typeof a.cost === "number" ? a.cost : undefined,
         callCount: typeof a.call_count === "number" ? a.call_count : undefined,
+        updatedAt: a.updated_at,
+        sessionId: a.session_id,
     }));
 }
 // Check for stale .claim.lock (lock without active worker)
@@ -177,8 +181,9 @@ export function readAllTasks(root) {
         let sessionName;
         let worktreePath;
         let branchName;
+        // 11.1: Read metadata from meta.json for both workflows (authoritative source)
+        const meta = readJson(join(taskDir, "meta.json"));
         if (workflow === "ultraworks") {
-            const meta = readJson(join(taskDir, "meta.json"));
             if (meta) {
                 sessionName = meta.session_name;
                 worktreePath = meta.worktree_path;
@@ -186,8 +191,10 @@ export function readAllTasks(root) {
             }
         }
         else {
-            // Foundry: branch from state.json
-            branchName = state?.branch;
+            // Foundry: prefer meta.json branch_name, fall back to state.json branch
+            branchName = meta?.branch_name ?? state?.branch;
+            if (meta?.worktree_path)
+                worktreePath = meta.worktree_path;
         }
         // Diagnostic info for stale detection
         const lastEvent = getLastEvent(taskDir);

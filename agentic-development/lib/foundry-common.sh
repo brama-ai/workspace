@@ -38,6 +38,13 @@ pipeline_slugify() {
 
 ensure_pipeline_tasks_root() {
   mkdir -p "$PIPELINE_TASKS_ROOT"
+  # 6.3: Ghost directory cleanup — remove any .tmp.* dirs left by interrupted init
+  local tmp_dir
+  for tmp_dir in "$PIPELINE_TASKS_ROOT"/.tmp.*; do
+    [[ -d "$tmp_dir" ]] || continue
+    rm -rf "$tmp_dir"
+    debug_log "cleanup" "Removed ghost tmp dir" "path=$tmp_dir"
+  done
 }
 
 ensure_runtime_root() {
@@ -141,16 +148,41 @@ pipeline_task_dir_create() {
   done
   task_dir="$candidate"
 
-  mkdir -p "$task_dir" "$task_dir/artifacts"
-  [[ -f "$task_dir/handoff.md" ]] || : > "$task_dir/handoff.md"
-  [[ -f "$task_dir/events.jsonl" ]] || : > "$task_dir/events.jsonl"
-  [[ -f "$task_dir/summary.md" ]] || : > "$task_dir/summary.md"
+  # 6.1: Atomic task directory init — write to temp dir, then mv atomically
+  # If task_dir already exists (resume case), skip atomic init and just ensure files
+  if [[ -d "$task_dir" ]]; then
+    [[ -f "$task_dir/handoff.md" ]] || : > "$task_dir/handoff.md"
+    [[ -f "$task_dir/events.jsonl" ]] || : > "$task_dir/events.jsonl"
+    [[ -f "$task_dir/summary.md" ]] || : > "$task_dir/summary.md"
+    mkdir -p "$task_dir/artifacts"
+    if [[ -n "$task_text" && ! -f "$task_dir/task.md" ]]; then
+      printf '%s\n' "$task_text" > "$task_dir/task.md"
+    elif [[ ! -f "$task_dir/task.md" ]]; then
+      printf '# %s\n' "$slug" > "$task_dir/task.md"
+    fi
+    echo "$task_dir"
+    return 0
+  fi
+
+  # New task: write all files to temp dir first, then mv atomically
+  local tmp_dir
+  tmp_dir=$(mktemp -d "${PIPELINE_TASKS_ROOT}/.tmp.XXXXXX")
+  debug_log "init" "Atomic task dir init" "tmp=$tmp_dir" "target=$task_dir"
+
+  mkdir -p "$tmp_dir/artifacts"
+  : > "$tmp_dir/handoff.md"
+  : > "$tmp_dir/events.jsonl"
+  : > "$tmp_dir/summary.md"
 
   if [[ -n "$task_text" ]]; then
-    printf '%s\n' "$task_text" > "$task_dir/task.md"
-  elif [[ ! -f "$task_dir/task.md" ]]; then
-    printf '# %s\n' "$slug" > "$task_dir/task.md"
+    printf '%s\n' "$task_text" > "$tmp_dir/task.md"
+  else
+    printf '# %s\n' "$slug" > "$tmp_dir/task.md"
   fi
+
+  # Atomic rename — same filesystem guaranteed (tmp_dir is inside PIPELINE_TASKS_ROOT)
+  mv "$tmp_dir" "$task_dir"
+  debug_log "init" "Atomic task dir created" "path=$task_dir"
 
   echo "$task_dir"
 }
@@ -659,7 +691,10 @@ foundry_state_upsert_agent() {
   
   local existing="{}"
   [[ -f "$state_file" ]] && existing=$(cat "$state_file" 2>/dev/null) || existing="{}"
-  
+
+  # 9.1: Append agent entries with attempt field instead of upserting (overwriting).
+  # Each agent run is a separate entry keyed by (agent, attempt).
+  # Queries for "current agent status" must filter by attempt == state.attempt.
   echo "$existing" | jq --arg agent "$agent" \
     --arg status "$status" \
     --arg model "$model" \
@@ -671,9 +706,10 @@ foundry_state_upsert_agent() {
     --arg session_id "$session_id" \
     --arg now "$now" '
     .agents = (.agents // []) |
-    (first(.agents[] | select(.agent == $agent)) // null) as $existing |
-    if $existing then
-      .agents = [.agents[] | if .agent == $agent then
+    ((.attempt // 1) | tonumber) as $cur_attempt |
+    (first(.agents[] | select(.agent == $agent and .attempt == $cur_attempt)) // null) as $existing_entry |
+    if $existing_entry then
+      .agents = [.agents[] | if (.agent == $agent and .attempt == $cur_attempt) then
         .status = $status |
         .model = (if $model != "" then $model else .model // "n/d" end) |
         .duration_seconds = (if $duration > 0 then $duration else .duration_seconds // "n/d" end) |
@@ -687,6 +723,7 @@ foundry_state_upsert_agent() {
     else
       .agents += [{
         agent: $agent,
+        attempt: $cur_attempt,
         status: $status,
         model: (if $model != "" then $model else "n/d" end),
         duration_seconds: (if $duration > 0 then $duration else "n/d" end),
@@ -704,6 +741,8 @@ foundry_state_upsert_agent() {
 
 # Write all planned agents to state.json as "pending" + set profile
 # Called ONCE after planner determines the agent list, before execution starts.
+# 9.4: Preserves existing agent entries from prior attempts; only adds new pending
+# entries for the current attempt. Prior attempt history is retained in agents[].
 foundry_state_set_planned_agents() {
   local task_dir="$1"
   local profile="$2"
@@ -718,20 +757,26 @@ foundry_state_set_planned_agents() {
   
   local existing="{}"
   [[ -f "$state_file" ]] && existing=$(cat "$state_file" 2>/dev/null) || existing="{}"
-  
-  local agents_json="[]"
+
+  # Build new pending entries for current attempt (do not touch prior attempt entries)
+  local cur_attempt
+  cur_attempt=$(echo "$existing" | jq -r '(.attempt // 1) | tonumber' 2>/dev/null) || cur_attempt=1
+
+  local new_entries_json="[]"
   for name in "${agents[@]}"; do
-    local existing_agent
-    existing_agent=$(echo "$existing" | jq --arg name "$name" 'first(.agents[]? | select(.agent == $name)) // null' 2>/dev/null)
-    if [[ "$existing_agent" != "null" && -n "$existing_agent" ]]; then
-      agents_json=$(echo "$agents_json" | jq --argjson agent "$existing_agent" '. + [$agent]')
-    else
-      agents_json=$(echo "$agents_json" | jq --arg name "$name" '. + [{agent: $name, status: "pending", model: "", duration_seconds: 0, input_tokens: 0, output_tokens: 0, cost: 0, call_count: 0, updated_at: ""}]')
-    fi
+    new_entries_json=$(echo "$new_entries_json" | jq --arg name "$name" --argjson attempt "$cur_attempt" \
+      '. + [{agent: $name, attempt: $attempt, status: "pending", model: "", duration_seconds: 0, input_tokens: 0, output_tokens: 0, cost: 0, call_count: 0, updated_at: ""}]')
   done
-  
-  echo "$existing" | jq --argjson agents "$agents_json" --arg profile "$profile" --arg now "$now" '
-    .agents = $agents |
+
+  # Merge: keep all prior-attempt entries, replace/add current-attempt entries
+  echo "$existing" | jq --argjson new_entries "$new_entries_json" \
+    --argjson cur_attempt "$cur_attempt" \
+    --arg profile "$profile" \
+    --arg now "$now" '
+    # Remove any existing entries for current attempt (will be replaced by new_entries)
+    (.agents // []) as $old_agents |
+    ($old_agents | map(select(.attempt != $cur_attempt))) as $prior_agents |
+    .agents = ($prior_agents + $new_entries) |
     .profile = $profile |
     .updated_at = $now
   ' > "$state_file"
@@ -740,19 +785,47 @@ foundry_state_set_planned_agents() {
 foundry_create_task_dir() {
   local task_text="$1"
   local slug="${2:-}"
+  local profile="${3:-}"
+  local run_id="${4:-}"
+  local worktree_path="${5:-}"
+  local resumed_from="${6:-}"
   [[ -n "$slug" ]] || slug=$(pipeline_slugify "$task_text")
   local task_dir
   task_dir=$(pipeline_task_dir_create "$slug" "foundry" "$task_text")
   mkdir -p "$(foundry_artifacts_dir "$task_dir")" "$(foundry_telemetry_dir "$task_dir")"
-  [[ -f "$(foundry_meta_file "$task_dir")" ]] || cat > "$(foundry_meta_file "$task_dir")" <<EOF
+
+  # 11.1: Write enriched meta.json with all required fields
+  if [[ ! -f "$(foundry_meta_file "$task_dir")" ]]; then
+    local branch_name=""
+    branch_name=$(git -C "${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}" branch --show-current 2>/dev/null || true)
+    [[ -z "$run_id" ]] && run_id=$(printf '%08x' $((RANDOM * RANDOM)) 2>/dev/null || date +%s | tail -c 8)
+    cat > "$(foundry_meta_file "$task_dir")" <<EOF
 {
   "workflow": "foundry",
   "task_slug": "${slug}",
-  "created_at": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  "created_at": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
+  "branch_name": $([ -n "$branch_name" ] && printf '"%s"' "$branch_name" || echo 'null'),
+  "worktree_path": $([ -n "$worktree_path" ] && printf '"%s"' "$worktree_path" || echo 'null'),
+  "profile": $([ -n "$profile" ] && printf '"%s"' "$profile" || echo 'null'),
+  "run_id": "${run_id}",
+  "resumed_from": $([ -n "$resumed_from" ] && printf '"%s"' "$resumed_from" || echo 'null')
 }
 EOF
+  fi
+
   [[ -f "$(foundry_state_path "$task_dir")" ]] || foundry_write_state "$task_dir" "pending" "" ""
   echo "$task_dir"
+}
+
+# 11.2: Update meta.json with resumed_from lineage when a task is resumed.
+foundry_meta_set_resumed_from() {
+  local task_dir="$1"
+  local original_task_id="$2"
+  local meta_file
+  meta_file=$(foundry_meta_file "$task_dir")
+  [[ -f "$meta_file" ]] || return 0
+  local tmp="${meta_file}.tmp"
+  jq --arg resumed_from "$original_task_id" '.resumed_from = $resumed_from' "$meta_file" > "$tmp" && mv "$tmp" "$meta_file"
 }
 
 # Ensure state.json exists for a task directory.
@@ -1042,6 +1115,7 @@ foundry_process_status() {
 }
 
 # Check if all agents in a task completed (summarizer done = pipeline finished).
+# 9.3: Filters by current attempt to avoid false positives from prior retry history.
 # Returns 0 if all agents done, 1 otherwise.
 _foundry_all_agents_done() {
   local task_dir="$1"
@@ -1049,8 +1123,18 @@ _foundry_all_agents_done() {
   [[ -f "$state_file" ]] || return 1
   
   local summarizer_done
-  summarizer_done=$(jq -r '[.agents[]? | select(.agent | endswith("summarizer")) | select(.status == "done")] | length' "$state_file" 2>/dev/null) || return 1
+  summarizer_done=$(jq -r '((.attempt // 1) | tonumber) as $cur | [.agents[]? | select(.agent | endswith("summarizer")) | select(.attempt == $cur) | select(.status == "done")] | length' "$state_file" 2>/dev/null) || return 1
   [[ "$summarizer_done" -gt 0 ]]
+}
+
+# Get the status of a specific agent for the current attempt.
+# 9.3: Filters by current attempt so retries don't show stale status.
+foundry_state_get_agent_status() {
+  local task_dir="$1"
+  local agent="$2"
+  local state_file="$task_dir/state.json"
+  [[ -f "$state_file" ]] || { echo ""; return 0; }
+  jq -r --arg agent "$agent" '((.attempt // 1) | tonumber) as $cur | first(.agents[]? | select(.agent == $agent and .attempt == $cur) | .status) // ""' "$state_file" 2>/dev/null || echo ""
 }
 
 # Cancel all in_progress tasks (e.g. when batch workers are stopped).
