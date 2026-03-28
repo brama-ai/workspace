@@ -424,7 +424,7 @@ _task_move_to_in_progress() {
       stop_reason=$(foundry_state_field "$TASK_DIR" stop_reason 2>/dev/null || echo "unknown")
       echo -e "${YELLOW}  Stop reason: $stop_reason${NC}"
       echo -e "${YELLOW}  See handoff.md for recovery instructions${NC}"
-      echo -e "${YELLOW}  Resume with: ./agentic-development/foundry.sh resume $(basename "$TASK_DIR")${NC}"
+      echo -e "${YELLOW}  Resume with: ./agentic-development/foundry resume $(basename "$TASK_DIR")${NC}"
       exit 1
     fi
     echo -e "${GREEN}✓ Preflight checks passed${NC}"
@@ -1937,8 +1937,8 @@ run_agent() {
         return 75  # Special return: caller handles this
       else
         # Pipeline paused
-        echo -e "${YELLOW}  Pipeline paused — use: foundry.sh answer ${TASK_SLUG:-<slug>}${NC}"
-        echo -e "${YELLOW}  Then resume with: foundry.sh resume-qa ${TASK_SLUG:-<slug>}${NC}"
+        echo -e "${YELLOW}  Pipeline paused — use: foundry answer ${TASK_SLUG:-<slug>}${NC}"
+        echo -e "${YELLOW}  Then resume with: foundry resume-qa ${TASK_SLUG:-<slug>}${NC}"
         return 75
       fi
     elif [[ $exit_code -eq 124 ]]; then
@@ -2900,8 +2900,8 @@ main() {
         fi
 
         echo -e "${YELLOW}Pipeline paused at agent: ${agent} (waiting for answers)${NC}"
-        echo -e "${YELLOW}Answer questions: ./agentic-development/foundry.sh answer ${TASK_SLUG:-<slug>}${NC}"
-        echo -e "${YELLOW}Resume pipeline:  ./agentic-development/foundry.sh resume-qa ${TASK_SLUG:-<slug>}${NC}"
+        echo -e "${YELLOW}Answer questions: ./agentic-development/foundry answer ${TASK_SLUG:-<slug>}${NC}"
+        echo -e "${YELLOW}Resume pipeline:  ./agentic-development/foundry resume-qa ${TASK_SLUG:-<slug>}${NC}"
         break
       fi
     else
@@ -3156,8 +3156,8 @@ main() {
     echo -e "${BLUE}Branch:${NC}  ${branch}"
     echo -e "${BLUE}Report:${NC}  ${report_file}"
     echo -e "${BLUE}Handoff:${NC} ${HANDOFF_FILE}"
-    echo -e "${YELLOW}Answer:${NC}  ./agentic-development/foundry.sh answer ${TASK_SLUG:-<slug>}"
-    echo -e "${YELLOW}Resume:${NC}  ./agentic-development/foundry.sh resume-qa ${TASK_SLUG:-<slug>}"
+    echo -e "${YELLOW}Answer:${NC}  ./agentic-development/foundry answer ${TASK_SLUG:-<slug>}"
+    echo -e "${YELLOW}Resume:${NC}  ./agentic-development/foundry resume-qa ${TASK_SLUG:-<slug>}"
     exit 75
   elif $failed; then
     emit_event "TASK_FAIL" "agent=${failed_agent}|duration=$(( total_duration / 60 ))m"

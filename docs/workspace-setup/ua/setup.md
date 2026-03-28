@@ -133,20 +133,20 @@ npm run build
 
 ```bash
 # Відкрити інтерактивний TUI монітор
-./agentic-development/foundry.sh
+./agentic-development/foundry
 
 # Або запустити headless воркери
-./agentic-development/foundry.sh headless
+./agentic-development/foundry headless
 
 # Перевірити стан
-./agentic-development/foundry.sh status
+./agentic-development/foundry status
 ```
 
 ### Поведінка оновлення монітору
 
 - Дані задач оновлюються кожні 3 секунди.
 - Статус процесів оновлюється асинхронно кожні 15 секунд, щоб TUI залишався чутливим під час зчитування стану воркерів.
-- Якщо потрібен миттєвий shell-знімок стану, запустіть `./agentic-development/foundry.sh status`.
+- Якщо потрібен миттєвий shell-знімок стану, запустіть `./agentic-development/foundry status`.
 
 ### Гарячі клавіші монітору
 
@@ -167,7 +167,7 @@ npm run build
 
 ```bash
 # Встановити 3 воркери
-FOUNDRY_WORKERS=3 ./agentic-development/foundry.sh headless
+FOUNDRY_WORKERS=3 ./agentic-development/foundry headless
 
 # Або регулювати в рантаймі через монітор: ] збільшити, [ зменшити
 ```
@@ -177,13 +177,13 @@ FOUNDRY_WORKERS=3 ./agentic-development/foundry.sh headless
 ### Створити задачу
 
 ```bash
-./agentic-development/foundry.sh task "Виправити CSS сторінки логіну"
+./agentic-development/foundry task "Виправити CSS сторінки логіну"
 ```
 
 ### Запустити E2E та автоматично створити задачі на виправлення
 
 ```bash
-./agentic-development/foundry.sh autotest 5 --start
+./agentic-development/foundry autotest 5 --start
 ```
 
 ## 7. Вирішення проблем

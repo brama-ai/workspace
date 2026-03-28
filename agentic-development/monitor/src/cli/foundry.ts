@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import { parseArgs } from "node:util";
 import { env, exit, cwd } from "node:process";
-import { join, basename } from "node:path";
+import { join, basename, dirname } from "node:path";
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { execSync, execFileSync } from "node:child_process";
 
 const VERSION = "2.0.0";
 const REPO_ROOT = env.REPO_ROOT || cwd();
@@ -49,22 +50,31 @@ import {
 import { emitEvent, initEventsLog } from "../state/events.js";
 import { cmdSupervisor } from "./supervisor.js";
 
+const SCRIPT_DIR = join(REPO_ROOT, "agentic-development");
+const LIB_DIR = join(SCRIPT_DIR, "lib");
+
+function runBashLib(script: string, args: string[] = []): number {
+  try {
+    execFileSync(join(LIB_DIR, script), args, {
+      stdio: "inherit",
+      env: { ...process.env, REPO_ROOT, PIPELINE_TASKS_ROOT: TASKS_ROOT },
+    });
+    return 0;
+  } catch (e: any) {
+    return e.status ?? 1;
+  }
+}
+
 function showHelp(): void {
   console.log(`
-foundry v${VERSION} - TypeScript Pipeline Orchestrator
+foundry v${VERSION} - Pipeline Orchestrator
 
 Usage:
-  foundry run "task description"
-  foundry run --task-file path/to/task.md
-  foundry status [slug]
-  foundry list
-  foundry counts
-  foundry preflight
-  foundry env-check [profile]
+  foundry <command> [args]
 
 Commands:
   run              Run a pipeline task
-  status           Show task status
+  status [slug]    Show task status
   list             List all tasks
   counts           Count tasks by status
   preflight        Run preflight checks
@@ -73,6 +83,15 @@ Commands:
   answer <slug>    Answer pending questions
   checkpoint       Show checkpoint summary
   supervisor       Autonomous runner (monitor + auto-fix + retry)
+  monitor          Open interactive TUI monitor
+  headless         Start background queue processing
+  stop             Stop running batch workers
+  batch [args]     Consume pending tasks in parallel
+  retry [args]     Retry failed tasks
+  stats [args]     Show pipeline statistics
+  cleanup [args]   Clean old runtime artifacts
+  setup            Initialize directories
+  e2e-autofix      Run E2E tests, create fix tasks
 
 Run Options:
   --task-file <path>     Read task from file
@@ -101,8 +120,8 @@ Examples:
   foundry status my-task
   foundry resume my-task
   foundry supervisor "Add feature" --poll 120 --retries 5
-  foundry supervisor --slug my-task
-  foundry list
+  foundry monitor
+  foundry headless
 `);
 }
 
@@ -361,19 +380,22 @@ function cmdCheckpoint(args: string[]): number {
 async function main(): Promise<void> {
   const [cmd, ...args] = process.argv.slice(2);
 
-  if (!cmd || cmd === "-h" || cmd === "--help") {
+  if (cmd === "-h" || cmd === "--help") {
     showHelp();
     exit(0);
   }
 
-  if (cmd === "-v" || cmd === "--version") {
+  // Default: open monitor (same as legacy foundry.sh behavior)
+  const effectiveCmd = cmd || "monitor";
+
+  if (effectiveCmd === "-v" || effectiveCmd === "--version") {
     console.log(`foundry v${VERSION}`);
     exit(0);
   }
 
   let exitCode = 0;
 
-  switch (cmd) {
+  switch (effectiveCmd) {
     case "run":
       exitCode = await cmdRun(args, {});
       break;
@@ -402,6 +424,70 @@ async function main(): Promise<void> {
     case "runner":
       exitCode = await cmdSupervisor(args);
       break;
+
+    // ── Legacy bash commands ────────────────────────────────
+    case "monitor": {
+      const monitorDir = join(SCRIPT_DIR, "monitor");
+      const distPath = join(monitorDir, "dist", "index.js");
+      try {
+        if (existsSync(distPath)) {
+          execFileSync("node", [distPath, TASKS_ROOT], { stdio: "inherit" });
+        } else {
+          execSync(`npx tsx "${join(monitorDir, "src", "index.tsx")}" "${TASKS_ROOT}"`, { stdio: "inherit" });
+        }
+      } catch (e: any) {
+        exitCode = e.status ?? 1;
+      }
+      break;
+    }
+    case "headless":
+    case "start": {
+      try {
+        execSync(`"${join(LIB_DIR, "foundry-common.sh")}" 2>/dev/null; true`, { stdio: "pipe" });
+      } catch {}
+      const desiredWorkers = env.FOUNDRY_WORKERS || "2";
+      try {
+        const pgrep = execSync("pgrep -f 'foundry-batch\\.sh'", { stdio: "pipe" }).toString().trim();
+        if (pgrep) {
+          console.log("Foundry headless already running");
+          break;
+        }
+      } catch {}
+      const runtimeDir = join(SCRIPT_DIR, "runtime", "logs");
+      mkdirSync(runtimeDir, { recursive: true });
+      const logFile = join(runtimeDir, "foundry-headless.log");
+      execSync(
+        `nohup "${join(LIB_DIR, "foundry-batch.sh")}" --workers ${desiredWorkers} --no-stop-on-failure --watch > "${logFile}" 2>&1 &`,
+        { stdio: "pipe", env: { ...process.env, REPO_ROOT, PIPELINE_TASKS_ROOT: TASKS_ROOT } },
+      );
+      console.log(`Foundry headless started (workers=${desiredWorkers})`);
+      console.log(`Log: ${logFile}`);
+      break;
+    }
+    case "stop":
+      try { execSync("pkill -f 'foundry-batch\\.sh'", { stdio: "pipe" }); } catch {}
+      console.log("Foundry headless workers stopped");
+      break;
+    case "batch":
+      exitCode = runBashLib("foundry-batch.sh", args);
+      break;
+    case "retry":
+      exitCode = runBashLib("foundry-retry.sh", args);
+      break;
+    case "stats":
+      exitCode = runBashLib("foundry-stats.sh", args);
+      break;
+    case "cleanup":
+      exitCode = runBashLib("foundry-cleanup.sh", args);
+      break;
+    case "setup":
+      exitCode = runBashLib("foundry-setup.sh", args);
+      break;
+    case "e2e-autofix":
+    case "autotest":
+      exitCode = runBashLib("foundry-e2e.sh", args);
+      break;
+
     default:
       console.error(`Unknown command: ${cmd}`);
       console.error("Run 'foundry --help' for usage");

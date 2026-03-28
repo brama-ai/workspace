@@ -7,7 +7,7 @@ Foundry is a **process manager for AI agents**, architecturally similar to PHP-F
 ```
 PHP-FPM                          Foundry
 ─────────────────────────────    ─────────────────────────────
-master process                   foundry.sh / foundry-ts CLI
+master process                   foundry / foundry CLI
 worker pool (php-fpm workers)    batch workers (foundry-batch.sh)
 request queue                    tasks/ directory (task pool)
 php script execution             agent execution (u-planner, u-coder, …)
@@ -235,8 +235,8 @@ Based on agent timeouts — if no new event appears within the threshold, the ag
 
 ```
 agentic-development/
-├── foundry.sh                  # Entry dispatcher (bash → TS routing)
-├── foundry-ts                  # TS CLI binary (compiled)
+├── foundry                  # Entry dispatcher (bash → TS routing)
+├── foundry               # Main CLI entrypoint
 ├── CONVENTIONS.md              # This file
 ├── lib/
 │   ├── foundry-common.sh       # Shared bash helpers (legacy)
@@ -273,6 +273,278 @@ agentic-development/
 
 ---
 
+## Testing
+
+### Methodology: Testing Trophy + State Machine Testing
+
+Foundry is a process manager — most logic is **state transitions** and **file I/O**, not pure computation. Classic unit test pyramid doesn't fit. We use the **Testing Trophy** approach:
+
+```
+          ╱╲
+         ╱E2E╲              Rare — runs real agents, costs $$
+        ╱──────╲
+       ╱Integration╲        ★ PRIMARY — real tmpdir, real state files
+      ╱──────────────╲
+     ╱   Unit tests   ╲     Pure functions — math, formatting, categorisation
+    ╱──────────────────╲
+   ╱   Static Analysis  ╲   TypeScript strict + build check
+  ╱────────────────────────╲
+```
+
+**Why not the test pyramid?**
+- We have few pure functions (unit) — most logic touches filesystem or processes
+- E2E (running real agents) costs real money and takes 10-60 minutes
+- Integration tests with real `tmpdir` give the highest confidence per test dollar
+
+### Framework: Vitest
+
+```bash
+npm test              # run all tests once
+npm run test:watch    # watch mode during development
+```
+
+Config: `monitor/vitest.config.ts` — globals enabled, test files in `src/__tests__/`.
+
+### Test tiers and what to test where
+
+#### Tier 1: Static Analysis (every change, zero cost)
+
+TypeScript strict mode catches type errors at build time. `npm run build` is the first gate.
+
+**Rule:** Every PR must pass `tsc` with zero errors. This is not optional.
+
+#### Tier 2: Unit Tests — pure logic (fast, no I/O)
+
+Test pure functions that take input and return output with no side effects.
+
+| What to unit test | Example |
+|-------------------|---------|
+| Error categorisation | `diagnose()` → given these events, returns `timeout` category |
+| Stall detection math | `checkStall()` → given idle 700s and threshold 600s, returns stalled |
+| Cost/token calculations | `calculateCost()` → given model + tokens, returns $ |
+| Duration formatting | `formatDuration(3661)` → `"1h 1m 1s"` |
+| Slug generation | `slugify("Hello World!")` → `"hello-world"` |
+| Summary status parsing | `getSummaryStatus()` → PASS / FAIL / UNKNOWN |
+| Agent timeout lookups | `getTimeout("u-coder")` → `3600` |
+
+**Pattern:**
+```typescript
+describe("diagnose", () => {
+  it("detects timeout from exit code 124", () => {
+    const events = [{ type: "AGENT_END", details: { exit_code: 124 } }];
+    const result = diagnose(taskDir, stateWithEvents(events));
+    expect(result.category).toBe("timeout");
+  });
+});
+```
+
+#### Tier 3: Integration Tests — state machine transitions (core value)
+
+Test that the system correctly transitions between states using **real filesystem** (tmpdir).
+This is the **primary test tier** — most test effort goes here.
+
+| What to integration test | Why |
+|--------------------------|-----|
+| Task lifecycle: pending → in_progress → completed | Core state machine — if this breaks, everything breaks |
+| Task lifecycle: in_progress → failed → retry → pending | Retry logic is critical for autonomous operation |
+| Supervisor: stall detection → worker restart | Supervisor must react correctly to stalls |
+| Supervisor: FAIL summary → fix proposal generation | The proposal must contain actionable information |
+| State file I/O: write state → read state → verify fields | JSON serialisation must round-trip correctly |
+| Events: emit → parse → verify | Event stream is the audit log |
+| Checkpoint: save → resume from correct agent | Resume must not re-run completed agents |
+| Handoff: write section → read section → verify | Inter-agent communication must preserve data |
+
+**Pattern — real tmpdir, no mocks:**
+```typescript
+describe("task lifecycle", () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "foundry-test-"));
+    process.env.PIPELINE_TASKS_ROOT = root;
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true });
+    delete process.env.PIPELINE_TASKS_ROOT;
+  });
+
+  it("pending → in_progress → completed with summary", () => {
+    // Arrange: create task in pending state
+    const taskDir = createTask(root, "test-task", { status: "pending" });
+
+    // Act: claim task
+    setStateStatus(taskDir, "in_progress", "worker-1");
+    const state1 = readTaskState(taskDir);
+    expect(state1?.status).toBe("in_progress");
+
+    // Act: complete with summary
+    setStateStatus(taskDir, "completed");
+    writeFileSync(join(taskDir, "summary.md"), "## Status: PASS\n...");
+
+    // Assert
+    const state2 = readTaskState(taskDir);
+    expect(state2?.status).toBe("completed");
+    expect(getSummaryStatus(taskDir)).toBe("PASS");
+  });
+
+  it("failed → retry increments attempt and resets to pending", () => {
+    const taskDir = createTask(root, "test-task", {
+      status: "failed",
+      attempt: 1,
+    });
+
+    // Act: retry
+    incrementAttempt(taskDir);
+    setStateStatus(taskDir, "pending");
+
+    // Assert
+    const state = readTaskState(taskDir);
+    expect(state?.status).toBe("pending");
+    expect(state?.attempt).toBe(2);
+  });
+});
+```
+
+**When to mock:**
+- `execSync` / `exec` for process spawning (agents, git) — we don't run real agents in tests
+- Time (`vi.useFakeTimers()`) for timeout/stall tests
+- **Never mock** the filesystem — use real tmpdir
+
+#### Tier 4: E2E Tests — full pipeline (rare, expensive)
+
+Run real agent pipeline end-to-end. These are expensive (agent calls cost $$) and slow (minutes).
+
+**When to run E2E:**
+- Before major releases
+- After changing agent executor or model fallback logic
+- Manually, with `--profile quick-fix` and cheapest models
+
+**NOT in CI** — too expensive and flaky (model availability, rate limits).
+
+### What MUST have tests
+
+Every module with decision logic must have tests. This is a hard rule.
+
+| Module | Required tests | Type |
+|--------|---------------|------|
+| `state/task-state-v2.ts` | All CRUD operations, status transitions | Integration |
+| `state/events.ts` | Emit + parse round-trip | Integration |
+| `pipeline/runner.ts` | Agent sequence, failure handling, HITL | Integration (mocked executor) |
+| `pipeline/checkpoint.ts` | Save/resume/getResumeAgent | Integration |
+| `pipeline/handoff.ts` | Read/write/update sections | Integration |
+| `agents/executor.ts` | Timeout, blacklist, fallback chain | Unit + Integration |
+| `agents/context-guard.ts` | Model family detection, thresholds | Unit |
+| `cli/supervisor.ts` | Stall detection, diagnosis, fix proposals | Unit + Integration |
+| `lib/format.ts` | All formatting functions | Unit |
+| `state/telemetry.ts` | Cost calculations per provider | Unit |
+| `infra/preflight.ts` | Check results for various environments | Integration |
+
+### What does NOT need tests
+
+- **Bash scripts** — tested manually or via E2E
+- **TUI components** (`App.tsx`) — visual, tested manually via `foundry monitor`
+- **CLI argument parsing** — tested implicitly by integration tests that call commands
+- **External tool wrappers** (git.ts) — thin wrappers, tested via integration
+
+### Test file naming and location
+
+```
+monitor/src/
+├── state/
+│   └── task-state-v2.ts
+├── cli/
+│   └── supervisor.ts
+└── __tests__/
+    ├── task-state-v2.test.ts    ← matches source module name
+    ├── supervisor.test.ts       ← matches source module name
+    └── helpers/                 ← shared test utilities (create below)
+        └── fixtures.ts          ← createTask(), createState(), etc.
+```
+
+**Rule:** test file name = source file name + `.test.ts`. One test file per source module.
+
+### Shared test helpers
+
+Extract common setup to `__tests__/helpers/fixtures.ts`:
+
+```typescript
+// __tests__/helpers/fixtures.ts
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
+export function createTestRoot(): string {
+  return mkdtempSync(join(tmpdir(), "foundry-test-"));
+}
+
+export function createTask(
+  root: string,
+  slug: string,
+  stateOverrides: Record<string, unknown> = {},
+): string {
+  const taskDir = join(root, `${slug}--foundry`);
+  mkdirSync(taskDir, { recursive: true });
+  const state = {
+    task_id: `${slug}--foundry`,
+    workflow: "foundry",
+    status: "pending",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    attempt: 1,
+    ...stateOverrides,
+  };
+  writeFileSync(join(taskDir, "state.json"), JSON.stringify(state, null, 2));
+  writeFileSync(join(taskDir, "task.md"), `# ${slug}\n\nTest task.`);
+  return taskDir;
+}
+
+export function appendEvent(taskDir: string, type: string, message: string): void {
+  const event = JSON.stringify({
+    timestamp: new Date().toISOString(),
+    type,
+    message,
+    step: null,
+  });
+  const { appendFileSync } = require("node:fs");
+  appendFileSync(join(taskDir, "events.jsonl"), event + "\n");
+}
+
+export function writeSummary(taskDir: string, status: "PASS" | "FAIL", content = ""): void {
+  writeFileSync(
+    join(taskDir, "summary.md"),
+    `# Summary\n\n## Загальний статус\n- **Статус:** ${status}\n\n${content}`,
+  );
+}
+```
+
+### Running tests
+
+```bash
+# All tests
+cd agentic-development/monitor && npm test
+
+# Specific module
+npx vitest run src/__tests__/supervisor.test.ts
+
+# Watch mode during development
+npm run test:watch
+
+# With coverage
+npx vitest run --coverage
+```
+
+### CI rule
+
+Every PR that modifies `monitor/src/` must:
+1. Pass `npm run build` (TypeScript compiles)
+2. Pass `npm test` (all tests green)
+3. Include tests for new logic (supervisor, new commands, new state transitions)
+
+No exceptions. A feature without tests is not done.
+
+---
+
 ## Writing New Foundry Code
 
 ### Checklist for new modules
@@ -283,15 +555,16 @@ agentic-development/
 4. **Use `emitEvent()`** for pipeline lifecycle — visible in events.jsonl
 5. **Error handling** — catch and log, never crash the pipeline silently
 6. **Types** — use existing interfaces from `task-state-v2.ts`, `runner.ts`
-7. **Test** — add to `__tests__/` if it has logic worth testing
+7. **Tests** — mandatory for any decision logic. See Testing section above
 
 ### Adding a new CLI command
 
 1. Create handler function in `cli/foundry.ts` or separate module in `cli/`
 2. Wire into the `switch(cmd)` in `main()`
 3. Add to `showHelp()` output
-4. Add to `foundry.sh` TS routing: `run|status|...|new-command)`
-5. Add to foundry.sh help text
+4. Add to `foundry` TS routing: `run|status|...|new-command)`
+5. Add to foundry help text
+6. **Add integration test** in `__tests__/<command>.test.ts`
 
 ### Adding a new agent
 
@@ -300,4 +573,5 @@ agentic-development/
 3. Add default fallback chain in `pipeline/runner.ts` DEFAULT_FALLBACKS
 4. Add stall threshold in `cli/supervisor.ts` AGENT_STALL_THRESHOLD
 5. Add to PROFILES in `cli/foundry.ts` if part of a profile
-6. Update this document
+6. **Add test** for new timeout/threshold in existing test files
+7. Update this document

@@ -6,8 +6,8 @@ Pipeline orchestration for AI agents — Foundry (queue-driven) and Ultraworks (
 
 ```
 agentic-development/
-├── foundry.sh            ← Main CLI (hybrid TS + Bash)
-├── foundry-ts            ← TypeScript CLI wrapper
+├── foundry            ← Main CLI (hybrid TS + Bash)
+├── foundry-legacy.sh    ← Legacy bash entrypoint (deprecated)
 ├── ultraworks.sh         ← Ultraworks CLI
 │
 ├── monitor/              ← TypeScript modules + React/Ink TUI
@@ -37,18 +37,18 @@ agentic-development/
 
 | Command | Technology | Purpose |
 |---------|-----------|---------|
-| `./foundry.sh run "task"` | TypeScript | Run pipeline task |
-| `./foundry.sh status` | TypeScript | Show task status |
-| `./foundry.sh list` | TypeScript | List all tasks |
-| `./foundry.sh counts` | TypeScript | Count tasks by status |
-| `./foundry.sh preflight` | TypeScript | Run preflight checks |
-| `./foundry.sh env-check` | TypeScript | Run environment checks |
-| `./foundry.sh resume <slug>` | TypeScript | Resume paused task |
-| `./foundry.sh checkpoint <slug>` | TypeScript | Show checkpoint summary |
-| `./foundry.sh monitor` | React/Ink | Interactive TUI |
-| `./foundry.sh headless` | Bash | Background queue processing |
-| `./foundry.sh batch` | Bash | Parallel worker manager |
-| `./foundry.sh stop` | Bash | Stop background workers |
+| `./foundry run "task"` | TypeScript | Run pipeline task |
+| `./foundry status` | TypeScript | Show task status |
+| `./foundry list` | TypeScript | List all tasks |
+| `./foundry counts` | TypeScript | Count tasks by status |
+| `./foundry preflight` | TypeScript | Run preflight checks |
+| `./foundry env-check` | TypeScript | Run environment checks |
+| `./foundry resume <slug>` | TypeScript | Resume paused task |
+| `./foundry checkpoint <slug>` | TypeScript | Show checkpoint summary |
+| `./foundry monitor` | React/Ink | Interactive TUI |
+| `./foundry headless` | Bash | Background queue processing |
+| `./foundry batch` | Bash | Parallel worker manager |
+| `./foundry stop` | Bash | Stop background workers |
 
 ## TypeScript Modules (2945 lines)
 
@@ -110,7 +110,7 @@ agentic-development/
 | `foundry-batch.sh` | 297 | 0 | Parallel worker manager |
 | `foundry-e2e.sh` | 284 | 2 | E2E → task creation |
 | `ultraworks-postmortem-summary.sh` | 138 | 0 | Summary generation |
-| `foundry.sh` | 134 | 0 | Hybrid CLI (TS + Bash) |
+| `foundry` | 134 | 0 | Hybrid CLI (TS + Bash) |
 | `foundry-telegram.sh` | 107 | 0 | Telegram HITL notifications |
 | `foundry-retry.sh` | 78 | 0 | Retry failed tasks |
 | `foundry-stats.sh` | 70 | 0 | Task statistics |
@@ -274,7 +274,7 @@ Set `FOUNDRY_DEBUG=true` for detailed logging across all modules.
 
 ```bash
 # Enable debug for all commands
-FOUNDRY_DEBUG=true ./foundry.sh run "task description"
+FOUNDRY_DEBUG=true ./foundry run "task description"
 
 # Or set in .env.local (auto-detected)
 echo "FOUNDRY_DEBUG=true" >> .env.local
@@ -300,7 +300,7 @@ echo "FOUNDRY_DEBUG=true" >> .env.local
 
 ```bash
 # Process hangs — find what's running
-./foundry.sh status                           # TS: task counts
+./foundry status                           # TS: task counts
 ps aux | grep -E "foundry|opencode"           # Processes
 
 # Task failed — check events
@@ -313,7 +313,7 @@ jq '.agents' tasks/<slug>--foundry/state.json
 opencode run --agent u-doctor "Diagnose current Foundry state"
 
 # Full diagnostics
-FOUNDRY_DEBUG=true ./foundry.sh run "task" 2>debug.log
+FOUNDRY_DEBUG=true ./foundry run "task" 2>debug.log
 ```
 
 ### Code Conventions
@@ -357,28 +357,28 @@ Remaining Python (4 calls):
 
 ```bash
 # TypeScript commands (fast, no Python)
-./foundry.sh run "task description"        # Run pipeline
-./foundry.sh run --profile quick-fix "fix" # Use specific profile
-./foundry.sh run --task-file task.md       # Read task from file
-./foundry.sh run --only u-validator        # Run single agent
-./foundry.sh status [slug]                 # Show task status
-./foundry.sh list                          # List all tasks
-./foundry.sh counts                        # Count by status
-./foundry.sh preflight                     # Run preflight checks
-./foundry.sh env-check [profile]           # Check environment
-./foundry.sh resume <slug>                 # Resume paused task
-./foundry.sh checkpoint <slug>             # Show checkpoint summary
+./foundry run "task description"        # Run pipeline
+./foundry run --profile quick-fix "fix" # Use specific profile
+./foundry run --task-file task.md       # Read task from file
+./foundry run --only u-validator        # Run single agent
+./foundry status [slug]                 # Show task status
+./foundry list                          # List all tasks
+./foundry counts                        # Count by status
+./foundry preflight                     # Run preflight checks
+./foundry env-check [profile]           # Check environment
+./foundry resume <slug>                 # Resume paused task
+./foundry checkpoint <slug>             # Show checkpoint summary
 
 # Bash commands (legacy)
-./foundry.sh monitor                       # Interactive TUI
-./foundry.sh headless                      # Background queue
-./foundry.sh stop                          # Stop workers
-./foundry.sh batch [--workers N]           # Parallel workers
-./foundry.sh retry                         # Retry failed tasks
-./foundry.sh stats                         # Pipeline statistics
-./foundry.sh cleanup                       # Clean old artifacts
-./foundry.sh setup                         # Initialize directories
-./foundry.sh e2e-autofix [--smoke]         # E2E → fix tasks
+./foundry monitor                       # Interactive TUI
+./foundry headless                      # Background queue
+./foundry stop                          # Stop workers
+./foundry batch [--workers N]           # Parallel workers
+./foundry retry                         # Retry failed tasks
+./foundry stats                         # Pipeline statistics
+./foundry cleanup                       # Clean old artifacts
+./foundry setup                         # Initialize directories
+./foundry e2e-autofix [--smoke]         # E2E → fix tasks
 ```
 
 ## Ultraworks
@@ -420,13 +420,13 @@ Reports are saved in `doctor/root-cause-*.md`. When 3+ reports show the same iss
 ## Setup
 
 ```bash
-./foundry.sh setup                         # Initialize directories
-./foundry.sh preflight                     # Verify tools
-./foundry.sh env-check                     # Verify environment
+./foundry setup                         # Initialize directories
+./foundry preflight                     # Verify tools
+./foundry env-check                     # Verify environment
 ```
 
 ## Compatibility
 
 - `make builder-setup` remains as a legacy alias
-- Public entrypoints: `foundry.sh` and `ultraworks.sh` only
+- Public entrypoints: `foundry` and `ultraworks.sh` only
 - Scripts under `lib/` are internal — do not call directly

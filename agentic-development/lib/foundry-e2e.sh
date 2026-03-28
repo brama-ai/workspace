@@ -27,9 +27,9 @@ JSON_REPORT="$REPORT_DIR/e2e-autofix-${TIMESTAMP}.json"
 show_help() {
   cat <<'EOF'
 Usage:
-  ./agentic-development/foundry.sh e2e-autofix [--smoke] [--limit N] [--start]
-  ./agentic-development/foundry.sh e2e-autofix --from-report path/to/report.json [--limit N] [--start]
-  ./agentic-development/foundry.sh autotest [N] [--smoke] [--start]
+  ./agentic-development/foundry e2e-autofix [--smoke] [--limit N] [--start]
+  ./agentic-development/foundry e2e-autofix --from-report path/to/report.json [--limit N] [--start]
+  ./agentic-development/foundry autotest [N] [--smoke] [--start]
 
 Options:
   --smoke              Run only @smoke E2E tests
@@ -234,7 +234,7 @@ main() {
   echo "Created ${created} Foundry fix task(s)."
 
   if [[ "$AUTO_START" == true ]]; then
-    "$REPO_ROOT/agentic-development/foundry.sh" headless
+    "$REPO_ROOT/agentic-development/foundry" headless
   fi
 }
 

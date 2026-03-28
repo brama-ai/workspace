@@ -17,9 +17,9 @@ show_help() {
 Foundry retry
 
 Usage:
-  ./agentic-development/foundry.sh retry
-  ./agentic-development/foundry.sh retry --list
-  ./agentic-development/foundry.sh retry <slug>
+  ./agentic-development/foundry retry
+  ./agentic-development/foundry retry --list
+  ./agentic-development/foundry retry <slug>
 EOF
 }
 

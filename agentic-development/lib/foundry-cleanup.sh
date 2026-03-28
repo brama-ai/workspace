@@ -17,7 +17,7 @@ while [[ $# -gt 0 ]]; do
     --apply) APPLY=true; shift ;;
     --days) MAX_DAYS="$2"; shift 2 ;;
     --help|-h)
-      echo "Usage: ./agentic-development/foundry.sh cleanup [--apply] [--days N]"
+      echo "Usage: ./agentic-development/foundry cleanup [--apply] [--days N]"
       exit 0
       ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;

@@ -79,7 +79,7 @@ export function archiveTask(taskDir: string): string {
 export function findRepoRoot(): string {
   let dir = process.cwd();
   while (dir !== "/") {
-    if (existsSync(join(dir, "agentic-development", "foundry.sh"))) return dir;
+    if (existsSync(join(dir, "agentic-development", "foundry"))) return dir;
     dir = join(dir, "..");
   }
   return process.cwd();
@@ -149,7 +149,7 @@ function runQuick(cmd: string, cwd: string): CmdResult {
 // ── Foundry actions ─────────────────────────────────────────────
 
 function foundryPath(repoRoot: string): string {
-  return join(repoRoot, "agentic-development", "foundry.sh");
+  return join(repoRoot, "agentic-development", "foundry");
 }
 
 export function startWorkers(repoRoot: string): CmdResult {

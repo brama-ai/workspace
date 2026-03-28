@@ -133,20 +133,20 @@ npm run build
 
 ```bash
 # Open the interactive TUI monitor
-./agentic-development/foundry.sh
+./agentic-development/foundry
 
 # Or start headless workers
-./agentic-development/foundry.sh headless
+./agentic-development/foundry headless
 
 # Check status
-./agentic-development/foundry.sh status
+./agentic-development/foundry status
 ```
 
 ### Monitor refresh behavior
 
 - Task data refreshes every 3 seconds.
 - Process status refreshes asynchronously every 15 seconds so the TUI stays responsive while worker state is being sampled.
-- For an immediate shell-level snapshot, run `./agentic-development/foundry.sh status`.
+- For an immediate shell-level snapshot, run `./agentic-development/foundry status`.
 
 ### Monitor keyboard shortcuts
 
@@ -167,7 +167,7 @@ npm run build
 
 ```bash
 # Set desired workers to 3
-FOUNDRY_WORKERS=3 ./agentic-development/foundry.sh headless
+FOUNDRY_WORKERS=3 ./agentic-development/foundry headless
 
 # Or adjust at runtime via monitor: ] to increase, [ to decrease
 ```
@@ -177,13 +177,13 @@ Each worker gets its own git worktree in `.pipeline-worktrees/worker-N/` and ato
 ### Create a task
 
 ```bash
-./agentic-development/foundry.sh task "Fix login page CSS"
+./agentic-development/foundry task "Fix login page CSS"
 ```
 
 ### Run E2E and auto-create fix tasks
 
 ```bash
-./agentic-development/foundry.sh autotest 5 --start
+./agentic-development/foundry autotest 5 --start
 ```
 
 ## 7. Troubleshooting

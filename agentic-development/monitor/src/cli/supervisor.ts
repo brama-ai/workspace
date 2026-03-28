@@ -97,7 +97,21 @@ function getLastEvents(taskDir: string, n = 5): PipelineEvent[] {
     const lines = readFileSync(eventsPath, "utf-8").trim().split("\n");
     return lines
       .slice(-n)
-      .map((l) => parseEventLine(l))
+      .map((l) => {
+        // Try pipe-delimited format first (emitEvent format)
+        const piped = parseEventLine(l);
+        if (piped) return piped;
+        // Fallback: JSON format (task events written by bash/appendEvent)
+        try {
+          const json = JSON.parse(l);
+          return {
+            ts: json.timestamp ?? "",
+            epoch: json.timestamp ? Math.floor(new Date(json.timestamp).getTime() / 1000) : 0,
+            type: json.type ?? "UNKNOWN",
+            details: { message: json.message ?? "", step: json.step ?? "" },
+          } as PipelineEvent;
+        } catch { return null; }
+      })
       .filter(Boolean) as PipelineEvent[];
   } catch {
     return [];
@@ -128,27 +142,32 @@ function getSecondsSinceLastActivity(taskDir: string): number {
   return 0;
 }
 
-function getTotalCost(state: TaskState): number {
+/** @internal exported for testing */
+export function getTotalCost(state: TaskState): number {
   if (!state.agents) return 0;
   return Object.values(state.agents).reduce((sum, a) => sum + (a.cost ?? 0), 0);
 }
 
-function getFailedAgents(state: TaskState): string[] {
+/** @internal exported for testing */
+export function getFailedAgents(state: TaskState): string[] {
   if (!state.agents) return [];
   return Object.entries(state.agents)
     .filter(([, a]) => a.status === "failed")
     .map(([name]) => name);
 }
 
-function getSummaryStatus(taskDir: string): "PASS" | "FAIL" | "UNKNOWN" | "NO_SUMMARY" {
+/** @internal exported for testing */
+export function getSummaryStatus(taskDir: string): "PASS" | "FAIL" | "UNKNOWN" | "NO_SUMMARY" {
   const summaryPath = join(taskDir, "summary.md");
   if (!existsSync(summaryPath)) return "NO_SUMMARY";
   try {
     const content = readFileSync(summaryPath, "utf-8");
     if (!content.trim()) return "NO_SUMMARY";
-    if (/(?:статус|status)\s*[:\-—]*\s*PASS/i.test(content)) return "PASS";
-    if (/(?:статус|status)\s*[:\-—]*\s*FAIL/i.test(content)) return "FAIL";
-    if (/completed successfully/i.test(content)) return "PASS";
+    // Strip markdown bold markers before matching
+    const plain = content.replace(/\*{1,2}/g, "");
+    if (/(?:статус|status)\s*[:\-—]*\s*PASS/i.test(plain)) return "PASS";
+    if (/(?:статус|status)\s*[:\-—]*\s*FAIL/i.test(plain)) return "FAIL";
+    if (/completed successfully/i.test(plain)) return "PASS";
     return "UNKNOWN";
   } catch {
     return "NO_SUMMARY";
@@ -182,7 +201,7 @@ function workersAlive(): boolean {
 function startWorkers(): void {
   try {
     execSync(
-      `${join(REPO_ROOT, "agentic-development", "foundry.sh")} headless`,
+      `${join(REPO_ROOT, "agentic-development", "foundry")} headless`,
       { stdio: "inherit", timeout: 10_000 },
     );
   } catch {}
@@ -204,7 +223,7 @@ function removeStaleLock(taskDir: string): boolean {
 
 // ── Error categorisation ──────────────────────────────────────────
 
-type ErrorCategory =
+export type ErrorCategory =
   | "timeout"
   | "rate_limit"
   | "git_conflict"
@@ -222,13 +241,14 @@ type FixAction =
   | "retry_with_split"
   | "manual";
 
-interface Diagnosis {
+export interface Diagnosis {
   category: ErrorCategory;
   action: FixAction;
   detail: string;
 }
 
-function diagnose(taskDir: string, state: TaskState): Diagnosis {
+/** @internal exported for testing */
+export function diagnose(taskDir: string, state: TaskState): Diagnosis {
   const events = getLastEvents(taskDir, 20);
   const evText = events.map((e) => `${e.type} ${e.details?.message ?? ""}`).join("\n");
   const failed = getFailedAgents(state);
@@ -281,14 +301,14 @@ async function applyFixAndRetry(
       log("Cleaning stale locks...");
       removeStaleLock(taskDir);
       try {
-        execSync(join(REPO_ROOT, "agentic-development", "foundry.sh") + " stop", { stdio: "pipe" });
+        execSync(join(REPO_ROOT, "agentic-development", "foundry") + " stop", { stdio: "pipe" });
       } catch {}
       await sleep(5_000);
       break;
     case "fix_env":
       warn("Preflight failure — running setup...");
       try {
-        execSync(join(REPO_ROOT, "agentic-development", "foundry.sh") + " setup", { stdio: "pipe" });
+        execSync(join(REPO_ROOT, "agentic-development", "foundry") + " setup", { stdio: "pipe" });
       } catch {}
       break;
     case "retry_with_split":
@@ -401,13 +421,14 @@ function analyzeFail(taskDir: string, state: TaskState): string {
 
 // ── Stall check ───────────────────────────────────────────────────
 
-interface StallResult {
+export interface StallResult {
   stalled: boolean;
   idleSec: number;
   threshold: number;
 }
 
-function checkStall(taskDir: string, status: string, step: string | null): StallResult {
+/** @internal exported for testing */
+export function checkStall(taskDir: string, status: string, step: string | null): StallResult {
   const idleSec = getSecondsSinceLastActivity(taskDir);
   let threshold: number;
 
@@ -593,7 +614,7 @@ export async function cmdSupervisor(args: string[]): Promise<number> {
             }
           }
         }
-        log("Answer via monitor or: foundry.sh monitor → Enter on task");
+        log("Answer via monitor or: foundry monitor → Enter on task");
         break;
       }
 

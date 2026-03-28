@@ -50,12 +50,12 @@ A task is considered **successfully completed** when:
 Determine the task description from the user's request. Launch Foundry:
 
 ```bash
-./agentic-development/foundry.sh run "<task description>"
+./agentic-development/foundry run "<task description>"
 ```
 
 If the user specifies a profile, add `--profile <profile>`:
 ```bash
-./agentic-development/foundry.sh run --profile <profile> "<task description>"
+./agentic-development/foundry run --profile <profile> "<task description>"
 ```
 
 Capture the task slug from the output. The slug is the directory name under `tasks/` (format: `<slug>--foundry`).
@@ -120,7 +120,7 @@ cat tasks/<slug>--foundry/artifacts/<failed-agent>/*.log 2>/dev/null | tail -50
 | **Lock contention** | `.claim.lock` or `.batch.lock` stale | Remove stale lock: `rm tasks/<slug>--foundry/.claim.lock` |
 | **Preflight failure** | `stopped` with stop_reason | Fix the precondition (service down, missing tool), then restart |
 | **Agent logic error** | Agent produced wrong output, tests fail | Read the agent's log, understand what went wrong. If it's a pipeline config issue → fix and restart. If it's a genuine task complexity issue → report to user |
-| **Zombie process** | `zombie` in events, stale worker | `./agentic-development/foundry.sh stop` then restart |
+| **Zombie process** | `zombie` in events, stale worker | `./agentic-development/foundry stop` then restart |
 
 #### 3.3 Apply Fix & Restart
 
@@ -128,10 +128,10 @@ After fixing the issue:
 
 ```bash
 # Retry (resets to pending, increments attempt)
-./agentic-development/foundry.sh retry <slug>
+./agentic-development/foundry retry <slug>
 
 # OR restart headless workers if they died
-./agentic-development/foundry.sh headless
+./agentic-development/foundry headless
 ```
 
 Then return to **Step 2** (monitor loop).
@@ -164,12 +164,12 @@ Supervisor mode is the fully autonomous version. It handles everything: launch, 
 ### Option A: Use the runner script directly
 
 ```bash
-./agentic-development/foundry.sh runner "<task description>" --profile standard --poll 180 --retries 3
+./agentic-development/foundry runner "<task description>" --profile standard --poll 180 --retries 3
 ```
 
 For an existing task:
 ```bash
-./agentic-development/foundry.sh runner --slug <slug> --poll 180 --retries 3
+./agentic-development/foundry runner --slug <slug> --poll 180 --retries 3
 ```
 
 ### Option B: Supervisor loop in Claude Code (preferred — smarter diagnosis)
@@ -179,7 +179,7 @@ When the user requests supervisor mode, follow this enhanced loop:
 #### S1 — Launch
 
 ```bash
-./agentic-development/foundry.sh run "<task description>" --profile <profile>
+./agentic-development/foundry run "<task description>" --profile <profile>
 ```
 
 Note the task slug from the created directory.
@@ -204,14 +204,14 @@ When status is `failed` or `stopped`:
 2. **Categorize** — timeout / rate_limit / git_conflict / zombie / agent_error
 3. **Fix automatically:**
    - **Stale lock** → `rm .claim.lock`
-   - **Zombie** → `./agentic-development/foundry.sh stop && sleep 5`
+   - **Zombie** → `./agentic-development/foundry stop && sleep 5`
    - **Rate limit** → wait 60s
    - **Timeout** → retry (fallback models will be used)
    - **Git conflict** → report to user (cannot auto-fix)
 4. **Retry:**
    ```bash
-   ./agentic-development/foundry.sh retry <slug>
-   ./agentic-development/foundry.sh headless  # ensure workers running
+   ./agentic-development/foundry retry <slug>
+   ./agentic-development/foundry headless  # ensure workers running
    ```
 5. Return to S2
 
@@ -222,8 +222,8 @@ When `summary.md` exists but contains `FAIL`:
 1. Read the full summary
 2. Extract "Труднощі / Difficulties" and "Рекомендації / Recommendations" sections
 3. **Create fix proposal** — analyze what failed and propose specific next steps:
-   - PHPStan errors → `foundry.sh run --only u-validator "Fix PHPStan errors"`
-   - Test failures → `foundry.sh run --only u-tester "Fix test failures"`
+   - PHPStan errors → `foundry run --only u-validator "Fix PHPStan errors"`
+   - Test failures → `foundry run --only u-tester "Fix test failures"`
    - Timeout → suggest splitting task or using `--profile quick-fix`
    - Git conflicts → show branch name, suggest manual merge
 4. Write proposal to `tasks/<slug>--foundry/fix-proposal.md`
@@ -241,7 +241,7 @@ When `summary.md` exists with `PASS`:
 
 If the same status + step persists for more than 10 consecutive polls (30 minutes):
 - Check if workers are alive: `pgrep -f 'foundry-batch\.sh'`
-- If no workers → restart: `./agentic-development/foundry.sh headless`
+- If no workers → restart: `./agentic-development/foundry headless`
 - If workers alive but stuck → check for stale locks, zombie processes
 - Report to user after 1 hour of stall
 
@@ -249,40 +249,214 @@ If the same status + step persists for more than 10 consecutive polls (30 minute
 
 ## Important Notes
 
-- **Do NOT modify task files** (task.md, state.json) directly — always use foundry.sh commands
-- **Do NOT kill agent processes** manually — use `foundry.sh stop`
+- **Do NOT modify task files** (task.md, state.json) directly — always use foundry commands
+- **Do NOT kill agent processes** manually — use `foundry stop`
 - **Do NOT push branches** — leave that to the user
 - The pipeline runs in the background — you can do other work while monitoring
 - If the user asks about progress mid-monitoring, read the latest state and report
 - Foundry manages its own git branches — do not interfere with git operations during a run
 
-## Monitoring Command Quick Reference
+---
+
+## Observability & Debugging
+
+Foundry has two parallel execution paths with separate log sources. Always check both.
+
+### Two Execution Paths
+
+| Path | Entry point | State management | Logs |
+|------|------------|------------------|------|
+| **TS runner** (`foundry run`) | `monitor/src/cli/run.ts` → `runner.ts` → `executor.ts` | No state.json — runs agents sequentially in-process | Runtime logs + per-agent logs |
+| **Bash batch** (`foundry headless/batch`) | `lib/foundry-batch.sh` → `lib/foundry-run.sh` | Full state.json + events.jsonl in task dir | Task artifacts + debug logs |
+
+**Key difference:** `foundry run` does NOT write state.json or task events.jsonl — it runs agents directly via the TS executor. Only the bash batch path writes task-level state files.
+
+### Log Locations (Priority Order for Debugging)
+
+#### 1. Runtime Log (always check first)
 
 ```bash
-# Task status
-cat tasks/<slug>--foundry/state.json | jq .status
+# Today's runtime log — ALL model calls, process lifecycle, pipeline events
+cat agentic-development/runtime/logs/foundry-runtime-$(date +%Y-%m-%d).log | python3 -m json.tool
+```
 
-# Current agent
-cat tasks/<slug>--foundry/state.json | jq .current_step
+**Format:** JSONL, one entry per line. Key fields: `ts`, `level`, `event`, `agent`, `model`.
 
-# Cost so far
-cat tasks/<slug>--foundry/state.json | jq '[.agents[]?.cost // 0] | add'
+**Events logged here:**
+| Event | When | Key fields |
+|-------|------|------------|
+| `pipeline_start` | Pipeline begins | `branch`, `agents`, `profile`, `pid` |
+| `pipeline_end` | Pipeline finishes | `success`, `duration`, `totalCost`, `failedAgent` |
+| `agent_start` | Agent begins | `agent`, `task` |
+| `agent_end` | Agent finishes | `agent`, `status`, `duration`, `cost`, `exitCode` |
+| `agent_fallback` | Switching to next model | `agent`, `attempt`, `modelIndex`, `model`, `totalModels` |
+| `model_call_started` | Model invoked | `agent`, `model`, `attempt`, `timeout` |
+| `model_call_success` | Model succeeded | `agent`, `model`, `duration` |
+| `model_call_error` | Model failed | `agent`, `model`, `exitCode`, `duration`, `reason` |
+| `model_blacklisted` | Model temp-banned | `model`, `ttlSeconds`, `reason`, `exitCode` |
+| `process_spawned` | Agent process started | `agent`, `pid`, `command`, `timeout` |
+| `process_timeout` | Timeout reached | `agent`, `pid`, `timeout`, `signal` |
+| `process_killed` | SIGKILL sent | `agent`, `pid`, `signal`, `reason` |
+| `process_exited` | Process exited | `agent`, `pid`, `exitCode`, `logFile` |
 
-# All events
-cat tasks/<slug>--foundry/events.jsonl | jq -c '{type, message, step}'
+**Quick diagnostics:**
+```bash
+# What's running right now?
+grep 'process_spawned\|process_exited' agentic-development/runtime/logs/foundry-runtime-$(date +%Y-%m-%d).log | tail -10
 
-# Handoff progress
-cat tasks/<slug>--foundry/handoff.md
+# All errors today
+grep '"level":"ERROR"\|"level":"WARN"' agentic-development/runtime/logs/foundry-runtime-$(date +%Y-%m-%d).log | tail -20
 
-# Summary (success check)
-cat tasks/<slug>--foundry/summary.md
+# Timeline of a specific agent
+grep '"agent":"u-coder"' agentic-development/runtime/logs/foundry-runtime-$(date +%Y-%m-%d).log
+```
 
-# Active workers
+#### 2. Per-Agent Logs (detailed output)
+
+```bash
+# Agent stdout/stderr captured here
+ls agentic-development/runtime/logs/*_u-coder*.log
+
+# Agent events (JSON lines from opencode)
+ls agentic-development/runtime/logs/*_u-coder*_events.jsonl
+```
+
+**Format:** `{timestamp}_{agentname}.log` (text) and `{timestamp}_{agentname}_events.jsonl` (JSON).
+
+The events.jsonl contains the agent's internal steps: tool calls, file reads, edits, etc. Useful for understanding what the agent actually did.
+
+#### 3. Task Directory Artifacts (bash batch path only)
+
+```bash
+TASK=tasks/<slug>--foundry
+
+# Task state — status, current_step, attempt, branch
+cat $TASK/state.json | python3 -m json.tool
+
+# Pipeline events — pipe-separated format
+cat $TASK/events.jsonl
+
+# Inter-agent communication
+cat $TASK/handoff.md
+
+# Final result
+cat $TASK/summary.md
+
+# Per-agent telemetry (tokens, cost, duration)
+cat $TASK/artifacts/telemetry/*.json | python3 -m json.tool
+
+# Full agent session dump (messages, diffs)
+ls $TASK/artifacts/*.session.json
+```
+
+#### 4. Debug Log (verbose, opt-in)
+
+```bash
+# Enable: set FOUNDRY_DEBUG=true in .env
+cat agentic-development/runtime/logs/foundry-debug.log | tail -50
+```
+
+Contains bash-level debug_log entries: process spawning, stall detection, git operations, model swaps.
+
+#### 5. Process Status (live)
+
+```bash
+# Active opencode agent processes
+ps aux | grep 'opencode run' | grep -v grep | grep -v defunct
+
+# Active foundry batch workers
+ps aux | grep foundry-batch | grep -v grep
+
+# Active foundry-run.sh sessions
 ps aux | grep foundry-run | grep -v grep
 
-# Pipeline-wide status
-./agentic-development/foundry.sh status
+# Zombie processes (cleanup needed)
+ps aux | grep -E 'opencode|foundry' | grep defunct
 
-# Runner (supervisor in terminal)
-./agentic-development/foundry.sh runner "task" --poll 180 --retries 3
+# Stale locks
+find tasks/ -name "*.lock" -mmin +30 2>/dev/null
+```
+
+### Debugging Common Issues
+
+#### Task directory empty (no state.json)
+
+**Cause:** Using TS runner path (`foundry run`) — it doesn't write state.json.
+
+**How to debug:**
+1. Check runtime log for pipeline_start/agent_start events
+2. Check `ps aux | grep opencode` for running agent processes
+3. Check per-agent log files in `agentic-development/runtime/logs/`
+
+#### Pipeline seems stuck
+
+**Check sequence:**
+```bash
+# 1. Is the process alive?
+ps aux | grep 'opencode run' | grep -v grep | grep -v defunct
+
+# 2. When was last activity?
+tail -5 agentic-development/runtime/logs/foundry-runtime-$(date +%Y-%m-%d).log
+
+# 3. Is the agent writing output?
+ls -la agentic-development/runtime/logs/*_events.jsonl | tail -3
+
+# 4. Check for zombies
+ps aux | grep defunct | grep -E 'opencode|foundry'
+```
+
+#### Model keeps failing / all models exhausted
+
+```bash
+# Check blacklist
+cat .foundry-blacklist.json 2>/dev/null | python3 -m json.tool
+
+# Check model errors
+grep 'model_call_error' agentic-development/runtime/logs/foundry-runtime-$(date +%Y-%m-%d).log
+
+# Clear blacklist to retry
+rm .foundry-blacklist.json 2>/dev/null
+```
+
+#### Agent produced wrong output
+
+```bash
+# Read agent's full event stream
+cat agentic-development/runtime/logs/*_u-coder_events.jsonl | python3 -c "
+import sys, json
+for line in sys.stdin:
+    try:
+        e = json.loads(line)
+        if e.get('type') in ('tool_use', 'text', 'error'):
+            print(json.dumps(e, indent=2)[:200])
+    except: pass
+" | head -100
+```
+
+### Monitoring Quick Reference
+
+```bash
+# === STATUS ===
+cat tasks/<slug>--foundry/state.json | jq .status                      # Task state (batch path)
+./agentic-development/foundry status                                 # Pipeline-wide status
+
+# === RUNTIME LOG (always available) ===
+tail -20 agentic-development/runtime/logs/foundry-runtime-$(date +%Y-%m-%d).log  # Recent events
+grep 'process_spawned\|process_exited' agentic-development/runtime/logs/foundry-runtime-$(date +%Y-%m-%d).log | tail -5  # Process lifecycle
+
+# === TASK ARTIFACTS (batch path) ===
+cat tasks/<slug>--foundry/handoff.md                                    # Handoff progress
+cat tasks/<slug>--foundry/summary.md                                    # Summary (success check)
+cat tasks/<slug>--foundry/events.jsonl                                  # Task events
+
+# === PROCESSES ===
+ps aux | grep 'opencode run' | grep -v grep | grep -v defunct          # Active agents
+ps aux | grep foundry-batch | grep -v grep                              # Batch workers
+
+# === COST ===
+cat tasks/<slug>--foundry/state.json | jq '[.agents[]?.cost // 0] | add'   # Task cost (batch)
+cat agentic-development/runtime/logs/usage-tracker.jsonl | tail -5      # Usage tracking
+
+# === SUPERVISOR (terminal) ===
+./agentic-development/foundry runner "task" --poll 180 --retries 3
 ```

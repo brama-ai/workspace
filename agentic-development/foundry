@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 #
-# foundry-ts - TypeScript pipeline wrapper
-# Calls the TypeScript CLI directly via tsx
+# foundry - Pipeline Orchestrator (TypeScript CLI)
+#
+# Single entrypoint for all foundry commands.
+# All routing (TS commands + legacy bash) is handled in foundry.ts.
 #
 set -euo pipefail
 
