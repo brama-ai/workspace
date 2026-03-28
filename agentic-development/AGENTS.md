@@ -510,7 +510,7 @@ Simple test to verify reviewer agent works.
 Create file test.txt with content 'hello'." > /tmp/test-reviewer.md
 
 # 3. Запуск pipeline
-./agentic-development/foundry.sh run --task-file /tmp/test-reviewer.md
+./agentic-development/foundry run --task-file /tmp/test-reviewer.md
 
 # 4. Перевірка результату
 cat .opencode/pipeline/handoff.md  # Чи є секція Reviewer?
@@ -705,7 +705,7 @@ opencode models
 ./agentic-development/agents-config.sh strategy free_only
 
 # Тест pipeline з одним агентом
-./agentic-development/foundry.sh run --only coder "Test task"
+./agentic-development/foundry run --only coder "Test task"
 ```
 
 ## Додаткові ресурси

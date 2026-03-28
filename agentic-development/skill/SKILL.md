@@ -63,7 +63,7 @@ From the user's request, determine:
 
 ### Step 2 — Create the Task File
 
-Either pass plain text to `./agentic-development/foundry.sh run "..."` or write a `.md` file and pass it with `--task-file`.
+Either pass plain text to `./agentic-development/foundry run "..."` or write a `.md` file and pass it with `--task-file`.
 
 **File format:**
 
@@ -98,7 +98,7 @@ Background, dependencies, patterns to follow.
 
 ```bash
 # If monitor is not running, start it:
-./agentic-development/foundry.sh
+./agentic-development/foundry
 
 # Verify task directories exist
 find tasks -maxdepth 1 -type d -name '*--foundry'
@@ -196,7 +196,7 @@ tmux attach -t ultraworks
 ```bash
 make monitor-foundry
 # or directly:
-./agentic-development/foundry.sh
+./agentic-development/foundry
 ```
 
 Features:
@@ -254,7 +254,7 @@ Priority controls pick-up order: `<!-- priority: N -->` in task file.
 
 **Monitor not running:**
 ```bash
-./agentic-development/foundry.sh
+./agentic-development/foundry
 ```
 
 **Task not picked up:**
@@ -265,7 +265,7 @@ find tasks -maxdepth 1 -type d -name '*--foundry'
 **Worker limit reached:**
 ```bash
 export MONITOR_WORKERS=2
-./agentic-development/foundry.sh
+./agentic-development/foundry
 ```
 
 ### Ultraworks Issues

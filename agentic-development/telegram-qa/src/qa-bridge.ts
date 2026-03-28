@@ -1,5 +1,5 @@
 /**
- * Q&A Bridge: reads/writes qa.json and triggers foundry.sh resume-qa.
+ * Q&A Bridge: reads/writes qa.json and triggers foundry resume-qa.
  * Provides the interface between the Telegram bot and the Foundry pipeline.
  */
 
@@ -154,7 +154,7 @@ export function allBlockingAnswered(questions: Question[]): boolean {
 }
 
 /**
- * Trigger foundry.sh resume-qa for a task.
+ * Trigger foundry resume-qa for a task.
  */
 export function triggerResumeQA(
   foundryShPath: string,

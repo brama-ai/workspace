@@ -2,7 +2,7 @@
 # Foundry — post-clone setup
 # Run once after git clone to create local directories.
 #
-# Usage: ./agentic-development/foundry.sh setup
+# Usage: ./agentic-development/foundry setup
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -16,6 +16,6 @@ maybe_migrate_legacy_foundry_tasks
 
 echo ""
 echo "Foundry setup complete."
-echo "  Queue tasks:  ./agentic-development/foundry.sh run \"your task\""
-echo "  Monitor:      ./agentic-development/foundry.sh"
-echo "  Runtime:      ./agentic-development/foundry.sh run \"your task\""
+echo "  Queue tasks:  ./agentic-development/foundry run \"your task\""
+echo "  Monitor:      ./agentic-development/foundry"
+echo "  Runtime:      ./agentic-development/foundry run \"your task\""

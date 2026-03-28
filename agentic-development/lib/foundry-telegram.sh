@@ -42,7 +42,7 @@ send_telegram_hitl_waiting() {
 📋 ${task_slug}
 🔢 ${q_count} question(s)
 
-Use: <code>foundry.sh answer ${task_slug}</code>"
+Use: <code>foundry answer ${task_slug}</code>"
 }
 
 # Called when all questions are answered and pipeline is resuming
@@ -77,7 +77,7 @@ send_telegram_hitl_timeout_expired() {
 📋 <b>${task_slug}</b>
 Action: ${action}
 
-Resume later: <code>foundry.sh resume-qa ${task_slug}</code>"
+Resume later: <code>foundry resume-qa ${task_slug}</code>"
 }
 
 # Called when agent-to-agent Q&A resolves questions internally
@@ -103,5 +103,5 @@ send_telegram_hitl_escalated() {
 📋 ${task_slug}
 ${answered}/${total} questions resolved by agent
 
-Use: <code>foundry.sh answer ${task_slug}</code>"
+Use: <code>foundry answer ${task_slug}</code>"
 }

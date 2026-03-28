@@ -161,10 +161,10 @@ export function createFixture(name: string, content: string): string {
 }
 
 /**
- * Get path to foundry.sh script.
+ * Get path to foundry script.
  */
 export function getFoundryScript(): string {
-  return path.join(REPO_ROOT, 'agentic-development/foundry.sh');
+  return path.join(REPO_ROOT, 'agentic-development/foundry');
 }
 
 /**
@@ -271,7 +271,7 @@ export function getFoundryStatus(): {
 }
 
 /**
- * Run a Foundry task using foundry.sh run command.
+ * Run a Foundry task using foundry run command.
  */
 export function runFoundryTask(taskFile: string, options: {
   e2eTestMode?: boolean;

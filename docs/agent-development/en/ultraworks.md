@@ -180,7 +180,7 @@ git worktree remove .pipeline-worktrees/worker-2
 ./agentic-development/ultraworks.sh
 ```
 
-This is the default entrypoint and acts as the monitor/menu, similar to `foundry.sh`.
+This is the default entrypoint and acts as the monitor/menu, similar to `foundry`.
 
 ### TUI Watch Mode
 
@@ -274,13 +274,13 @@ Headless mode:
 
 | Aspect | Foundry | Ultraworks |
 |--------|---------|------------|
-| Orchestrator | `foundry-run.sh` via `foundry.sh` | Sisyphus (OpenCode `build` orchestrator) |
+| Orchestrator | `foundry-run.sh` via `foundry` | Sisyphus (OpenCode `build` orchestrator) |
 | Agent prefix | `coder`, `validator` | `s-coder`, `s-validator` |
 | Execution | Sequential only | Parallel phases supported |
-| Entry point | `foundry.sh` | `ultraworks.sh` |
+| Entry point | `foundry` | `ultraworks.sh` |
 | Multi-task | Single queue consumer per checkout today | Multiple isolated sessions/worktrees |
-| Task source | `tasks/<slug>--foundry>/task.md` or direct `foundry.sh run` input | Prompt text, `ultraworks.sh launch`, or `ultraworks.sh headless` |
-| Monitoring | `foundry.sh` monitor | `ultraworks.sh` (`ultraworks-monitor.sh` internally) |
+| Task source | `tasks/<slug>--foundry>/task.md` or direct `foundry run` input | Prompt text, `ultraworks.sh launch`, or `ultraworks.sh headless` |
+| Monitoring | `foundry` monitor | `ultraworks.sh` (`ultraworks-monitor.sh` internally) |
 | Git workflow | Creates `pipeline/<slug>` branch | Uses current branch or creates one |
 | PR creation | Manual or via webhook | Auto on headless success |
 

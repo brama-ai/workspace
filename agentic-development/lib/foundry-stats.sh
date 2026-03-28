@@ -16,7 +16,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --list) LIST_MODE=true; shift ;;
     --help|-h)
-      echo "Usage: ./agentic-development/foundry.sh stats [--list] [slug]"
+      echo "Usage: ./agentic-development/foundry stats [--list] [slug]"
       exit 0
       ;;
     *) TARGET="$1"; shift ;;

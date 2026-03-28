@@ -119,7 +119,7 @@ import { test, expect } from '@microsoft/tui-test';
 
 test('u-coder creates feature branch and commits', async ({ terminal }) => {
   // Arrange: create test task
-  await terminal.exec('./foundry.sh run --task-file /tmp/test-task.md');
+  await terminal.exec('./foundry run --task-file /tmp/test-task.md');
 
   // Assert: wait for completion
   await terminal.waitForText('✓ Committed:', { timeout: 120000 });
@@ -139,7 +139,7 @@ test('parallel workers claim tasks atomically', async ({ terminal }) => {
   }
 
   // Start 3 workers
-  await terminal.exec('./foundry.sh batch --workers 3');
+  await terminal.exec('./foundry batch --workers 3');
 
   // Assert: all tasks claimed exactly once
   await terminal.waitForText('5 tasks completed', { timeout: 300000 });
@@ -212,7 +212,7 @@ git worktree add .foundry-e2e-test main
 # Run tests in isolated worktree
 cd .foundry-e2e-test
 FOUNDRY_TASK_ROOT="$(pwd)/tasks-test" \
-./agentic-development/foundry.sh run --task-file test.md
+./agentic-development/foundry run --task-file test.md
 ```
 
 ---
@@ -287,19 +287,19 @@ FOUNDRY_TASK_ROOT="$(pwd)/tasks-test" \
 
 ```bash
 # Run all E2E agent tests
-./agentic-development/foundry.sh e2e-agents
+./agentic-development/foundry e2e-agents
 
 # Run specific test suite
-./agentic-development/foundry.sh e2e-agents --suite git-workflow
+./agentic-development/foundry e2e-agents --suite git-workflow
 
 # Run in watch mode (for development)
-./agentic-development/foundry.sh e2e-agents --watch
+./agentic-development/foundry e2e-agents --watch
 
 # Generate test scenarios using orchestrator agent
-./agentic-development/foundry.sh e2e-agents --generate
+./agentic-development/foundry e2e-agents --generate
 
 # Analyze test failures and create fix tasks
-./agentic-development/foundry.sh e2e-agents --analyze-failures
+./agentic-development/foundry e2e-agents --analyze-failures
 ```
 
 ### Foundry Flag
@@ -308,7 +308,7 @@ Add `--e2e-test-mode` flag to foundry-run.sh:
 
 ```bash
 # Disable real LLM calls, use mocks from test fixtures
-./agentic-development/foundry.sh run \
+./agentic-development/foundry run \
   --task-file test.md \
   --e2e-test-mode
 ```
@@ -473,7 +473,7 @@ test('prevents creating task branch from non-main branch', async ({ terminal }) 
 
   // Act: try to start pipeline
   const result = await terminal.exec(
-    './foundry.sh run --task-file test-task.md',
+    './foundry run --task-file test-task.md',
     { expectError: true }
   );
 
@@ -490,7 +490,7 @@ test('task state transitions correctly through pipeline', async ({ terminal }) =
   const taskDir = await createTestTask('Simple feature');
 
   // Start pipeline
-  await terminal.exec('./foundry.sh run --task-file ${taskDir}/task.md');
+  await terminal.exec('./foundry run --task-file ${taskDir}/task.md');
 
   // Assert state progression
   await waitForState(taskDir, 'in_progress');
@@ -515,7 +515,7 @@ test('workers never double-claim tasks', async ({ terminal }) => {
   const taskDirs = await createTestTasks(10, 'Quick task');
 
   // Start 5 workers simultaneously
-  await terminal.exec('./foundry.sh batch --workers 5 --no-stop-on-failure');
+  await terminal.exec('./foundry batch --workers 5 --no-stop-on-failure');
 
   // Wait for all completions
   await terminal.waitForText('10 tasks completed', { timeout: 600000 });

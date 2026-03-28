@@ -5,7 +5,7 @@
  * and human operators via Telegram.
  *
  * Usage:
- *   node dist/bot.js --tasks-root /path/to/tasks --foundry-sh /path/to/foundry.sh
+ *   node dist/bot.js --tasks-root /path/to/tasks --foundry-sh /path/to/foundry
  *
  * Required env vars:
  *   PIPELINE_TELEGRAM_BOT_TOKEN  — Telegram bot token from @BotFather
@@ -39,7 +39,7 @@ const { values: args } = parseArgs({
 });
 
 const TASKS_ROOT = args["tasks-root"] ?? process.env.PIPELINE_TASKS_ROOT ?? "./tasks";
-const FOUNDRY_SH = args["foundry-sh"] ?? process.env.FOUNDRY_SH ?? "./agentic-development/foundry.sh";
+const FOUNDRY_SH = args["foundry-sh"] ?? process.env.FOUNDRY_SH ?? "./agentic-development/foundry";
 
 // ── Config ────────────────────────────────────────────────────────────
 

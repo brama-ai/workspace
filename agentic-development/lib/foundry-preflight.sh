@@ -445,7 +445,7 @@ $stop_details_json
 ### Recovery Steps
 1. Review the stop reason and details above
 2. Fix the underlying issue (see specific guidance below)
-3. Resume the task: \`./agentic-development/foundry.sh resume $(basename "$task_dir")\`
+3. Resume the task: \`./agentic-development/foundry resume $(basename "$task_dir")\`
 
 ### Specific Guidance
 EOF
@@ -477,8 +477,8 @@ EOF
 - **Action**: Wait for conflicting task to finish or stop it
 - **Commands**:
   ```bash
-  ./agentic-development/foundry.sh status
-  ./agentic-development/foundry.sh stop <conflicting-task-slug>
+  ./agentic-development/foundry status
+  ./agentic-development/foundry stop <conflicting-task-slug>
   ```
 EOF
       ;;
@@ -487,7 +487,7 @@ EOF
 - **Action**: Verify if task is actually running, or clean up stale state
 - **Commands**:
   ```bash
-  ./agentic-development/foundry.sh status
+  ./agentic-development/foundry status
   # If stale, manually reset:
   # Edit state.json and set status to "pending"
   ```

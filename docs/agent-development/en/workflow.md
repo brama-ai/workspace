@@ -6,7 +6,7 @@ Diagrams below describe the current workflow, public entrypoints, and task-state
 
 Public entrypoints:
 
-- `./agentic-development/foundry.sh`
+- `./agentic-development/foundry`
 - `./agentic-development/ultraworks.sh`
 
 Task-local state:
@@ -39,7 +39,7 @@ agentic-development/runtime/logs/
 graph TB
     subgraph "Entry Points"
         CMD_AUTO["/auto<br/>(Sisyphus)"]
-        CMD_PIPE["foundry.sh<br/>(manual/runtime)"]
+        CMD_PIPE["foundry<br/>(manual/runtime)"]
         CMD_IMPL["/implement"]
         CMD_VAL["/validate"]
         CMD_AUDIT["/audit"]
@@ -247,9 +247,9 @@ sequenceDiagram
 Daily entrypoint for this flow:
 
 ```bash
-./agentic-development/foundry.sh autotest 3 --smoke --start
-./agentic-development/foundry.sh autotest -n 10 --start
-./agentic-development/foundry.sh autotest 5 --from-report .opencode/pipeline/reports/e2e-autofix-20260324_154309.json
+./agentic-development/foundry autotest 3 --smoke --start
+./agentic-development/foundry autotest -n 10 --start
+./agentic-development/foundry autotest 5 --from-report .opencode/pipeline/reports/e2e-autofix-20260324_154309.json
 ```
 
 ```mermaid

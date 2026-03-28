@@ -89,7 +89,7 @@ test('should do something', async () => {
   const taskDir = createTestTask('# Test task\n\nDo something.');
 
   // Act
-  const result = exec('./agentic-development/foundry.sh run --task-file task.md');
+  const result = exec('./agentic-development/foundry run --task-file task.md');
 
   // Assert
   expect(result.success).toBe(true);

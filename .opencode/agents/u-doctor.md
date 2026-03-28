@@ -21,7 +21,7 @@ Your role is to diagnose Foundry problems, identify root causes, and fix task st
 
 Check Foundry health:
 ```bash
-./agentic-development/foundry.sh status --verbose
+./agentic-development/foundry status --verbose
 ```
 
 Analyze:

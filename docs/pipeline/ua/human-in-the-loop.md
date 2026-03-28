@@ -29,13 +29,13 @@
 
 **TUI Monitor** (рекомендовано):
 ```bash
-./agentic-development/foundry.sh
+./agentic-development/foundry
 # Натисніть Enter на задачі, що очікує, щоб відкрити Q&A view
 ```
 
 **CLI (неінтерактивний)**:
 ```bash
-./agentic-development/foundry.sh answer <slug> --question q-001 --answer "Використати edge-auth"
+./agentic-development/foundry answer <slug> --question q-001 --answer "Використати edge-auth"
 ```
 
 **Telegram бот** (якщо налаштовано):
@@ -47,7 +47,7 @@
 Після відповіді на всі блокуючі питання:
 
 ```bash
-./agentic-development/foundry.sh resume-qa <slug>
+./agentic-development/foundry resume-qa <slug>
 ```
 
 Або через TUI: натисніть `Ctrl+Enter` у Q&A view.
@@ -58,13 +58,13 @@
 
 | Команда | Опис |
 |---------|------|
-| `foundry.sh waiting` | Список всіх задач, що очікують відповідей |
-| `foundry.sh answer <slug>` | Відкрити TUI Q&A view для задачі |
-| `foundry.sh answer <slug> --question <id> --answer <text>` | Відповісти через CLI |
-| `foundry.sh resume-qa <slug>` | Відновити пайплайн після відповіді |
-| `foundry.sh status` | Показує кількість `waiting_answer` |
-| `foundry.sh telegram-qa start` | Запустити Telegram Q&A бот |
-| `foundry.sh telegram-qa stop` | Зупинити Telegram Q&A бот |
+| `foundry waiting` | Список всіх задач, що очікують відповідей |
+| `foundry answer <slug>` | Відкрити TUI Q&A view для задачі |
+| `foundry answer <slug> --question <id> --answer <text>` | Відповісти через CLI |
+| `foundry resume-qa <slug>` | Відновити пайплайн після відповіді |
+| `foundry status` | Показує кількість `waiting_answer` |
+| `foundry telegram-qa start` | Запустити Telegram Q&A бот |
+| `foundry telegram-qa stop` | Зупинити Telegram Q&A бот |
 
 ---
 
@@ -164,7 +164,7 @@ PIPELINE_TELEGRAM_ALLOWED_USERS=123456789,987654321
 cd agentic-development/telegram-qa && npm install
 
 # 3. Запустити бот
-./agentic-development/foundry.sh telegram-qa start
+./agentic-development/foundry telegram-qa start
 ```
 
 ### Процес роботи бота
@@ -173,7 +173,7 @@ cd agentic-development/telegram-qa && npm install
 2. Бот надсилає питання з inline keyboard кнопками
 3. Користувач натискає кнопку або вводить текстову відповідь
 4. Бот записує відповідь до `qa.json`
-5. Якщо всі блокуючі питання відповіді → бот викликає `foundry.sh resume-qa`
+5. Якщо всі блокуючі питання відповіді → бот викликає `foundry resume-qa`
 
 ### Graceful Degradation
 
@@ -291,7 +291,7 @@ pending → in_progress → completed
 - `"agent"` — відповів інший агент
 - `"human"` — відповіла людина через TUI
 - `"telegram"` — відповіла людина через Telegram
-- `"cli"` — відповідь через `foundry.sh answer` CLI
+- `"cli"` — відповідь через `foundry answer` CLI
 
 ---
 

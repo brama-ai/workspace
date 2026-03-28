@@ -310,7 +310,7 @@ handle_waiting_answer() {
 ### 5.3 Resume Command
 
 ```bash
-# foundry.sh resume-qa <slug>
+# foundry resume-qa <slug>
 resume_qa() {
   local slug="$1"
   local task_dir="tasks/${slug}--foundry"
@@ -589,23 +589,23 @@ The summarizer agent will aggregate these into the final pipeline summary.
 
 ```bash
 # Answer questions interactively (opens TUI Q&A view)
-foundry.sh answer <slug>
+foundry answer <slug>
 
 # Resume after answering (validates blocking questions)
-foundry.sh resume-qa <slug>
+foundry resume-qa <slug>
 
 # List tasks waiting for answers
-foundry.sh waiting
+foundry waiting
 
 # Quick-answer from CLI (non-interactive)
-foundry.sh answer <slug> --question q-001 --answer "Use edge-auth"
+foundry answer <slug> --question q-001 --answer "Use edge-auth"
 ```
 
 ### 9.2 Modified Commands
 
 ```bash
 # `status` now shows waiting_answer count
-foundry.sh status
+foundry status
 # Output:
 #   pending: 3  in_progress: 1  waiting_answer: 2  completed: 15  failed: 1
 
@@ -622,10 +622,10 @@ foundry.sh status
 | `lib/foundry-common.sh` | Add `waiting_answer` to valid states, `handle_waiting_answer()`, `resume_qa()` |
 | `lib/foundry-run.sh` | Handle exit code 75, inject resume context, Q&A sync to handoff, agent-to-agent escalation |
 | `lib/foundry-telegram.sh` | New: shell-level notification functions for HITL events (curl-based) |
-| `foundry.sh` | New commands: `answer`, `resume-qa`, `waiting`, `telegram-qa` |
+| `foundry` | New commands: `answer`, `resume-qa`, `waiting`, `telegram-qa` |
 | `telegram-qa/` | **New directory**: standalone Grammy bot for bidirectional Telegram Q&A |
 | `telegram-qa/src/bot.ts` | Bot entry point: polling, inline keyboards, answer handling |
-| `telegram-qa/src/qa-bridge.ts` | Read/write qa.json, trigger `foundry.sh resume-qa` |
+| `telegram-qa/src/qa-bridge.ts` | Read/write qa.json, trigger `foundry resume-qa` |
 | `telegram-qa/src/formatter.ts` | Format questions as Telegram messages with inline buttons |
 | `monitor/src/components/App.tsx` | Add `qa` view mode, `waiting_answer` task indicator |
 | `monitor/src/components/QAView.tsx` | New component: Q&A split-panel editor |
@@ -682,7 +682,7 @@ agentic-development/
 ```bash
 # Started automatically by foundry when waiting_answer is triggered
 # OR manually:
-foundry.sh telegram-qa start
+foundry telegram-qa start
 
 # Runs as background process, exits when no tasks are waiting
 # Auto-stops after idle timeout (configurable, default 30min)
@@ -722,7 +722,7 @@ The bot is **ephemeral** — it starts when needed and stops when idle. Not a pe
      "answer_source": "telegram" }
        │
 8. If all blocking questions answered:
-   Bot calls: foundry.sh resume-qa <slug>
+   Bot calls: foundry resume-qa <slug>
        │
 9. Pipeline resumes. Bot sends confirmation:
    "✅ Resuming implement-user-auth from u-architect..."
@@ -800,7 +800,7 @@ These work even without the Q&A bot running — pure `send_telegram()` via curl:
 
 | Event | Message | Priority |
 |-------|---------|----------|
-| `waiting_answer` triggered | `"❓ <b>{agent}</b> needs your input\n📋 {task}\n🔢 {N} question(s)\n\nUse: foundry.sh answer {slug}"` | High |
+| `waiting_answer` triggered | `"❓ <b>{agent}</b> needs your input\n📋 {task}\n🔢 {N} question(s)\n\nUse: foundry answer {slug}"` | High |
 | All questions answered | `"✅ Questions answered for <b>{task}</b>\nResuming from {agent}..."` | Info |
 | Wait timeout approaching | `"⏰ <b>{task}</b> waiting for {duration} — {N} unanswered question(s)"` | Warning (at 50% and 90%) |
 | Agent-to-agent Q&A resolved | `"🤖 <b>{answering_agent}</b> answered {asking_agent}'s question internally"` | Info |
@@ -838,7 +838,7 @@ timeout reached
     │   ├── Set stop_reason → "qa_timeout"
     │   ├── Emit event: "qa_timeout"
     │   ├── Send Telegram: "⏰ Pipeline TIMED OUT waiting for answers"
-    │   └── Task can be resumed later via `foundry.sh resume-qa <slug>`
+    │   └── Task can be resumed later via `foundry resume-qa <slug>`
     │
     ├── on_timeout: "skip"
     │   ├── Mark unanswered questions as skipped

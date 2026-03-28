@@ -48,7 +48,7 @@ php.ini                          .env (PIPELINE_*, FOUNDRY_*)
 
 | Layer | Language | Why |
 |-------|----------|-----|
-| CLI (`foundry-ts`) | TypeScript | Structured args, types, testable |
+| CLI (`foundry`) | TypeScript | Structured args, types, testable |
 | Pipeline runner | TypeScript | Async orchestration, error handling |
 | Agent executor | TypeScript | Model fallback chains, timeouts, blacklisting |
 | Supervisor | TypeScript | Complex state machine, stall detection |

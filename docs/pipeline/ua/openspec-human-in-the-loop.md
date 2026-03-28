@@ -236,7 +236,7 @@ run_agent() {
 ### 5.2 Resume команда
 
 ```bash
-# foundry.sh resume-qa <slug>
+# foundry resume-qa <slug>
 resume_qa() {
   local slug="$1"
   local task_dir="tasks/${slug}--foundry"
@@ -446,16 +446,16 @@ resume_qa() {
 
 ```bash
 # Відповісти на питання інтерактивно (відкриває TUI Q&A view)
-foundry.sh answer <slug>
+foundry answer <slug>
 
 # Resume після відповідей (валідує blocking питання)
-foundry.sh resume-qa <slug>
+foundry resume-qa <slug>
 
 # Список задач, що чекають відповіді
-foundry.sh waiting
+foundry waiting
 
 # Швидка відповідь з CLI (неінтерактивно)
-foundry.sh answer <slug> --question q-001 --answer "Використати edge-auth"
+foundry answer <slug> --question q-001 --answer "Використати edge-auth"
 ```
 
 ---
@@ -467,10 +467,10 @@ foundry.sh answer <slug> --question q-001 --answer "Використати edge-
 | `lib/foundry-common.sh` | Додати `waiting_answer` до валідних станів, `handle_waiting_answer()`, `resume_qa()` |
 | `lib/foundry-run.sh` | Обробка exit code 75, inject resume context, Q&A sync в handoff, agent-to-agent ескалація |
 | `lib/foundry-telegram.sh` | Новий: shell-рівень нотифікації для HITL подій (curl-based) |
-| `foundry.sh` | Нові команди: `answer`, `resume-qa`, `waiting`, `telegram-qa` |
+| `foundry` | Нові команди: `answer`, `resume-qa`, `waiting`, `telegram-qa` |
 | `telegram-qa/` | **Нова директорія**: standalone Grammy бот для двостороннього Telegram Q&A |
 | `telegram-qa/src/bot.ts` | Entry point бота: polling, inline keyboards, обробка відповідей |
-| `telegram-qa/src/qa-bridge.ts` | Читання/запис qa.json, тригер `foundry.sh resume-qa` |
+| `telegram-qa/src/qa-bridge.ts` | Читання/запис qa.json, тригер `foundry resume-qa` |
 | `telegram-qa/src/formatter.ts` | Форматування питань як Telegram повідомлень з inline кнопками |
 | `monitor/src/components/App.tsx` | Додати `qa` view mode, індикатор `waiting_answer` |
 | `monitor/src/components/QAView.tsx` | Новий компонент: Q&A split-panel editor |
@@ -526,7 +526,7 @@ agentic-development/
 ```bash
 # Запускається автоматично foundry коли спрацьовує waiting_answer
 # АБО вручну:
-foundry.sh telegram-qa start
+foundry telegram-qa start
 
 # Працює як фоновий процес, завершується коли немає очікуючих задач
 # Авто-стоп після idle timeout (конфігурується, за замовчуванням 30 хв)
@@ -566,7 +566,7 @@ foundry.sh telegram-qa start
      "answer_source": "telegram" }
        │
 8. Якщо всі blocking питання відповідні:
-   Бот викликає: foundry.sh resume-qa <slug>
+   Бот викликає: foundry resume-qa <slug>
        │
 9. Пайплайн відновлюється. Бот надсилає підтвердження:
    "✅ Відновлення implement-user-auth з u-architect..."
@@ -644,7 +644,7 @@ PIPELINE_TELEGRAM_ALLOWED_USERS=123456789,987654321
 
 | Подія | Повідомлення | Пріоритет |
 |-------|-------------|-----------|
-| `waiting_answer` спрацював | `"❓ <b>{agent}</b> потребує введення\n📋 {task}\n🔢 {N} питань\n\nfoundry.sh answer {slug}"` | Високий |
+| `waiting_answer` спрацював | `"❓ <b>{agent}</b> потребує введення\n📋 {task}\n🔢 {N} питань\n\nfoundry answer {slug}"` | Високий |
 | Всі питання відповідні | `"✅ Питання для <b>{task}</b> відповідні\nВідновлення з {agent}..."` | Інфо |
 | Наближення таймауту | `"⏰ <b>{task}</b> чекає {duration} — {N} невідповідних"` | Попередження (50% і 90%) |
 | Agent-to-agent вирішено | `"🤖 <b>{answering_agent}</b> відповів на питання {asking_agent} внутрішньо"` | Інфо |
@@ -682,7 +682,7 @@ PIPELINE_TELEGRAM_ALLOWED_USERS=123456789,987654321
     │   ├── stop_reason → "qa_timeout"
     │   ├── Event: "qa_timeout"
     │   ├── Telegram: "⏰ Пайплайн TIMEOUT очікуючи відповіді"
-    │   └── Задачу можна відновити пізніше: `foundry.sh resume-qa <slug>`
+    │   └── Задачу можна відновити пізніше: `foundry resume-qa <slug>`
     │
     ├── on_timeout: "skip"
     │   ├── Позначити невідповідні питання як skipped

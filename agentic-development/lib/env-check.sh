@@ -3,7 +3,7 @@
 # Environment prerequisites checker for the builder pipeline.
 # Validates runtimes, services, tools, and per-app dependencies.
 #
-# Usage: ./agentic-development/foundry.sh env-check [--app <name>] [--json] [--report-file <path>] [--quiet] [--help]
+# Usage: ./agentic-development/foundry env-check [--app <name>] [--json] [--report-file <path>] [--quiet] [--help]
 # Exit: 0=pass, 1=warnings, 2=fatal
 #
 set -uo pipefail

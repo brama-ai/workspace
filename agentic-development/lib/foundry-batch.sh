@@ -33,7 +33,7 @@ show_help() {
 Foundry batch runner (parallel workers)
 
 Usage:
-  ./agentic-development/foundry.sh batch [tasks-root]
+  ./agentic-development/foundry batch [tasks-root]
 
 Options:
   --watch               Keep polling for pending Foundry tasks

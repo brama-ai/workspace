@@ -85,7 +85,7 @@ Remaining Python (24):
 
 | Файл | Роль | Хто викликає | Статус |
 |------|------|-------------|--------|
-| `foundry.sh` | Головний CLI для Foundry workflow | Користувач, CI, make | ✅ Активний |
+| `foundry` | Головний CLI для Foundry workflow | Користувач, CI, make | ✅ Активний |
 | `ultraworks.sh` | Thin wrapper → Ink TUI | Користувач | ✅ Активний |
 
 ### Core Library (lib/)
@@ -124,9 +124,9 @@ Remaining Python (24):
 ```mermaid
 flowchart TB
     subgraph Entry["Вхідні точки"]
-        CLI["foundry.sh<br/>(CLI)"]
+        CLI["foundry<br/>(CLI)"]
         TUI["TUI Monitor<br/>(React/Ink)"]
-        Headless["foundry.sh headless<br/>(Background)"]
+        Headless["foundry headless<br/>(Background)"]
     end
 
     subgraph Queue["Task Queue"]

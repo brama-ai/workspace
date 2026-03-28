@@ -1,6 +1,6 @@
 /**
  * E2E tests for Foundry CLI commands.
- * Tests task creation and execution via foundry.sh commands.
+ * Tests task creation and execution via foundry commands.
  */
 
 import { test, expect } from '@playwright/test';
@@ -97,11 +97,11 @@ This task was created using the Foundry CLI function.
     expect(typeof status.failed).toBe('number');
   });
 
-  test('should use foundry.sh status command', async () => {
+  test('should use foundry status command', async () => {
     // Arrange: Create tasks
     createFoundryTask('# Status Command Test', { slug: 'status-cmd' });
 
-    // Act: Run foundry.sh status
+    // Act: Run foundry status
     const result = runFoundry(['status'], { taskRoot: TEST_TASKS_DIR });
 
     // Assert: Command succeeds

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# foundry.sh - Hybrid Bash/TypeScript entrypoint
-# TypeScript CLI: ./foundry-ts (preferred for new commands)
+# foundry-legacy.sh - Legacy Bash/TypeScript entrypoint
+# TypeScript CLI: ./foundry (preferred for new commands)
 # Bash fallback: lib/foundry-*.sh (legacy)
 #
 set -euo pipefail
@@ -12,7 +12,7 @@ SCRIPT_DIR="$REPO_ROOT/agentic-development"
 export REPO_ROOT
 export PIPELINE_TASKS_ROOT="${PIPELINE_TASKS_ROOT:-$REPO_ROOT/tasks}"
 
-TS_CLI="$SCRIPT_DIR/foundry-ts"
+TS_CLI="$SCRIPT_DIR/foundry"
 
 show_help() {
   cat <<EOF

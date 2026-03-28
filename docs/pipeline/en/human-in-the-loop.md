@@ -29,13 +29,13 @@ Three ways to answer:
 
 **TUI Monitor** (recommended):
 ```bash
-./agentic-development/foundry.sh
+./agentic-development/foundry
 # Press Enter on a waiting task to open Q&A view
 ```
 
 **CLI (non-interactive)**:
 ```bash
-./agentic-development/foundry.sh answer <slug> --question q-001 --answer "Use edge-auth"
+./agentic-development/foundry answer <slug> --question q-001 --answer "Use edge-auth"
 ```
 
 **Telegram bot** (if configured):
@@ -47,7 +47,7 @@ Three ways to answer:
 After answering all blocking questions:
 
 ```bash
-./agentic-development/foundry.sh resume-qa <slug>
+./agentic-development/foundry resume-qa <slug>
 ```
 
 Or if using the TUI: press `Ctrl+Enter` in the Q&A view.
@@ -58,13 +58,13 @@ Or if using the TUI: press `Ctrl+Enter` in the Q&A view.
 
 | Command | Description |
 |---------|-------------|
-| `foundry.sh waiting` | List all tasks waiting for answers |
-| `foundry.sh answer <slug>` | Open TUI Q&A view for a task |
-| `foundry.sh answer <slug> --question <id> --answer <text>` | Answer from CLI |
-| `foundry.sh resume-qa <slug>` | Resume pipeline after answering |
-| `foundry.sh status` | Shows `waiting_answer` count |
-| `foundry.sh telegram-qa start` | Start Telegram Q&A bot |
-| `foundry.sh telegram-qa stop` | Stop Telegram Q&A bot |
+| `foundry waiting` | List all tasks waiting for answers |
+| `foundry answer <slug>` | Open TUI Q&A view for a task |
+| `foundry answer <slug> --question <id> --answer <text>` | Answer from CLI |
+| `foundry resume-qa <slug>` | Resume pipeline after answering |
+| `foundry status` | Shows `waiting_answer` count |
+| `foundry telegram-qa start` | Start Telegram Q&A bot |
+| `foundry telegram-qa stop` | Stop Telegram Q&A bot |
 
 ---
 
@@ -164,7 +164,7 @@ PIPELINE_TELEGRAM_ALLOWED_USERS=123456789,987654321
 cd agentic-development/telegram-qa && npm install
 
 # 3. Start the bot
-./agentic-development/foundry.sh telegram-qa start
+./agentic-development/foundry telegram-qa start
 ```
 
 ### Bot Flow
@@ -173,7 +173,7 @@ cd agentic-development/telegram-qa && npm install
 2. Bot sends question(s) with inline keyboard buttons
 3. User taps a button or types a free-text reply
 4. Bot writes answer to `qa.json`
-5. If all blocking questions answered → bot calls `foundry.sh resume-qa`
+5. If all blocking questions answered → bot calls `foundry resume-qa`
 
 ### Graceful Degradation
 
@@ -291,7 +291,7 @@ Agent answers are distinguished from human answers via `answer_source`:
 - `"agent"` — answered by another agent
 - `"human"` — answered by a human via TUI
 - `"telegram"` — answered by a human via Telegram
-- `"cli"` — answered via `foundry.sh answer` CLI
+- `"cli"` — answered via `foundry answer` CLI
 
 ---
 

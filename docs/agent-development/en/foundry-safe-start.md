@@ -429,13 +429,13 @@ Enable/disable dynamic prepare:
 
 ```bash
 # Check if any task is in prepare
-./agentic-development/foundry.sh status | grep preparing
+./agentic-development/foundry status | grep preparing
 
 # View prepare queue
-./agentic-development/foundry.sh status --verbose
+./agentic-development/foundry status --verbose
 
 # Force-release stuck prepare lock (use with caution!)
-./agentic-development/foundry.sh unlock-prepare --task <task-slug>
+./agentic-development/foundry unlock-prepare --task <task-slug>
 ```
 
 ### Example: Coder Discovers Migration Need
@@ -466,7 +466,7 @@ def create_user_profiles_feature(context):
 ### Manual Resume
 ```bash
 # Fix the issue (commit changes, resolve conflicts, etc.)
-./agentic-development/foundry.sh resume <task-slug>
+./agentic-development/foundry resume <task-slug>
 ```
 
 ### Automatic Retry
@@ -507,16 +507,16 @@ git status
 git stash save "WIP: manual changes"
 
 # Resume task
-./agentic-development/foundry.sh resume <task-slug>
+./agentic-development/foundry resume <task-slug>
 ```
 
 ### Task Stopped: exclusive_scope_conflict
 ```bash
 # Check what tasks are running
-./agentic-development/foundry.sh status
+./agentic-development/foundry status
 
 # Wait for conflicting task to finish, or stop it
-./agentic-development/foundry.sh stop <conflicting-task-slug>
+./agentic-development/foundry stop <conflicting-task-slug>
 ```
 
 ### Task Stopped: base_resolution_failed

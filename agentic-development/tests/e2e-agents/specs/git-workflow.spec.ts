@@ -51,7 +51,7 @@ test.describe('Git Workflow Safety @smoke', () => {
 
     // Act: Try to run foundry from feature branch
     const result = exec(
-      `./agentic-development/foundry.sh run --task-file "${taskFile}" --skip-env-check`,
+      `./agentic-development/foundry run --task-file "${taskFile}" --skip-env-check`,
       { cwd: REPO_ROOT }
     );
 
@@ -106,7 +106,7 @@ test.describe('Git Workflow Safety @smoke', () => {
       const taskFile = path.join(taskDir, 'task.md');
 
       const result = exec(
-        `./agentic-development/foundry.sh run --task-file "${taskFile}" --skip-env-check`,
+        `./agentic-development/foundry run --task-file "${taskFile}" --skip-env-check`,
         { cwd: REPO_ROOT }
       );
 
