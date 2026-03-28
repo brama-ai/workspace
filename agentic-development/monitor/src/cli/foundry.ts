@@ -60,6 +60,7 @@ import {
 } from "../pipeline/checkpoint.js";
 import { emitEvent, initEventsLog } from "../state/events.js";
 import { cmdSupervisor } from "./supervisor.js";
+import { cmdBatch, cmdHeadless } from "./batch.js";
 
 const SCRIPT_DIR = join(REPO_ROOT, "agentic-development");
 const LIB_DIR = join(SCRIPT_DIR, "lib");
@@ -452,35 +453,17 @@ async function main(): Promise<void> {
       break;
     }
     case "headless":
-    case "start": {
-      try {
-        execSync(`"${join(LIB_DIR, "foundry-common.sh")}" 2>/dev/null; true`, { stdio: "pipe" });
-      } catch {}
-      const desiredWorkers = env.FOUNDRY_WORKERS || "2";
-      try {
-        const pgrep = execSync("pgrep -f 'foundry-batch\\.sh'", { stdio: "pipe" }).toString().trim();
-        if (pgrep) {
-          console.log("Foundry headless already running");
-          break;
-        }
-      } catch {}
-      const runtimeDir = join(SCRIPT_DIR, "runtime", "logs");
-      mkdirSync(runtimeDir, { recursive: true });
-      const logFile = join(runtimeDir, "foundry-headless.log");
-      execSync(
-        `nohup "${join(LIB_DIR, "foundry-batch.sh")}" --workers ${desiredWorkers} --no-stop-on-failure --watch > "${logFile}" 2>&1 &`,
-        { stdio: "pipe", env: { ...process.env, REPO_ROOT, PIPELINE_TASKS_ROOT: TASKS_ROOT } },
-      );
-      console.log(`Foundry headless started (workers=${desiredWorkers})`);
-      console.log(`Log: ${logFile}`);
+    case "start":
+      exitCode = await cmdHeadless(args);
       break;
-    }
     case "stop":
+      // Stop any running headless/batch processes (both TS and legacy bash)
+      try { execSync("pkill -f 'foundry.*headless'", { stdio: "pipe" }); } catch {}
       try { execSync("pkill -f 'foundry-batch\\.sh'", { stdio: "pipe" }); } catch {}
       console.log("Foundry headless workers stopped");
       break;
     case "batch":
-      exitCode = runBashLib("foundry-batch.sh", args);
+      exitCode = await cmdBatch(args);
       break;
     case "retry":
       exitCode = runBashLib("foundry-retry.sh", args);
