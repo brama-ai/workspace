@@ -134,11 +134,38 @@ export function App({ tasksRoot }: Props) {
   const [procIdx, setProcIdx] = useState(0);
   const [procLogLines, setProcLogLines] = useState<string[]>([]);
 
+  // Auto-watcher tick counter (triggers every ~5 refreshes = 15s)
+  const autoWatchCounter = React.useRef(0);
+
   // Refresh task data periodically (fast — pure file reads)
+  // Also runs auto-watcher: if todo tasks exist but no headless → start it
   useEffect(() => {
     const refreshTasks = () => {
-      setData(readAllTasks(root));
+      const freshData = readAllTasks(root);
+      setData(freshData);
       setTick((t) => t + 1);
+
+      // Auto-watcher: every 5th refresh (~15s) check for orphaned todo tasks
+      autoWatchCounter.current++;
+      if (autoWatchCounter.current >= 5) {
+        autoWatchCounter.current = 0;
+        try {
+          const hasTodo = freshData.tasks.some((t) => t.status === "todo");
+          const hasPendingOrRunning = freshData.tasks.some((t) => t.status === "pending" || t.status === "in_progress");
+          if (hasTodo && !hasPendingOrRunning) {
+            // Always promote todo→pending (regardless of headless state)
+            const promoted = promoteNextTodoToPending();
+            if (promoted) {
+              setMsg("Promoted todo → pending");
+              // Ensure headless is running to pick it up
+              if (!isHeadlessRunning()) {
+                ensureHeadless(repoRoot);
+                setMsg("Auto-started headless for pending task");
+              }
+            }
+          }
+        } catch { /* ignore */ }
+      }
     };
     refreshTasks();
     const id = setInterval(refreshTasks, REFRESH_MS);
@@ -154,23 +181,6 @@ export function App({ tasksRoot }: Props) {
     const id = setInterval(refreshProcs, PROC_REFRESH_MS);
     return () => clearInterval(id);
   }, [repoRoot]);
-
-  // Auto-watcher: if todo tasks exist but headless is not running → start it
-  useEffect(() => {
-    const autoWatch = () => {
-      try {
-        const hasTodo = data.tasks.some((t) => t.status === "todo");
-        const hasPendingOrRunning = data.tasks.some((t) => t.status === "pending" || t.status === "in_progress");
-        if (hasTodo && !hasPendingOrRunning && !isHeadlessRunning()) {
-          promoteNextTodoToPending();
-          ensureHeadless(repoRoot);
-          setMsg("Auto-started headless for todo task");
-        }
-      } catch { /* ignore */ }
-    };
-    const id = setInterval(autoWatch, 5000);
-    return () => clearInterval(id);
-  }, [repoRoot, data.tasks.length]);
 
   // Clear message after 5s
   useEffect(() => {

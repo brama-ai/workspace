@@ -185,10 +185,15 @@ function foundryPath(repoRoot: string): string {
   return join(repoRoot, "agentic-development", "foundry");
 }
 
-/** Check if foundry headless is running */
+/** Check if foundry headless is running (not just TUI or tmux session) */
 export function isHeadlessRunning(): boolean {
   try {
-    const out = execSync("pgrep -f 'foundry.*headless'", { stdio: "pipe", encoding: "utf-8" }).trim();
+    // Look for actual headless process: "foundry headless" or "foundry-batch"
+    // Exclude tmux sessions (foundry-monitor, foundry-headless session names)
+    const out = execSync(
+      "ps -eo pid,args | grep -E 'foundry (headless|batch)|foundry-batch' | grep -v grep | grep -v tmux | grep -v 'capture-pane'",
+      { stdio: "pipe", encoding: "utf-8", timeout: 3000 },
+    ).trim();
     return out.length > 0;
   } catch {
     return false;
