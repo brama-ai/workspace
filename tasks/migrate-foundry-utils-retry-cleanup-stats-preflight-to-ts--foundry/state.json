@@ -1,0 +1,63 @@
+{
+  "task_id": "migrate-foundry-utils-retry-cleanup-stats-preflight-to-ts",
+  "workflow": "foundry",
+  "started_at": "2026-03-28T17:39:20Z",
+  "attempt": 1,
+  "status": "in_progress",
+  "current_step": "u-coder",
+  "resume_from": "u-coder",
+  "updated_at": "2026-03-28T17:47:32Z",
+  "task_file": "/workspaces/brama/tasks/migrate-foundry-utils-retry-cleanup-stats-preflight-to-ts--foundry/task.md",
+  "branch": "pipeline/migrate-foundry-utils-retry-cleanup-stats-preflight-to-ts",
+  "agents": [
+    {
+      "agent": "u-coder",
+      "attempt": 1,
+      "status": "done",
+      "model": "anthropic/claude-sonnet-4-6",
+      "duration_seconds": 406,
+      "input_tokens": 56,
+      "output_tokens": 20119,
+      "cost": 1.544116,
+      "call_count": 1,
+      "updated_at": "2026-03-28T17:47:32Z",
+      "session_id": "ses_2ca77487effexXInd4pkbE3lyK"
+    },
+    {
+      "agent": "u-validator",
+      "attempt": 1,
+      "status": "pending",
+      "model": "",
+      "duration_seconds": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost": 0,
+      "call_count": 0,
+      "updated_at": ""
+    },
+    {
+      "agent": "u-tester",
+      "attempt": 1,
+      "status": "pending",
+      "model": "",
+      "duration_seconds": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost": 0,
+      "call_count": 0,
+      "updated_at": ""
+    },
+    {
+      "agent": "u-summarizer",
+      "attempt": 1,
+      "status": "pending",
+      "model": "",
+      "duration_seconds": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost": 0,
+      "call_count": 0,
+      "updated_at": ""
+    }
+  ]
+}

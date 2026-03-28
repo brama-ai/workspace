@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "questions": [
+    {
+      "id": "q-001",
+      "agent": "u-validator",
+      "timestamp": "2026-03-28T14:15:00Z",
+      "priority": "blocking",
+      "category": "clarification",
+      "question": "The modified files are TypeScript/JavaScript in agentic-development/monitor/, not PHP. PHPStan and CS-Fixer are PHP-only tools. Should I run TypeScript/Node.js validation instead (e.g., tsc --noEmit, eslint)?",
+      "options": [
+        "Run TypeScript validation (tsc --noEmit) on monitor/",
+        "Run ESLint on monitor/ if available",
+        "Skip validation - not a PHP/TS project",
+        "Validate brama-core PHP code instead"
+      ],
+      "answer": null,
+      "answered_at": null,
+      "answered_by": null
+    }
+  ]
+}

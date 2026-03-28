@@ -61,6 +61,8 @@ import {
 import { emitEvent, initEventsLog } from "../state/events.js";
 import { cmdSupervisor } from "./supervisor.js";
 import { cmdBatch, cmdHeadless } from "./batch.js";
+import { cmdRetry } from "./retry.js";
+import { cmdCleanup } from "./cleanup.js";
 
 const SCRIPT_DIR = join(REPO_ROOT, "agentic-development");
 const LIB_DIR = join(SCRIPT_DIR, "lib");
@@ -259,58 +261,100 @@ async function cmdRun(args: string[], options: Record<string, unknown>): Promise
   }
 }
 
+function showTaskDetail(taskDir: string): void {
+  const state = readTaskState(taskDir);
+  if (!state) {
+    console.error("No state found");
+    return;
+  }
+
+  const stateAny = state as unknown as Record<string, unknown>;
+  const attempt = typeof stateAny.attempt === "number" ? stateAny.attempt : 1;
+  const branch = state.branch || (stateAny.branch as string | undefined) || "-";
+
+  console.log(`Task: ${basename(taskDir)}`);
+  console.log(`Status: ${state.status}`);
+  console.log(`Profile: ${state.profile || "standard"}`);
+  console.log(`Attempt: ${attempt}`);
+  console.log(`Branch: ${branch}`);
+  console.log(`Created: ${state.created_at || "unknown"}`);
+  console.log(`Updated: ${state.updated_at || "unknown"}`);
+
+  // Paths
+  console.log(`Summary: ${join(taskDir, "summary.md")}`);
+  console.log(`Handoff: ${join(taskDir, "handoff.md")}`);
+  console.log(`Checkpoint: ${join(taskDir, "artifacts", "checkpoint.json")}`);
+
+  if (state.waiting_agent) {
+    const duration = getWaitingDuration(taskDir);
+    console.log(`Waiting: ${state.waiting_agent} (${duration}s)`);
+  }
+
+  if (state.agents) {
+    console.log("\nAgents:");
+    for (const [agent, telemetry] of Object.entries(state.agents)) {
+      const statusIcon = telemetry.status === "done" ? "✅" :
+                         telemetry.status === "failed" ? "❌" : "⏳";
+      const duration = telemetry.duration ? ` ${telemetry.duration}s` : "";
+      const cost = telemetry.cost ? ` $${telemetry.cost.toFixed(4)}` : "";
+      const model = telemetry.model ? ` [${telemetry.model}]` : "";
+      console.log(`  ${statusIcon} ${agent}: ${telemetry.status}${duration}${cost}${model}`);
+    }
+  }
+}
+
 function cmdStatus(args: string[]): number {
-  const slug = args[0];
+  let listMode = false;
+  let target = "";
 
-  if (slug) {
-    const taskDir = findTaskBySlug(slug);
-    if (!taskDir) {
-      console.error(`Task not found: ${slug}`);
-      return 1;
+  for (const arg of args) {
+    if (arg === "--list") {
+      listMode = true;
+    } else {
+      target = arg;
     }
+  }
 
-    const state = readTaskState(taskDir);
-    if (!state) {
-      console.error("No state found");
-      return 1;
+  if (listMode) {
+    // foundry-stats.sh --list mode: tabular output
+    const tasks = listAllTasks();
+    for (const { dir, state } of tasks) {
+      const stateAny = state as unknown as Record<string, unknown>;
+      const attempt = typeof stateAny.attempt === "number" ? stateAny.attempt : 1;
+      const name = basename(dir).padEnd(48);
+      const status = state.status.padEnd(12);
+      console.log(`${name} ${status} attempt=${attempt}`);
     }
-
-    console.log(`Task: ${state.task_id}`);
-    console.log(`Status: ${state.status}`);
-    console.log(`Profile: ${state.profile || "standard"}`);
-    console.log(`Created: ${state.created_at || "unknown"}`);
-    console.log(`Updated: ${state.updated_at || "unknown"}`);
-
-    if (state.waiting_agent) {
-      const duration = getWaitingDuration(taskDir);
-      console.log(`Waiting: ${state.waiting_agent} (${duration}s)`);
-    }
-
-    if (state.agents) {
-      console.log("\nAgents:");
-      for (const [agent, telemetry] of Object.entries(state.agents)) {
-        const status = telemetry.status === "done" ? "✅" : 
-                       telemetry.status === "failed" ? "❌" : "⏳";
-        console.log(`  ${status} ${agent}: ${telemetry.status}`);
-      }
-    }
-
     return 0;
   }
 
+  if (target) {
+    // Show detail for a specific task (by slug or partial name)
+    let taskDir = findTaskBySlug(target);
+    if (!taskDir) {
+      // Try partial match
+      const tasks = listAllTasks();
+      const match = tasks.find(({ dir }) => basename(dir).includes(target));
+      if (!match) {
+        console.error(`Task not found: ${target}`);
+        return 1;
+      }
+      taskDir = match.dir;
+    }
+    showTaskDetail(taskDir);
+    return 0;
+  }
+
+  // No args: show all tasks summary (legacy behaviour) or latest task detail
   const tasks = listAllTasks();
   if (tasks.length === 0) {
     console.log("No tasks found");
     return 0;
   }
 
-  console.log("Tasks:\n");
-  for (const { dir, state } of tasks) {
-    const statusIcon = state.status === "completed" ? "✅" :
-                       state.status === "failed" ? "❌" :
-                       state.status === "waiting_answer" ? "⏸️" : "⏳";
-    console.log(`${statusIcon} ${state.status.padEnd(15)} ${basename(dir)}`);
-  }
+  // Show latest task detail (matches foundry-stats.sh default: show latest)
+  const latest = tasks[tasks.length - 1];
+  showTaskDetail(latest.dir);
 
   return 0;
 }
@@ -318,7 +362,9 @@ function cmdStatus(args: string[]): number {
 function cmdList(): number {
   const tasks = listAllTasks();
   for (const { dir, state } of tasks) {
-    console.log(`${state.status}\t${basename(dir)}`);
+    const stateAny = state as unknown as Record<string, unknown>;
+    const attempt = typeof stateAny.attempt === "number" ? stateAny.attempt : 1;
+    console.log(`${state.status}\t${basename(dir)}\tattempt=${attempt}`);
   }
   return 0;
 }
@@ -466,17 +512,28 @@ async function main(): Promise<void> {
       exitCode = await cmdBatch(args);
       break;
     case "retry":
-      exitCode = runBashLib("foundry-retry.sh", args);
+      exitCode = cmdRetry(args);
       break;
     case "stats":
-      exitCode = runBashLib("foundry-stats.sh", args);
+      // stats is an alias for status with --list or a slug
+      exitCode = cmdStatus(args.length > 0 ? args : ["--list"]);
       break;
     case "cleanup":
-      exitCode = runBashLib("foundry-cleanup.sh", args);
+      exitCode = cmdCleanup(args);
       break;
-    case "setup":
-      exitCode = runBashLib("foundry-setup.sh", args);
+    case "setup": {
+      // Inline: ensure tasks/ directory exists (was foundry-setup.sh)
+      if (!existsSync(TASKS_ROOT)) {
+        mkdirSync(TASKS_ROOT, { recursive: true });
+      }
+      console.log(`Ensuring task-centric Foundry root at ${TASKS_ROOT}/ ...`);
+      console.log("");
+      console.log("Foundry setup complete.");
+      console.log(`  Queue tasks:  ./agentic-development/foundry run "your task"`);
+      console.log("  Monitor:      ./agentic-development/foundry");
+      exitCode = 0;
       break;
+    }
     case "e2e-autofix":
     case "autotest":
       exitCode = runBashLib("foundry-e2e.sh", args);
