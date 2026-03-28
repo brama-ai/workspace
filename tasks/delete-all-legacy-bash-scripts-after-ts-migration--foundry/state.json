@@ -1,0 +1,63 @@
+{
+  "task_id": "delete-all-legacy-bash-scripts-after-ts-migration",
+  "workflow": "foundry",
+  "started_at": "2026-03-28T20:18:30Z",
+  "attempt": 1,
+  "status": "in_progress",
+  "current_step": "u-coder",
+  "resume_from": "u-coder",
+  "updated_at": "2026-03-28T20:29:51Z",
+  "task_file": "/workspaces/brama/tasks/delete-all-legacy-bash-scripts-after-ts-migration--foundry/task.md",
+  "branch": "pipeline/delete-all-legacy-bash-scripts-after-ts-migration",
+  "agents": [
+    {
+      "agent": "u-coder",
+      "attempt": 1,
+      "status": "done",
+      "model": "anthropic/claude-sonnet-4-6",
+      "duration_seconds": 589,
+      "input_tokens": 72,
+      "output_tokens": 24361,
+      "cost": 3.045592,
+      "call_count": 1,
+      "updated_at": "2026-03-28T20:29:51Z",
+      "session_id": "ses_2c9e57c25ffe6Gm25baSW4U96x"
+    },
+    {
+      "agent": "u-validator",
+      "attempt": 1,
+      "status": "pending",
+      "model": "",
+      "duration_seconds": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost": 0,
+      "call_count": 0,
+      "updated_at": ""
+    },
+    {
+      "agent": "u-tester",
+      "attempt": 1,
+      "status": "pending",
+      "model": "",
+      "duration_seconds": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost": 0,
+      "call_count": 0,
+      "updated_at": ""
+    },
+    {
+      "agent": "u-summarizer",
+      "attempt": 1,
+      "status": "pending",
+      "model": "",
+      "duration_seconds": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost": 0,
+      "call_count": 0,
+      "updated_at": ""
+    }
+  ]
+}

@@ -2,8 +2,8 @@
 import { parseArgs } from "node:util";
 import { env, exit, cwd } from "node:process";
 import { join, basename, dirname } from "node:path";
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
-import { execSync, execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, rmSync } from "node:fs";
+import { execSync } from "node:child_process";
 
 const VERSION = "2.0.0";
 
@@ -62,19 +62,228 @@ import { emitEvent, initEventsLog } from "../state/events.js";
 import { cmdSupervisor } from "./supervisor.js";
 import { cmdBatch, cmdHeadless } from "./batch.js";
 
-const SCRIPT_DIR = join(REPO_ROOT, "agentic-development");
-const LIB_DIR = join(SCRIPT_DIR, "lib");
+// ── TS implementations of migrated bash commands ──────────────────
 
-function runBashLib(script: string, args: string[] = []): number {
-  try {
-    execFileSync(join(LIB_DIR, script), args, {
-      stdio: "inherit",
-      env: { ...process.env, REPO_ROOT, PIPELINE_TASKS_ROOT: TASKS_ROOT },
-    });
-    return 0;
-  } catch (e: any) {
-    return e.status ?? 1;
+function cmdRetry(args: string[]): number {
+  let mode = "retry";
+  let target = "";
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--list" || args[i] === "-l") {
+      mode = "list";
+    } else if (args[i] === "--help" || args[i] === "-h") {
+      console.log("Usage: foundry retry [--list] [slug]");
+      return 0;
+    } else {
+      target = args[i];
+    }
   }
+
+  if (!existsSync(TASKS_ROOT)) {
+    console.log("No tasks directory found.");
+    return 0;
+  }
+
+  const failedTasks: string[] = [];
+  for (const entry of readdirSync(TASKS_ROOT)) {
+    if (!entry.endsWith("--foundry")) continue;
+    const taskDir = join(TASKS_ROOT, entry);
+    const state = readTaskState(taskDir);
+    if (state?.status === "failed") {
+      failedTasks.push(taskDir);
+    }
+  }
+
+  if (mode === "list") {
+    for (const taskDir of failedTasks) {
+      const state = readTaskState(taskDir);
+      const attempt = (state as any)?.attempt ?? 1;
+      console.log(`${basename(taskDir)} (attempt ${attempt})`);
+    }
+    return 0;
+  }
+
+  const retryTask = (taskDir: string): boolean => {
+    const taskFile = join(taskDir, "task.md");
+    if (!existsSync(taskFile) || statSync(taskFile).size === 0) {
+      console.error(`ERROR: Cannot retry ${basename(taskDir)} — task.md is missing or empty`);
+      return false;
+    }
+    const state = readTaskState(taskDir);
+    if (!state) return false;
+    const updated = {
+      ...state,
+      status: "pending" as TaskStatus,
+      updated_at: new Date().toISOString(),
+      attempt: ((state as any).attempt ?? 1) + 1,
+    };
+    writeTaskState(taskDir, updated);
+    console.log(`Retried ${basename(taskDir)}`);
+    return true;
+  };
+
+  if (target) {
+    const match = failedTasks.find(d => basename(d).includes(target));
+    if (!match) {
+      console.error(`No failed Foundry task matching '${target}'.`);
+      return 1;
+    }
+    return retryTask(match) ? 0 : 1;
+  }
+
+  let count = 0;
+  for (const taskDir of failedTasks) {
+    if (retryTask(taskDir)) count++;
+  }
+  if (count === 0) console.log("No failed Foundry tasks.");
+  return 0;
+}
+
+function cmdCleanup(args: string[]): number {
+  let apply = false;
+  let maxDays = parseInt(env.CLEANUP_MAX_DAYS || "7", 10);
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--apply") {
+      apply = true;
+    } else if (args[i] === "--days" && args[i + 1]) {
+      maxDays = parseInt(args[++i], 10);
+    } else if (args[i] === "--help" || args[i] === "-h") {
+      console.log("Usage: foundry cleanup [--apply] [--days N]");
+      return 0;
+    } else {
+      console.error(`Unknown option: ${args[i]}`);
+      return 1;
+    }
+  }
+
+  if (!existsSync(TASKS_ROOT)) {
+    console.log("No tasks directory found.");
+    return 0;
+  }
+
+  const removePath = (p: string) => {
+    if (apply) {
+      rmSync(p, { recursive: true, force: true });
+      console.log(`deleted ${p.replace(REPO_ROOT + "/", "")}`);
+    } else {
+      console.log(`[dry-run] delete ${p.replace(REPO_ROOT + "/", "")}`);
+    }
+  };
+
+  const now = Date.now();
+  for (const entry of readdirSync(TASKS_ROOT)) {
+    if (!entry.endsWith("--foundry")) continue;
+    const taskDir = join(TASKS_ROOT, entry);
+    const state = readTaskState(taskDir);
+    if (!state) continue;
+    if (!["completed", "failed", "cancelled"].includes(state.status)) continue;
+
+    const mtime = statSync(taskDir).mtimeMs;
+    const ageDays = (now - mtime) / 86400000;
+    if (ageDays <= maxDays) continue;
+
+    const summaryFile = join(taskDir, "summary.md");
+    if (!existsSync(summaryFile) || statSync(summaryFile).size === 0) {
+      console.log(`[skip] ${entry} — summary.md is empty or missing (not archiving)`);
+      continue;
+    }
+    removePath(taskDir);
+  }
+
+  // Clean pycache
+  for (const pycache of [
+    join(REPO_ROOT, "agentic-development", "__pycache__"),
+    join(REPO_ROOT, "agentic-development", "lib", "__pycache__"),
+  ]) {
+    if (existsSync(pycache)) removePath(pycache);
+  }
+
+  const dsStore = join(REPO_ROOT, "agentic-development", ".DS_Store");
+  if (existsSync(dsStore)) removePath(dsStore);
+
+  return 0;
+}
+
+function cmdStats(args: string[]): number {
+  let listMode = false;
+  let target = "";
+
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--list") {
+      listMode = true;
+    } else if (args[i] === "--help" || args[i] === "-h") {
+      console.log("Usage: foundry stats [--list] [slug]");
+      return 0;
+    } else {
+      target = args[i];
+    }
+  }
+
+  if (!existsSync(TASKS_ROOT)) {
+    console.log("No Foundry task directories found.");
+    return 1;
+  }
+
+  const showTask = (taskDir: string) => {
+    const state = readTaskState(taskDir);
+    const status = state?.status ?? "pending";
+    const attempt = (state as any)?.attempt ?? 1;
+    const branch = state?.branch ?? "-";
+    console.log(`Task: ${basename(taskDir)}`);
+    console.log(`Status: ${status}`);
+    console.log(`Attempt: ${attempt}`);
+    console.log(`Branch: ${branch}`);
+    console.log(`Summary: ${join(taskDir, "summary.md")}`);
+    console.log(`Handoff: ${join(taskDir, "handoff.md")}`);
+    console.log(`Checkpoint: ${join(taskDir, "checkpoint.json")}`);
+  };
+
+  const allDirs = readdirSync(TASKS_ROOT)
+    .filter(e => e.endsWith("--foundry"))
+    .map(e => join(TASKS_ROOT, e));
+
+  if (listMode) {
+    for (const taskDir of allDirs) {
+      const state = readTaskState(taskDir);
+      const status = (state?.status ?? "pending").padEnd(12);
+      const attempt = (state as any)?.attempt ?? 1;
+      console.log(`${basename(taskDir).padEnd(48)} ${status} attempt=${attempt}`);
+    }
+    return 0;
+  }
+
+  if (target) {
+    const match = allDirs.find(d => basename(d).includes(target));
+    if (!match) {
+      console.error(`No Foundry task matching '${target}'.`);
+      return 1;
+    }
+    showTask(match);
+    return 0;
+  }
+
+  if (allDirs.length === 0) {
+    console.log("No Foundry task directories found.");
+    return 1;
+  }
+
+  // Show latest by mtime
+  const latest = allDirs.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0];
+  showTask(latest);
+  return 0;
+}
+
+function cmdSetup(): number {
+  const tasksRoot = TASKS_ROOT;
+  mkdirSync(tasksRoot, { recursive: true });
+  console.log(`Ensuring task-centric Foundry root at tasks/ ...`);
+  console.log("");
+  console.log("Foundry setup complete.");
+  console.log("  Queue tasks:  ./agentic-development/foundry run \"your task\"");
+  console.log("  Monitor:      ./agentic-development/foundry");
+  console.log("  Runtime:      ./agentic-development/foundry run \"your task\"");
+  return 0;
 }
 
 function showHelp(): void {
@@ -437,18 +646,17 @@ async function main(): Promise<void> {
       exitCode = await cmdSupervisor(args);
       break;
 
-    // ── Legacy bash commands ────────────────────────────────
     case "monitor": {
-      const monitorDir = join(SCRIPT_DIR, "monitor");
+      const monitorDir = join(REPO_ROOT, "agentic-development", "monitor");
       const distPath = join(monitorDir, "dist", "index.js");
       try {
         if (existsSync(distPath)) {
-          execFileSync("node", [distPath, TASKS_ROOT], { stdio: "inherit" });
+          execSync(`node "${distPath}" "${TASKS_ROOT}"`, { stdio: "inherit" });
         } else {
           execSync(`npx tsx "${join(monitorDir, "src", "index.tsx")}" "${TASKS_ROOT}"`, { stdio: "inherit" });
         }
       } catch (e: any) {
-        exitCode = e.status ?? 1;
+        exitCode = (e as any).status ?? 1;
       }
       break;
     }
@@ -457,30 +665,45 @@ async function main(): Promise<void> {
       exitCode = await cmdHeadless(args);
       break;
     case "stop":
-      // Stop any running headless/batch processes (both TS and legacy bash)
+      // Stop any running headless/batch processes
       try { execSync("pkill -f 'foundry.*headless'", { stdio: "pipe" }); } catch {}
-      try { execSync("pkill -f 'foundry-batch\\.sh'", { stdio: "pipe" }); } catch {}
       console.log("Foundry headless workers stopped");
       break;
     case "batch":
       exitCode = await cmdBatch(args);
       break;
     case "retry":
-      exitCode = runBashLib("foundry-retry.sh", args);
+      exitCode = cmdRetry(args);
       break;
     case "stats":
-      exitCode = runBashLib("foundry-stats.sh", args);
+      exitCode = cmdStats(args);
       break;
     case "cleanup":
-      exitCode = runBashLib("foundry-cleanup.sh", args);
+      exitCode = cmdCleanup(args);
       break;
     case "setup":
-      exitCode = runBashLib("foundry-setup.sh", args);
+      exitCode = cmdSetup();
       break;
     case "e2e-autofix":
-    case "autotest":
-      exitCode = runBashLib("foundry-e2e.sh", args);
+    case "autotest": {
+      // foundry-e2e.sh is kept for E2E autofix functionality
+      const e2eScript = join(REPO_ROOT, "agentic-development", "lib", "foundry-e2e.sh");
+      if (!existsSync(e2eScript)) {
+        console.error("foundry-e2e.sh not found — e2e-autofix is not available");
+        exitCode = 1;
+        break;
+      }
+      try {
+        const { execFileSync } = await import("node:child_process");
+        execFileSync(e2eScript, args, {
+          stdio: "inherit",
+          env: { ...process.env, REPO_ROOT, PIPELINE_TASKS_ROOT: TASKS_ROOT },
+        });
+      } catch (e: any) {
+        exitCode = (e as any).status ?? 1;
+      }
       break;
+    }
 
     default:
       console.error(`Unknown command: ${cmd}`);

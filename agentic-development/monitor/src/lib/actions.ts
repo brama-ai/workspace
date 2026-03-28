@@ -397,9 +397,9 @@ export function getProcessStatusAsync(repoRoot: string, cb: (status: ProcessStat
 
 /** Clean zombie processes and stale batch lock */
 export function cleanZombies(repoRoot: string): CmdResult {
-  const commonSh = join(repoRoot, "agentic-development", "lib", "foundry-common.sh");
+  // Kill zombie opencode processes and clean stale batch lock
   return runQuick(
-    `bash -c 'REPO_ROOT="${repoRoot}" source "${commonSh}" && n=$(foundry_cleanup_zombies) && echo "Cleaned: $n zombie(s)/stale lock(s)"'`,
+    `bash -c 'n=0; for pid in $(ps -eo pid,args | grep "opencode run" | grep defunct | awk "{print \\$1}"); do kill -9 "$pid" 2>/dev/null && n=$((n+1)); done; lock="${repoRoot}/.opencode/pipeline/.batch.lock"; if [ -f "$lock" ]; then pid=$(cat "$lock" 2>/dev/null); if [ -z "$pid" ] || ! kill -0 "$pid" 2>/dev/null; then rm -f "$lock"; n=$((n+1)); fi; fi; echo "Cleaned: $n zombie(s)/stale lock(s)"'`,
     repoRoot
   );
 }

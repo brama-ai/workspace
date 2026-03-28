@@ -292,25 +292,27 @@ function taskNameFromHandoff(text: string): string {
 }
 
 function telemetryBlock(workflow: string, taskSlug: string, sessionId: string | null): string {
-  const trackerWorkflow = workflow === "builder" || workflow === "foundry" ? "builder" : workflow;
-  const cmd = [join(REPO_ROOT, "agentic-development/lib/cost-tracker.sh"), "summary-block", "--workflow", trackerWorkflow];
-  
-  if (trackerWorkflow === "builder") {
-    cmd.push("--task-slug", taskSlug);
-  } else if (sessionId) {
-    cmd.push("--session-id", sessionId);
+  const renderScript = join(REPO_ROOT, "agentic-development/monitor/src/cli/render-summary.ts");
+  let cmd: string[];
+
+  if (workflow === "builder" || workflow === "foundry") {
+    cmd = ["npx", "tsx", renderScript, "foundry", taskSlug];
+  } else {
+    cmd = sessionId
+      ? ["npx", "tsx", renderScript, "ultraworks", sessionId]
+      : ["npx", "tsx", renderScript, "ultraworks"];
   }
-  
+
   const text = run(cmd).trim();
   let lines = text.split("\n");
-  
+
   if (lines.length > 0 && lines[0].startsWith("**Workflow:**")) {
     lines = lines.slice(1);
     if (lines.length > 0 && lines[0].trim() === "") {
       lines = lines.slice(1);
     }
   }
-  
+
   return lines.join("\n").trim();
 }
 

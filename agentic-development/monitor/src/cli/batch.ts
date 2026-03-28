@@ -18,16 +18,18 @@ import {
   readdirSync,
   unlinkSync,
 } from "node:fs";
-import { execFileSync, execSync, spawn, ChildProcess } from "node:child_process";
+import { execSync, spawn, ChildProcess } from "node:child_process";
 
 import {
   readTaskState,
   setStateStatus,
   listAllTasks,
+  slugify,
   type TaskStatus,
 } from "../state/task-state-v2.js";
 import { runPipeline, type PipelineConfig } from "../pipeline/runner.js";
 import { initEventsLog } from "../state/events.js";
+import { slugifyBranch } from "../infra/git.js";
 
 // ── Config ────────────────────────────────────────────────────────
 
@@ -54,7 +56,6 @@ const PIPELINE_DIR = join(REPO_ROOT, ".opencode", "pipeline");
 const LOCKFILE = join(PIPELINE_DIR, ".batch.lock");
 const WORKER_CONFIG_FILE = join(PIPELINE_DIR, "monitor-workers");
 const WORKTREE_BASE = join(REPO_ROOT, ".pipeline-worktrees");
-const LIB_DIR = join(REPO_ROOT, "agentic-development", "lib");
 
 // ── Colours ───────────────────────────────────────────────────────
 
@@ -462,12 +463,22 @@ interface WorkerOptions {
   extraArgs: string[];
 }
 
+const DEFAULT_PROFILES: Record<string, string[]> = {
+  "quick-fix": ["u-coder", "u-validator", "u-summarizer"],
+  standard: ["u-architect", "u-coder", "u-validator", "u-tester", "u-summarizer"],
+  complex: ["u-architect", "u-coder", "u-auditor", "u-validator", "u-tester", "u-summarizer"],
+  bugfix: ["u-investigator", "u-coder", "u-validator", "u-tester", "u-summarizer"],
+  "docs-only": ["u-documenter", "u-summarizer"],
+  "tests-only": ["u-coder", "u-tester", "u-summarizer"],
+  "quality-gate": ["u-coder", "u-validator", "u-summarizer"],
+};
+
 /**
- * Single worker loop: claims tasks and runs them via foundry-run.sh.
+ * Single worker loop: claims tasks and runs them via the TS pipeline runner.
  * Returns exit code (0 = success, 1 = failure).
  */
 async function workerLoop(opts: WorkerOptions): Promise<number> {
-  const { workerId, numWorkers, stopOnFailure, extraArgs } = opts;
+  const { workerId, numWorkers, stopOnFailure } = opts;
 
   while (true) {
     // Claim the next pending task
@@ -483,55 +494,47 @@ async function workerLoop(opts: WorkerOptions): Promise<number> {
       continue;
     }
 
-    let exitCode = 0;
+    let success = false;
 
-    if (numWorkers > 1) {
-      // Multi-worker: run inside a git worktree
-      const wtPath = createWorktree(workerId);
-      if (!wtPath) {
-        logBatch(`${c.red}${workerId}${c.reset} failed to create worktree`);
-        releaseTask(taskDir);
-        continue;
-      }
-
-      try {
-        execFileSync(
-          join(LIB_DIR, "foundry-run.sh"),
-          ["--task-file", taskFile, ...extraArgs],
-          {
-            stdio: "inherit",
-            env: {
-              ...process.env,
-              PIPELINE_REPO_ROOT: wtPath,
-              PIPELINE_TASKS_ROOT: TASKS_ROOT,
-              PIPELINE_WORKER_ID: workerId,
-            },
-          }
-        );
-      } catch (e: any) {
-        exitCode = e.status ?? 1;
-      }
-    } else {
-      // Single worker: run in-place (no worktree overhead)
-      try {
-        execFileSync(
-          join(LIB_DIR, "foundry-run.sh"),
-          ["--task-file", taskFile, ...extraArgs],
-          {
-            stdio: "inherit",
-            env: {
-              ...process.env,
-              PIPELINE_WORKER_ID: workerId,
-            },
-          }
-        );
-      } catch (e: any) {
-        exitCode = e.status ?? 1;
-      }
+    const repoRoot = numWorkers > 1 ? (createWorktree(workerId) ?? REPO_ROOT) : REPO_ROOT;
+    if (numWorkers > 1 && repoRoot === REPO_ROOT) {
+      logBatch(`${c.red}${workerId}${c.reset} failed to create worktree`);
+      releaseTask(taskDir);
+      continue;
     }
 
-    if (exitCode !== 0) {
-      logBatch(`${c.red}${workerId}${c.reset} task failed: ${taskName} (exit ${exitCode})`);
+    try {
+      const taskMessage = readFileSync(taskFile, "utf8").trim();
+      const state = readTaskState(taskDir);
+      const profile = state?.profile ?? "standard";
+      const agents = state?.planned_agents ?? DEFAULT_PROFILES[profile] ?? DEFAULT_PROFILES.standard;
+      const branch = state?.branch ?? `pipeline/${slugifyBranch(taskMessage)}`;
+
+      initEventsLog(join(repoRoot, ".opencode", "pipeline"));
+
+      const config: PipelineConfig = {
+        repoRoot,
+        taskDir,
+        taskMessage,
+        branch,
+        profile,
+        agents,
+        skipPlanner: false,
+        skipEnvCheck: false,
+        audit: false,
+        noCommit: false,
+        telegram: false,
+      };
+
+      const result = await runPipeline(config);
+      success = result.success;
+    } catch (err) {
+      logBatch(`${c.red}${workerId}${c.reset} pipeline error: ${err}`);
+      success = false;
+    }
+
+    if (!success) {
+      logBatch(`${c.red}${workerId}${c.reset} task failed: ${taskName}`);
       promoteNextTodoToPending();
       if (stopOnFailure) {
         return 1;
@@ -711,7 +714,6 @@ export async function cmdBatch(args: string[]): Promise<number> {
   const workerCount = parseInt((values.workers as string) || "1", 10);
   const stopOnFailure = values["no-stop-on-failure"] !== true;
 
-  // Extra args to pass through to foundry-run.sh
   const extraArgs = positionals.filter((p) => p !== positionals[0]);
 
   mkdirSync(join(REPO_ROOT, ".opencode", "pipeline", "logs"), { recursive: true });

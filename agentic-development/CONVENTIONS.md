@@ -8,7 +8,7 @@ Foundry is a **process manager for AI agents**, architecturally similar to PHP-F
 PHP-FPM                          Foundry
 ─────────────────────────────    ─────────────────────────────
 master process                   foundry / foundry CLI
-worker pool (php-fpm workers)    batch workers (foundry-batch.sh)
+worker pool (php-fpm workers)    batch workers (batch.ts workers)
 request queue                    tasks/ directory (task pool)
 php script execution             agent execution (u-planner, u-coder, …)
 HTTP response                    summary.md (response)
@@ -257,18 +257,20 @@ Based on agent timeouts — if no new event appears within the threshold, the ag
 
 ```
 agentic-development/
-├── foundry                  # Entry dispatcher (bash → TS routing)
-├── foundry               # Main CLI entrypoint
+├── foundry                  # Main CLI entrypoint (symlink → monitor/dist/cli/foundry.js)
 ├── CONVENTIONS.md              # This file
 ├── lib/
-│   ├── foundry-common.sh       # Shared bash helpers (legacy)
-│   ├── foundry-batch.sh        # Worker pool manager (bash — process management)
-│   ├── foundry-retry.sh        # Retry helper (bash)
-│   └── ...                     # Other bash scripts (legacy)
+│   ├── foundry-common.sh       # Shared bash helpers (used by ultraworks.sh)
+│   ├── foundry-e2e.sh          # E2E autofix task generator
+│   ├── foundry-preflight.sh    # Pre-flight safety checks (used by foundry-common.sh)
+│   ├── foundry-telegram.sh     # Telegram HITL notifications (used by foundry-common.sh)
+│   ├── foundry-cleanup.sh      # Cleanup old tasks (used by ultraworks.sh)
+│   └── env-check.sh            # Environment validation (used by ultraworks.sh)
 ├── monitor/
 │   └── src/
 │       ├── cli/
-│       │   ├── foundry.ts      # CLI commands: run, status, list, supervisor
+│       │   ├── foundry.ts      # CLI commands: run, status, list, retry, cleanup, stats, setup, supervisor
+│       │   ├── batch.ts        # Parallel worker pool (TS)
 │       │   └── supervisor.ts   # Autonomous runner (TS)
 │       ├── pipeline/
 │       │   ├── runner.ts       # Pipeline orchestrator
