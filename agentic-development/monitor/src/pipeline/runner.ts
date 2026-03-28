@@ -5,6 +5,14 @@ import { checkAndCompact, getSessionContextStatus } from "../agents/context-guar
 import { emitEvent, initEventsLog, EventType } from "../state/events.js";
 import { rlog } from "../lib/runtime-logger.js";
 import { initHandoff, appendHandoff } from "./handoff.js";
+import {
+  writeTaskState,
+  setStateStatus,
+  setPlannedAgents,
+  upsertAgent,
+  setWaitingAnswer,
+  createDefaultState,
+} from "../state/task-state-v2.js";
 
 const DEBUG = env.FOUNDRY_DEBUG === "true";
 
@@ -78,10 +86,18 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
 
   debug("pipeline start", { branch, agents, profile: config.profile });
 
-  // Initialize task directory and handoff
+  // Initialize task directory, state.json, and handoff
   if (taskDir) {
     try {
       mkdirSync(taskDir, { recursive: true });
+
+      // Write initial state.json so monitor can track this task
+      const initialState = createDefaultState(taskDir);
+      initialState.status = "in_progress";
+      initialState.branch = branch;
+      writeTaskState(taskDir, initialState);
+      setPlannedAgents(taskDir, config.profile, agents);
+
       initHandoff(taskDir, taskMessage, branch);
       rlog("handoff_init", { taskDir, branch });
       debug("handoff initialized", taskDir);
@@ -118,6 +134,14 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
     rlog("agent_start", { agent, task: taskMessage });
     emitEvent("AGENT_START", { agent, task: taskMessage });
 
+    // Mark agent running + update current_step in state.json
+    if (taskDir) {
+      try {
+        setStateStatus(taskDir, "in_progress", agent);
+        upsertAgent(taskDir, agent, "running");
+      } catch { /* ignore */ }
+    }
+
     const agentConfig: AgentConfig = {
       name: agent,
       timeout: getTimeout(agent),
@@ -146,6 +170,14 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
         cost: result.tokensUsed.cost,
       });
       rlog("agent_end", { agent, status: "done", duration: result.duration, cost: result.tokensUsed.cost });
+
+      // Update state.json with agent completion
+      if (taskDir) {
+        try {
+          upsertAgent(taskDir, agent, "done", result.modelUsed, result.duration,
+            result.tokensUsed.input, result.tokensUsed.output, result.tokensUsed.cost);
+        } catch { /* ignore */ }
+      }
 
       // Record agent result in handoff
       if (taskDir) {
@@ -182,6 +214,13 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
       rlog("agent_end", { agent, status: "hitl_waiting", duration: result.duration }, "WARN");
       debug("agent waiting for HITL", agent);
 
+      if (taskDir) {
+        try {
+          upsertAgent(taskDir, agent, "waiting_answer");
+          setWaitingAnswer(taskDir, agent, 1);
+        } catch { /* ignore */ }
+      }
+
       const continueOnWait = getContinueOnWait(taskDir);
       if (!continueOnWait) {
         break;
@@ -197,6 +236,15 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
       duration: result.duration,
     });
     rlog("agent_end", { agent, status: "failed", exitCode: result.exitCode, duration: result.duration }, "ERROR");
+
+    // Update state.json with failure
+    if (taskDir) {
+      try {
+        upsertAgent(taskDir, agent, "failed", result.modelUsed, result.duration,
+          result.tokensUsed.input, result.tokensUsed.output, result.tokensUsed.cost);
+        setStateStatus(taskDir, "failed", agent);
+      } catch { /* ignore */ }
+    }
 
     // Record failure in handoff
     if (taskDir) {
@@ -231,6 +279,19 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
     failedAgent: failedAgent || null,
     totalCost,
   }, success ? "INFO" : "ERROR");
+
+  // Set final status in state.json
+  if (taskDir) {
+    try {
+      if (success) {
+        setStateStatus(taskDir, "completed");
+      } else if (hitlWaiting) {
+        // Already set by setWaitingAnswer above
+      } else {
+        setStateStatus(taskDir, "failed", failedAgent || undefined);
+      }
+    } catch { /* ignore */ }
+  }
 
   // Write pipeline summary to handoff
   if (taskDir) {

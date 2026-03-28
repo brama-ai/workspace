@@ -64,7 +64,7 @@ endef
         dev-agent-install dev-agent-migrate dev-agent-test dev-agent-analyse dev-agent-cs-check dev-agent-cs-fix \
         agent-discover conventions-test \
         external-agent-list external-agent-up external-agent-down external-agent-clone \
-        sync-skills foundry foundry-headless pipeline pipeline-batch monitor-foundry monitor-builder monitor-ultraworks \
+        sync-skills foundry foundry-headless pipeline pipeline-batch monitor-foundry monitor-ultraworks \
         monitor-ultraworks-launch monitor-ultraworks-attach monitor-ultraworks-watch monitor-ultraworks-menu \
         k8s-ctx k8s-ns k8s-deps k8s-deploy k8s-upgrade k8s-status k8s-logs k8s-destroy k8s-diff k8s-shell \
         k8s-build k8s-load k8s-secrets k8s-setup
@@ -138,7 +138,6 @@ help:
 		'make e2e                  Run Codecept.js + Playwright E2E tests (full isolated stack)' \
 		'make e2e-smoke            Run smoke-only E2E tests (API checks, no browser)' \
 		'make monitor-foundry      Monitor Foundry runtime' \
-		'make monitor-builder      Legacy alias for Foundry monitor' \
 		'make monitor-ultraworks   Monitor ultraworks pipeline (OpenCode/Sisyphus)' \
 		'make monitor-ultraworks-launch TASK="desc"  Launch OpenCode in tmux' \
 		'make monitor-ultraworks-attach  Attach to tmux session' \
@@ -512,7 +511,6 @@ monitor-foundry:
 	@echo "Keys: [s] start, [k] kill, [f] retry, [+/-] priority, [q] quit"
 	@./agentic-development/foundry
 
-monitor-builder: monitor-foundry
 
 monitor-ultraworks:
 	@./agentic-development/ultraworks.sh
@@ -553,14 +551,6 @@ pipeline-batch:
 	@test -n "$(FILE)" || (echo "Usage: make pipeline-batch FILE=tasks.txt" && exit 1)
 	./agentic-development/foundry batch "$(FILE)"
 
-builder-setup:
-	./agentic-development/foundry setup
-
-builder-cleanup:
-	./agentic-development/foundry cleanup
-
-builder-cleanup-apply:
-	./agentic-development/foundry cleanup --apply
 
 # ── Kubernetes / K3S Targets ───────────────────────────────────────────────
 
