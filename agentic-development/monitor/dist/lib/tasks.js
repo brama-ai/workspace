@@ -4,9 +4,11 @@ import { execSync } from "node:child_process";
 const STATUS_ORDER = {
     in_progress: 0,
     waiting_answer: 1,
-    completed: 2,
-    failed: 3,
-    suspended: 4,
+    pending: 2,
+    completed: 3,
+    failed: 4,
+    suspended: 5,
+    todo: 6,
 };
 function readJson(path) {
     try {
@@ -138,6 +140,7 @@ function readQAData(taskDir) {
 }
 export function readAllTasks(root) {
     const counts = {
+        todo: 0,
         pending: 0,
         in_progress: 0,
         waiting_answer: 0,

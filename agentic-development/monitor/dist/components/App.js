@@ -70,7 +70,7 @@ export function App({ tasksRoot }) {
     const [cmdIdx, setCmdIdx] = useState(0);
     const [view, setView] = useState("list");
     const [detailTab, setDetailTab] = useState("state");
-    const [data, setData] = useState({ tasks: [], counts: { pending: 0, in_progress: 0, waiting_answer: 0, completed: 0, failed: 0, suspended: 0, cancelled: 0 }, focusDir: null });
+    const [data, setData] = useState({ tasks: [], counts: { todo: 0, pending: 0, in_progress: 0, waiting_answer: 0, completed: 0, failed: 0, suspended: 0, cancelled: 0 }, focusDir: null });
     const [msg, setMsg] = useState("");
     const [lastAttachCmd, setLastAttachCmd] = useState("");
     const [tick, setTick] = useState(0);
@@ -392,9 +392,9 @@ function TasksTab({ data, idx, view, selected, cols, rows, tick, detailTab, deta
     if (view === "detail" && selected)
         return _jsx(DetailView, { task: selected, rows: rows, cols: cols, tab: detailTab, scrollOffset: detailScrollOffsets[detailTab], setScrollOffset: (offset) => setDetailScrollOffsets((prev) => ({ ...prev, [detailTab]: offset })), tick: tick, setMsg: setMsg });
     const { tasks, counts } = data;
-    const total = counts.pending + counts.in_progress + counts.waiting_answer + counts.completed + counts.failed + counts.suspended;
+    const total = counts.todo + counts.pending + counts.in_progress + counts.waiting_answer + counts.completed + counts.failed + counts.suspended;
     const done = counts.completed + counts.failed;
-    return (_jsxs(Box, { flexDirection: "column", children: [_jsx(ProgressBar, { done: done, total: total, width: cols - 10 }), _jsx(Text, { children: " " }), _jsxs(Box, { gap: 2, children: [_jsx(Text, { children: "  " }), _jsxs(Text, { color: "blue", bold: true, children: ["Pending: ", counts.pending] }), _jsxs(Text, { color: "yellow", bold: true, children: ["Running: ", counts.in_progress] }), counts.waiting_answer > 0 && _jsxs(Text, { color: "cyan", bold: true, children: ["Waiting: ", counts.waiting_answer, " \u2753"] }), _jsxs(Text, { color: "green", bold: true, children: ["Done: ", counts.completed] }), _jsxs(Text, { color: "red", bold: true, children: ["Failed: ", counts.failed] }), counts.suspended > 0 && _jsxs(Text, { color: "magenta", bold: true, children: ["Suspended: ", counts.suspended] })] }), _jsx(Text, { children: " " }), _jsx(TaskList, { tasks: tasks, selectedIdx: idx, maxLines: rows - 12 })] }));
+    return (_jsxs(Box, { flexDirection: "column", children: [_jsx(ProgressBar, { done: done, total: total, width: cols - 10 }), _jsx(Text, { children: " " }), _jsxs(Box, { gap: 2, children: [_jsx(Text, { children: "  " }), _jsxs(Text, { color: "blue", bold: true, children: ["Pending: ", counts.pending] }), _jsxs(Text, { color: "yellow", bold: true, children: ["Running: ", counts.in_progress] }), counts.waiting_answer > 0 && _jsxs(Text, { color: "cyan", bold: true, children: ["Waiting: ", counts.waiting_answer, " \u2753"] }), _jsxs(Text, { color: "green", bold: true, children: ["Done: ", counts.completed] }), _jsxs(Text, { color: "red", bold: true, children: ["Failed: ", counts.failed] }), counts.suspended > 0 && _jsxs(Text, { color: "magenta", bold: true, children: ["Suspended: ", counts.suspended] }), counts.todo > 0 && _jsxs(Text, { color: "gray", bold: true, children: ["Todo: ", counts.todo] })] }), _jsx(Text, { children: " " }), _jsx(TaskList, { tasks: tasks, selectedIdx: idx, maxLines: rows - 12 })] }));
 }
 // ── Processes Tab ─────────────────────────────────────────────────
 function ProcessesTab({ procStatus, selectedIdx, logLines, cols, rows, tick, }) {
@@ -453,14 +453,15 @@ function StatusHeader({ status }) {
         completed: ["Completed:", "green"],
         failed: ["Failed:", "red"],
         suspended: ["Suspended:", "magenta"],
-        pending: ["Pending: (priority order)", "blue"],
+        pending: ["Pending:", "blue"],
+        todo: ["Queue:", "gray"],
     };
     const [label, color] = labels[base] ?? [base, "white"];
     return _jsxs(Text, { bold: true, color: color, children: ["  ", label] });
 }
 function TaskLine({ task, cursor }) {
-    const icon = { in_progress: "▸", waiting_answer: "?", completed: "✓", failed: "✗", suspended: "⏸", pending: "○" }[task.status] ?? "○";
-    const color = { in_progress: "yellow", waiting_answer: "cyan", completed: "green", failed: "red", suspended: "magenta", pending: undefined }[task.status];
+    const icon = { in_progress: "▸", waiting_answer: "?", completed: "✓", failed: "✗", suspended: "⏸", pending: "○", todo: "·" }[task.status] ?? "·";
+    const color = { in_progress: "yellow", waiting_answer: "cyan", completed: "green", failed: "red", suspended: "magenta", pending: undefined, todo: "gray" }[task.status];
     const wfBadge = task.workflow === "ultraworks" ? "U" : "F";
     const wfColor = task.workflow === "ultraworks" ? "magenta" : "blue";
     const warnings = [];

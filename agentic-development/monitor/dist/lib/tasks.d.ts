@@ -56,6 +56,7 @@ export interface TaskInfo {
     questionsAnswered?: number;
 }
 export interface TaskCounts {
+    todo: number;
     pending: number;
     in_progress: number;
     waiting_answer: number;

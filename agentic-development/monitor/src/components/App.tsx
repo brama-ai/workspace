@@ -110,7 +110,7 @@ export function App({ tasksRoot }: Props) {
   const [cmdIdx, setCmdIdx] = useState(0);
   const [view, setView] = useState<ViewMode>("list");
   const [detailTab, setDetailTab] = useState<DetailTab>("state");
-  const [data, setData] = useState<ReadResult>({ tasks: [], counts: { pending: 0, in_progress: 0, waiting_answer: 0, completed: 0, failed: 0, suspended: 0, cancelled: 0 }, focusDir: null });
+  const [data, setData] = useState<ReadResult>({ tasks: [], counts: { todo: 0, pending: 0, in_progress: 0, waiting_answer: 0, completed: 0, failed: 0, suspended: 0, cancelled: 0 }, focusDir: null });
   const [msg, setMsg] = useState("");
   const [lastAttachCmd, setLastAttachCmd] = useState("");
   const [tick, setTick] = useState(0);
@@ -440,7 +440,7 @@ function TasksTab({
   if (view === "detail" && selected) return <DetailView task={selected} rows={rows} cols={cols} tab={detailTab} scrollOffset={detailScrollOffsets[detailTab]} setScrollOffset={(offset) => setDetailScrollOffsets((prev) => ({ ...prev, [detailTab]: offset }))} tick={tick} setMsg={setMsg} />;
 
   const { tasks, counts } = data;
-  const total = counts.pending + counts.in_progress + counts.waiting_answer + counts.completed + counts.failed + counts.suspended;
+  const total = counts.todo + counts.pending + counts.in_progress + counts.waiting_answer + counts.completed + counts.failed + counts.suspended;
   const done  = counts.completed + counts.failed;
 
   return (
@@ -455,6 +455,7 @@ function TasksTab({
         <Text color="green"   bold>Done: {counts.completed}</Text>
         <Text color="red"     bold>Failed: {counts.failed}</Text>
         {counts.suspended > 0 && <Text color="magenta" bold>Suspended: {counts.suspended}</Text>}
+        {counts.todo > 0 && <Text color="gray" bold>Todo: {counts.todo}</Text>}
       </Box>
       <Text> </Text>
       <TaskList tasks={tasks} selectedIdx={idx} maxLines={rows - 12} />
@@ -646,15 +647,16 @@ function StatusHeader({ status }: { status: string }) {
     completed:      ["Completed:",            "green"],
     failed:         ["Failed:",               "red"],
     suspended:      ["Suspended:",            "magenta"],
-    pending:        ["Pending: (priority order)", "blue"],
+    pending:        ["Pending:",              "blue"],
+    todo:           ["Queue:",                "gray"],
   };
   const [label, color] = labels[base] ?? [base, "white"];
   return <Text bold color={color as any}>  {label}</Text>;
 }
 
 function TaskLine({ task, cursor }: { task: TaskInfo; cursor: boolean }) {
-  const icon    = { in_progress: "▸", waiting_answer: "?", completed: "✓", failed: "✗", suspended: "⏸", pending: "○" }[task.status] ?? "○";
-  const color   = { in_progress: "yellow", waiting_answer: "cyan", completed: "green", failed: "red", suspended: "magenta", pending: undefined }[task.status];
+  const icon    = { in_progress: "▸", waiting_answer: "?", completed: "✓", failed: "✗", suspended: "⏸", pending: "○", todo: "·" }[task.status] ?? "·";
+  const color   = { in_progress: "yellow", waiting_answer: "cyan", completed: "green", failed: "red", suspended: "magenta", pending: undefined, todo: "gray" }[task.status];
   const wfBadge = task.workflow === "ultraworks" ? "U" : "F";
   const wfColor = task.workflow === "ultraworks" ? "magenta" : "blue";
 

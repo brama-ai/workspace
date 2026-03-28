@@ -157,18 +157,15 @@ worker_loop() {
 
     if [[ $exit_code -ne 0 ]]; then
       log_batch "${RED}${worker_id}${NC} task failed: ${task_name} (exit $exit_code)"
+      foundry_promote_next_todo_to_pending 2>/dev/null || true
       if [[ "$STOP_ON_FAILURE" == true ]]; then
         return 1
       fi
-      # BUG-FIX: after a failure, release the task back to pending so it can
-      # be retried, then STOP the worker loop — do NOT immediately claim the
-      # next task. One failure = one stop. The watch loop will respawn the
-      # worker on the next interval, giving time for transient errors to clear
-      # (git lock contention, rate limits, etc.).
       foundry_release_task "$task_dir" 2>/dev/null || true
       return 0
     else
       log_batch "${GREEN}${worker_id}${NC} task done: ${task_name}"
+      foundry_promote_next_todo_to_pending 2>/dev/null || true
     fi
   done
 
@@ -251,6 +248,9 @@ if [[ "$WATCH_MODE" == true ]]; then
     desired=$(foundry_get_desired_workers 2>/dev/null || echo "$WORKERS")
     WORKERS="$desired"
 
+    # Ensure a pending slot is filled (todo → pending promotion)
+    foundry_promote_next_todo_to_pending 2>/dev/null || true
+
     # Spawn/respawn workers up to desired count
     spawn_workers "$WORKERS" "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
 
@@ -284,7 +284,8 @@ if [[ "$WATCH_MODE" == true ]]; then
     sleep "$WATCH_INTERVAL"
   done
 else
-  # Non-watch mode: spawn workers, wait for all to finish
+  # Non-watch mode: seed first todo→pending, then spawn workers
+  foundry_promote_next_todo_to_pending 2>/dev/null || true
   spawn_workers "$WORKERS" "${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}"
   wait_for_workers || BATCH_FAILED=true
 

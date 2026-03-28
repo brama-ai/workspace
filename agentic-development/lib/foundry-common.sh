@@ -269,7 +269,7 @@ foundry_repair_state_file() {
   mkdir -p "$task_dir"
   
   if [[ ! -f "$state_file" ]]; then
-    echo "{\"task_id\":\"$task_id\",\"workflow\":\"foundry\",\"status\":\"pending\",\"started_at\":\"$now\",\"attempt\":1,\"task_file\":\"$task_file\",\"updated_at\":\"$now\"}" > "$state_file"
+    echo "{\"task_id\":\"$task_id\",\"workflow\":\"foundry\",\"status\":\"todo\",\"started_at\":\"$now\",\"attempt\":1,\"task_file\":\"$task_file\",\"updated_at\":\"$now\"}" > "$state_file"
     return 0
   fi
   
@@ -501,6 +501,102 @@ foundry_resume_stopped_task() {
   # Fallback: basic resume
   foundry_set_state_status "$task_dir" "pending" "" ""
   pipeline_task_append_event "$task_dir" "task_resumed" "Task resumed from stopped state" ""
+}
+
+# ── Todo → Pending promotion (single-slot pipeline gate) ──────────────
+# Promotes the highest-priority "todo" task to "pending" so a worker can claim it.
+# Only ONE task should be "pending" at any time. This ensures sequential
+# environment preparation — the pending task is next to run, todo tasks wait.
+# Returns 0 if a task was promoted, 1 if nothing to promote.
+foundry_promote_next_todo_to_pending() {
+  # If a pending task already exists, do nothing
+  local pending_count=0
+  for task_dir in "$PIPELINE_TASKS_ROOT"/*--foundry*; do
+    [[ ! -d "$task_dir" ]] && continue
+    local sf="$task_dir/state.json"
+    if [[ -f "$sf" ]]; then
+      local st
+      st=$(jq -r '.status // "todo"' "$sf" 2>/dev/null) || st="todo"
+      [[ "$st" == "pending" ]] && pending_count=$((pending_count + 1))
+    fi
+  done
+  [[ $pending_count -gt 0 ]] && return 0
+
+  # Collect todo tasks with priority
+  local -a candidates=()
+  local task_dir state_file status priority first_line
+
+  for task_dir in "$PIPELINE_TASKS_ROOT"/*--foundry*; do
+    [[ ! -d "$task_dir" ]] && continue
+    state_file="$task_dir/state.json"
+
+    status="todo"
+    if [[ -f "$state_file" ]]; then
+      status=$(jq -r '.status // "todo"' "$state_file" 2>/dev/null) || status="todo"
+    fi
+    [[ "$status" != "todo" ]] && continue
+
+    priority=1
+    if [[ -f "$task_dir/task.md" ]]; then
+      first_line=$(head -1 "$task_dir/task.md" 2>/dev/null)
+      if [[ "$first_line" =~ priority:\ *([0-9]+) ]]; then
+        priority="${BASH_REMATCH[1]}"
+      fi
+    fi
+
+    candidates+=("$priority:$task_dir")
+  done
+
+  [[ ${#candidates[@]} -eq 0 ]] && return 1
+
+  IFS=$'\n' read -r -d '' -a candidates < <(printf '%s\n' "${candidates[@]}" | sort -t: -k1 -rn) || true
+
+  local now
+  now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+  for entry in "${candidates[@]}"; do
+    task_dir="${entry#*:}"
+    local lock_file="$task_dir/.promote.lock"
+    local sf="$task_dir/state.json"
+
+    touch "$lock_file"
+
+    (
+      flock -n 9 || exit 1
+
+      local cur="todo"
+      if [[ -f "$sf" ]]; then
+        cur=$(jq -r '.status // "todo"' "$sf" 2>/dev/null) || cur="todo"
+      fi
+      [[ "$cur" != "todo" ]] && exit 1
+
+      # Double-check no other task is pending (race condition guard)
+      local other_pending=0
+      for other_dir in "$PIPELINE_TASKS_ROOT"/*--foundry*; do
+        [[ ! -d "$other_dir" || "$other_dir" == "$task_dir" ]] && continue
+        local other_sf="$other_dir/state.json"
+        if [[ -f "$other_sf" ]]; then
+          local other_st
+          other_st=$(jq -r '.status // "todo"' "$other_sf" 2>/dev/null) || other_st="todo"
+          [[ "$other_st" == "pending" ]] && other_pending=$((other_pending + 1))
+        fi
+      done
+      [[ $other_pending -gt 0 ]] && exit 1
+
+      foundry_set_state_status "$task_dir" "pending" "" ""
+      pipeline_task_append_event "$task_dir" "promoted" "Task promoted from todo to pending (next in pipeline)" ""
+
+      exit 0
+    ) 9>"$lock_file"
+
+    if [[ $? -eq 0 ]]; then
+      debug_log "promote" "Todo→Pending promoted" "task=$(basename "$task_dir")"
+      echo "$task_dir"
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 # Find and claim the next pending task (priority-sorted). Prints task_dir on success.
@@ -813,7 +909,7 @@ foundry_create_task_dir() {
 EOF
   fi
 
-  [[ -f "$(foundry_state_path "$task_dir")" ]] || foundry_write_state "$task_dir" "pending" "" ""
+  [[ -f "$(foundry_state_path "$task_dir")" ]] || foundry_write_state "$task_dir" "todo" "" ""
   echo "$task_dir"
 }
 
@@ -829,7 +925,7 @@ foundry_meta_set_resumed_from() {
 }
 
 # Ensure state.json exists for a task directory.
-# If task.md exists but state.json does not, creates state.json with status=pending.
+# If task.md exists but state.json does not, creates state.json with status=todo.
 # This covers tasks created manually (by copying task.md into tasks/) without going
 # through foundry_create_task_dir(), which is the only other place state.json is written.
 foundry_ensure_state_json() {
@@ -837,7 +933,7 @@ foundry_ensure_state_json() {
   local state_path="$task_dir/state.json"
   [[ -f "$state_path" ]] && return 0
   [[ -f "$task_dir/task.md" ]] || return 0
-  foundry_write_state "$task_dir" "pending" "" "" "$task_dir/task.md"
+  foundry_write_state "$task_dir" "todo" "" "" "$task_dir/task.md"
 }
 
 foundry_list_task_dirs() {
@@ -850,7 +946,7 @@ foundry_list_task_dirs() {
 }
 
 foundry_find_tasks_by_status() {
-  local wanted="${1:-pending}"
+  local wanted="${1:-todo}"
   local task_dir task_file state_file status
   
   for task_dir in "$PIPELINE_TASKS_ROOT"/*--foundry*; do
@@ -863,10 +959,10 @@ foundry_find_tasks_by_status() {
       local now task_id
       now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
       task_id=$(basename "$task_dir")
-      echo "{\"task_id\":\"$task_id\",\"workflow\":\"foundry\",\"started_at\":\"$now\",\"attempt\":1,\"status\":\"pending\",\"current_step\":null,\"resume_from\":null,\"updated_at\":\"$now\",\"task_file\":\"$task_file\",\"branch\":null}" > "$state_file"
+      echo "{\"task_id\":\"$task_id\",\"workflow\":\"foundry\",\"started_at\":\"$now\",\"attempt\":1,\"status\":\"todo\",\"current_step\":null,\"resume_from\":null,\"updated_at\":\"$now\",\"task_file\":\"$task_file\",\"branch\":null}" > "$state_file"
     fi
     
-    status=$(jq -r '.status // "pending"' "$state_file" 2>/dev/null) || status="pending"
+    status=$(jq -r '.status // "todo"' "$state_file" 2>/dev/null) || status="todo"
     
     if echo "$wanted" | grep -qw "$status"; then
       echo "$task_dir"
@@ -875,14 +971,15 @@ foundry_find_tasks_by_status() {
 }
 
 foundry_task_counts() {
-  local pending=0 in_progress=0 completed=0 failed=0 suspended=0 cancelled=0 stopped=0
+  local todo=0 pending=0 in_progress=0 completed=0 failed=0 suspended=0 cancelled=0 stopped=0
   
   for task_dir in "$PIPELINE_TASKS_ROOT"/*--foundry*; do
     [[ ! -d "$task_dir" ]] && continue
     state_file="$task_dir/state.json"
-    status=$(jq -r '.status // "pending"' "$state_file" 2>/dev/null) || status="pending"
+    status=$(jq -r '.status // "todo"' "$state_file" 2>/dev/null) || status="todo"
     
     case "$status" in
+      todo) todo=$((todo + 1)) ;;
       pending) pending=$((pending + 1)) ;;
       in_progress) in_progress=$((in_progress + 1)) ;;
       completed) completed=$((completed + 1)) ;;
@@ -893,33 +990,7 @@ foundry_task_counts() {
     esac
   done
   
-  echo "pending=$pending"
-  echo "in_progress=$in_progress"
-  echo "completed=$completed"
-  echo "failed=$failed"
-  echo "suspended=$suspended"
-  echo "cancelled=$cancelled"
-  echo "stopped=$stopped"
-}
-  foundry_task_counts() {
-  local pending=0 in_progress=1 completed=1 failed=1 suspended=1 cancelled=1 stopped=1
-  
-  for task_dir in "$PIPELINE_TASKS_ROOT"/*--foundry*; do
-    [[ ! -d "$task_dir" ]] && continue
-    state_file="$task_dir/state.json"
-    status=$(jq -r '.status // "pending"' "$state_file" 2>/dev/null) || status="pending"
-    
-    case "$status" in
-      pending) pending=$((pending + 1)) ;;
-      in_progress) in_progress=$((in_progress + 1)) ;;
-      completed) completed=$((completed + 1)) ;;
-      failed) failed=$((failed + 1)) ;;
-      suspended) suspended=$((suspended + 1)) ;;
-      cancelled) cancelled=$((cancelled + 1)) ;;
-      stopped) stopped=$((stopped + 1)) ;;
-    esac
-  done
-  
+  echo "todo=$todo"
   echo "pending=$pending"
   echo "in_progress=$in_progress"
   echo "completed=$completed"

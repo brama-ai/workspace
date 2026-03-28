@@ -433,6 +433,7 @@ _task_move_to_in_progress() {
   foundry_set_state_status "$TASK_DIR" "in_progress" "${FROM_AGENT:-u-planner}" "${FROM_AGENT:-u-planner}"
   pipeline_task_append_event "$TASK_DIR" "run_started" "Foundry run started" "${FROM_AGENT:-u-planner}"
   echo -e "${BLUE}Task state: pending → in_progress${NC}"
+  foundry_promote_next_todo_to_pending 2>/dev/null || true
 }
 
 _task_move_to_done() {
@@ -442,6 +443,7 @@ _task_move_to_done() {
   [[ -n "$branch" ]] && foundry_update_state_field "$TASK_DIR" "branch" "$branch"
   pipeline_task_append_event "$TASK_DIR" "run_completed" "Foundry run completed" "u-summarizer"
   echo -e "${GREEN}Task state: in_progress → completed${NC}"
+  foundry_promote_next_todo_to_pending 2>/dev/null || true
 }
 
 _task_move_to_failed() {
@@ -451,6 +453,7 @@ _task_move_to_failed() {
   [[ -n "$branch" ]] && foundry_update_state_field "$TASK_DIR" "branch" "$branch"
   pipeline_task_append_event "$TASK_DIR" "run_failed" "Foundry run failed at ${failed_agent:-unknown}" "${failed_agent:-unknown}"
   echo -e "${RED}Task state: in_progress → failed${NC}"
+  foundry_promote_next_todo_to_pending 2>/dev/null || true
 }
 
 _detect_task_lifecycle

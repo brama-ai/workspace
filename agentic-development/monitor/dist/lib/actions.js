@@ -68,7 +68,7 @@ export function archiveTask(taskDir) {
 export function findRepoRoot() {
     let dir = process.cwd();
     while (dir !== "/") {
-        if (existsSync(join(dir, "agentic-development", "foundry.sh")))
+        if (existsSync(join(dir, "agentic-development", "foundry")))
             return dir;
         dir = join(dir, "..");
     }
@@ -121,7 +121,7 @@ function runQuick(cmd, cwd) {
 }
 // ── Foundry actions ─────────────────────────────────────────────
 function foundryPath(repoRoot) {
-    return join(repoRoot, "agentic-development", "foundry.sh");
+    return join(repoRoot, "agentic-development", "foundry");
 }
 export function startWorkers(repoRoot) {
     const cmd = `"${foundryPath(repoRoot)}" headless`;

@@ -67,6 +67,7 @@ export interface TaskInfo {
 }
 
 export interface TaskCounts {
+  todo: number;
   pending: number;
   in_progress: number;
   waiting_answer: number;
@@ -85,9 +86,11 @@ export interface ReadResult {
 const STATUS_ORDER: Record<string, number> = {
   in_progress: 0,
   waiting_answer: 1,
-  completed: 2,
-  failed: 3,
-  suspended: 4,
+  pending: 2,
+  completed: 3,
+  failed: 4,
+  suspended: 5,
+  todo: 6,
 };
 
 function readJson(path: string): any {
@@ -212,6 +215,7 @@ function readQAData(taskDir: string): QAData | undefined {
 
 export function readAllTasks(root: string): ReadResult {
   const counts: TaskCounts = {
+    todo: 0,
     pending: 0,
     in_progress: 0,
     waiting_answer: 0,

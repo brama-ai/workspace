@@ -14,6 +14,7 @@ import { parseEventLine } from "../state/events.js";
 import { runPipeline } from "../pipeline/runner.js";
 import { slugifyBranch } from "../infra/git.js";
 import { initEventsLog } from "../state/events.js";
+import { getProcessHealth, getRootCauseInfo } from "../lib/db-info.js";
 // ── Config ────────────────────────────────────────────────────────
 const REPO_ROOT = env.REPO_ROOT || process.cwd();
 const TASKS_ROOT = env.PIPELINE_TASKS_ROOT || join(REPO_ROOT, "tasks");
@@ -74,7 +75,25 @@ function getLastEvents(taskDir, n = 5) {
         const lines = readFileSync(eventsPath, "utf-8").trim().split("\n");
         return lines
             .slice(-n)
-            .map((l) => parseEventLine(l))
+            .map((l) => {
+            // Try pipe-delimited format first (emitEvent format)
+            const piped = parseEventLine(l);
+            if (piped)
+                return piped;
+            // Fallback: JSON format (task events written by bash/appendEvent)
+            try {
+                const json = JSON.parse(l);
+                return {
+                    ts: json.timestamp ?? "",
+                    epoch: json.timestamp ? Math.floor(new Date(json.timestamp).getTime() / 1000) : 0,
+                    type: json.type ?? "UNKNOWN",
+                    details: { message: json.message ?? "", step: json.step ?? "" },
+                };
+            }
+            catch {
+                return null;
+            }
+        })
             .filter(Boolean);
     }
     catch {
@@ -103,19 +122,22 @@ function getSecondsSinceLastActivity(taskDir) {
     }
     return 0;
 }
-function getTotalCost(state) {
+/** @internal exported for testing */
+export function getTotalCost(state) {
     if (!state.agents)
         return 0;
     return Object.values(state.agents).reduce((sum, a) => sum + (a.cost ?? 0), 0);
 }
-function getFailedAgents(state) {
+/** @internal exported for testing */
+export function getFailedAgents(state) {
     if (!state.agents)
         return [];
     return Object.entries(state.agents)
         .filter(([, a]) => a.status === "failed")
         .map(([name]) => name);
 }
-function getSummaryStatus(taskDir) {
+/** @internal exported for testing */
+export function getSummaryStatus(taskDir) {
     const summaryPath = join(taskDir, "summary.md");
     if (!existsSync(summaryPath))
         return "NO_SUMMARY";
@@ -123,11 +145,13 @@ function getSummaryStatus(taskDir) {
         const content = readFileSync(summaryPath, "utf-8");
         if (!content.trim())
             return "NO_SUMMARY";
-        if (/(?:статус|status)\s*[:\-—]*\s*PASS/i.test(content))
+        // Strip markdown bold markers before matching
+        const plain = content.replace(/\*{1,2}/g, "");
+        if (/(?:статус|status)\s*[:\-—]*\s*PASS/i.test(plain))
             return "PASS";
-        if (/(?:статус|status)\s*[:\-—]*\s*FAIL/i.test(content))
+        if (/(?:статус|status)\s*[:\-—]*\s*FAIL/i.test(plain))
             return "FAIL";
-        if (/completed successfully/i.test(content))
+        if (/completed successfully/i.test(plain))
             return "PASS";
         return "UNKNOWN";
     }
@@ -163,7 +187,7 @@ function workersAlive() {
 }
 function startWorkers() {
     try {
-        execSync(`${join(REPO_ROOT, "agentic-development", "foundry.sh")} headless`, { stdio: "inherit", timeout: 10_000 });
+        execSync(`${join(REPO_ROOT, "agentic-development", "foundry")} headless`, { stdio: "inherit", timeout: 10_000 });
     }
     catch { }
 }
@@ -182,7 +206,8 @@ function removeStaleLock(taskDir) {
     catch { }
     return false;
 }
-function diagnose(taskDir, state) {
+/** @internal exported for testing */
+export function diagnose(taskDir, state) {
     const events = getLastEvents(taskDir, 20);
     const evText = events.map((e) => `${e.type} ${e.details?.message ?? ""}`).join("\n");
     const failed = getFailedAgents(state);
@@ -202,16 +227,25 @@ function diagnose(taskDir, state) {
     if (/preflight|stop_reason/i.test(evText)) {
         return { category: "preflight", action: "fix_env", detail: "Preflight check failed" };
     }
+    // Enrich with DB root-cause analysis
+    let dbDetail = "";
+    try {
+        const rca = getRootCauseInfo();
+        if (rca.sessionId) {
+            dbDetail = ` | DB: ${rca.possibleCause} (${rca.totalMessages} msgs, ${Math.round(rca.idleSeconds / 60)}m idle)`;
+        }
+    }
+    catch { /* ignore */ }
     // Show agent log snippet for unknown failures
     if (failed.length > 0) {
         const logSnippet = getAgentLogTail(taskDir, failed[0], 5).join("\n");
         return {
             category: "agent_error",
             action: "retry",
-            detail: `${failed.join(", ")} failed.\n  Last log: ${logSnippet.slice(0, 200)}`,
+            detail: `${failed.join(", ")} failed.\n  Last log: ${logSnippet.slice(0, 200)}${dbDetail}`,
         };
     }
-    return { category: "unknown", action: "retry", detail: "No clear error pattern" };
+    return { category: "unknown", action: "retry", detail: `No clear error pattern${dbDetail}` };
 }
 // ── Fix & Retry ───────────────────────────────────────────────────
 async function applyFixAndRetry(taskDir, diag, attempt) {
@@ -225,7 +259,7 @@ async function applyFixAndRetry(taskDir, diag, attempt) {
             log("Cleaning stale locks...");
             removeStaleLock(taskDir);
             try {
-                execSync(join(REPO_ROOT, "agentic-development", "foundry.sh") + " stop", { stdio: "pipe" });
+                execSync(join(REPO_ROOT, "agentic-development", "foundry") + " stop", { stdio: "pipe" });
             }
             catch { }
             await sleep(5_000);
@@ -233,7 +267,7 @@ async function applyFixAndRetry(taskDir, diag, attempt) {
         case "fix_env":
             warn("Preflight failure — running setup...");
             try {
-                execSync(join(REPO_ROOT, "agentic-development", "foundry.sh") + " setup", { stdio: "pipe" });
+                execSync(join(REPO_ROOT, "agentic-development", "foundry") + " setup", { stdio: "pipe" });
             }
             catch { }
             break;
@@ -280,6 +314,92 @@ async function applyFixAndRetry(taskDir, diag, attempt) {
     const updatedState = readTaskState(taskDir);
     ok(`Task reset to pending (attempt ${updatedState?.attempt ?? 1})`);
     return true;
+}
+// ── Root-Cause Report ─────────────────────────────────────────────
+function writeRootCauseReport(taskDir, state) {
+    // Determine next N: count existing root-cause-*.md files
+    let n = 0;
+    try {
+        const files = readdirSync(taskDir).filter((f) => /^root-cause-\d+\.md$/.test(f));
+        n = files.length;
+    }
+    catch { /* ignore */ }
+    const fileName = `root-cause-${n}.md`;
+    const filePath = join(taskDir, fileName);
+    const failed = getFailedAgents(state);
+    const events = getLastEvents(taskDir, 10);
+    // Gather DB info
+    let rca = null;
+    try {
+        rca = getRootCauseInfo();
+    }
+    catch { /* ignore */ }
+    const lines = [
+        `# Root Cause — Crash ${n}`,
+        "",
+        `**Time:** ${new Date().toISOString()}`,
+        `**Failed agent:** ${failed.join(", ") || "unknown"}`,
+        `**Attempt:** ${state.attempt ?? 1}`,
+        `**Status:** ${state.status}`,
+    ];
+    if (rca?.sessionId) {
+        lines.push(`**Session:** ${rca.sessionId}`);
+        lines.push(`**Model:** ${rca.lastModel ?? "unknown"}`);
+        lines.push(`**Idle:** ${rca.idleSeconds}s since last DB activity`);
+        lines.push(`**Messages:** ${rca.totalMessages}`);
+    }
+    lines.push("");
+    lines.push("## Possible Cause");
+    lines.push(rca?.possibleCause ?? "Could not determine (DB unavailable)");
+    // Events
+    lines.push("");
+    lines.push("## Events (last 10)");
+    if (events.length > 0) {
+        for (const e of events) {
+            lines.push(`- \`${e.type}\` ${e.details?.message ?? ""} ${e.details?.step ?? ""}`);
+        }
+    }
+    else {
+        lines.push("_No events found_");
+    }
+    // Last messages from DB
+    if (rca?.lastMessages && rca.lastMessages.length > 0) {
+        lines.push("");
+        lines.push("## Last Messages (from DB)");
+        lines.push("| Role | Model | Input | Output | Cache Read |");
+        lines.push("|------|-------|------:|-------:|-----------:|");
+        for (const msg of rca.lastMessages) {
+            lines.push(`| ${msg.role} | ${msg.provider}/${msg.model} | ${msg.inputTokens} | ${msg.outputTokens} | ${msg.cacheRead} |`);
+        }
+    }
+    // Agent log tail
+    if (failed.length > 0) {
+        lines.push("");
+        lines.push("## Agent Log Tail");
+        const logTail = getAgentLogTail(taskDir, failed[0], 20);
+        if (logTail.length > 0) {
+            lines.push("```");
+            lines.push(...logTail);
+            lines.push("```");
+        }
+        else {
+            lines.push("_No log available_");
+        }
+    }
+    // Cache stats
+    if (rca?.cacheStats && rca.cacheStats.length > 0) {
+        lines.push("");
+        lines.push("## Cache Stats");
+        lines.push("| Model | Msgs | Cache Hit % | Avg Input |");
+        lines.push("|-------|-----:|------------:|----------:|");
+        for (const stat of rca.cacheStats) {
+            lines.push(`| ${stat.model} | ${stat.messages} | ${stat.cache_hit_pct}% | ${stat.avg_input} |`);
+        }
+    }
+    const content = lines.join("\n") + "\n";
+    writeFileSync(filePath, content, "utf-8");
+    log(`Root-cause report saved: ${fileName}`);
+    return filePath;
 }
 // ── FAIL Summary Analysis ─────────────────────────────────────────
 function analyzeFail(taskDir, state) {
@@ -334,7 +454,8 @@ function analyzeFail(taskDir, state) {
     writeFileSync(join(taskDir, "fix-proposal.md"), proposalContent);
     return proposalContent;
 }
-function checkStall(taskDir, status, step) {
+/** @internal exported for testing */
+export function checkStall(taskDir, status, step) {
     const idleSec = getSecondsSinceLastActivity(taskDir);
     let threshold;
     if (status === "pending") {
@@ -346,7 +467,26 @@ function checkStall(taskDir, status, step) {
     else {
         threshold = DEFAULT_STALL_SEC;
     }
-    return { stalled: idleSec > threshold, idleSec, threshold };
+    // Enrich with DB-based health check when status is in_progress
+    let dbHealth = null;
+    if (status === "in_progress") {
+        try {
+            dbHealth = getProcessHealth(taskDir, threshold);
+        }
+        catch { /* ignore DB errors */ }
+    }
+    // Combine: stalled if file-based idle exceeds threshold,
+    // OR if DB says session is stale AND PID is dead
+    const fileStalled = idleSec > threshold;
+    const dbStalled = dbHealth
+        ? (!dbHealth.alive && !dbHealth.pidAlive)
+        : false;
+    return {
+        stalled: fileStalled || dbStalled,
+        idleSec,
+        threshold,
+        dbHealth,
+    };
 }
 export async function cmdSupervisor(args) {
     const { values, positionals } = parseArgs({
@@ -463,14 +603,30 @@ export async function cmdSupervisor(args) {
             }
             // ── In Progress ────────────────────────────────────────
             case "in_progress": {
-                log(`🔄 ${step ?? "?"} | $${cost.toFixed(2)} | attempt ${attempt} | idle ${stall.idleSec}s`);
+                const dbInfo = stall.dbHealth;
+                const modelStr = dbInfo?.lastModel ? ` | ${dbInfo.lastModel}` : "";
+                const msgStr = dbInfo?.messageCount ? ` | ${dbInfo.messageCount} msgs` : "";
+                log(`🔄 ${step ?? "?"} | $${cost.toFixed(2)} | attempt ${attempt} | idle ${stall.idleSec}s${modelStr}${msgStr}`);
                 if (stall.stalled) {
                     warn(`STALL: ${step ?? "?"} no activity for ${Math.round(stall.idleSec / 60)} min (threshold ${Math.round(stall.threshold / 60)} min)`);
+                    // DB-enriched diagnostics
+                    if (dbInfo) {
+                        if (dbInfo.pid && !dbInfo.pidAlive) {
+                            warn(`PID ${dbInfo.pid} is dead (zombie or crashed) — resetting to pending`);
+                            removeStaleLock(taskDir);
+                            setStateStatus(taskDir, "pending", undefined);
+                            startWorkers();
+                            break;
+                        }
+                        if (!dbInfo.alive) {
+                            warn(`DB session stale (${Math.round(dbInfo.idleSeconds / 60)} min idle in DB)`);
+                        }
+                    }
                     const lastEvents = getLastEvents(taskDir, 3);
                     for (const e of lastEvents) {
                         console.log(`  ${e.type}: ${e.details?.message ?? ""}`);
                     }
-                    // Check if worker is alive
+                    // Fallback: check if worker is alive
                     if (state.worker_id && !workersAlive()) {
                         warn("Worker appears dead — resetting to pending");
                         removeStaleLock(taskDir);
@@ -494,7 +650,7 @@ export async function cmdSupervisor(args) {
                         }
                     }
                 }
-                log("Answer via monitor or: foundry.sh monitor → Enter on task");
+                log("Answer via monitor or: foundry monitor → Enter on task");
                 break;
             }
             // ── Completed ──────────────────────────────────────────
@@ -522,6 +678,7 @@ export async function cmdSupervisor(args) {
                 }
                 if (summaryStatus === "FAIL") {
                     warn("Task completed but summary = FAIL");
+                    writeRootCauseReport(taskDir, state);
                     const proposal = analyzeFail(taskDir, state);
                     console.log(proposal);
                     retryCount++;
@@ -549,6 +706,8 @@ export async function cmdSupervisor(args) {
             case "failed":
             case "stopped": {
                 warn(`Task ${status} at step: ${step ?? "?"}`);
+                // Always write root-cause report before retry
+                writeRootCauseReport(taskDir, state);
                 retryCount++;
                 if (retryCount > opts.maxRetries) {
                     err(`Max retries (${opts.maxRetries}) exhausted`);

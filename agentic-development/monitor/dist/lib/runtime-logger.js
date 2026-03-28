@@ -24,6 +24,15 @@ const KEY_EVENTS = new Set([
     "model_blacklisted",
     "model_call_started",
     "model_call_error",
+    "model_call_success",
+    "process_spawned",
+    "process_timeout",
+    "process_killed",
+    "process_exited",
+    "pipeline_start",
+    "pipeline_end",
+    "agent_start",
+    "agent_end",
 ]);
 export function rlog(event, payload, level = "INFO") {
     const isKeyEvent = KEY_EVENTS.has(event);
@@ -69,6 +78,17 @@ export function rlogModelResult(agent, model, exitCode, duration, blacklisted, r
         ...(reason !== undefined ? { reason } : {}),
     };
     writeEntry(entry);
+}
+export function rlogProcess(event, agent, pid, details = {}) {
+    const level = event === "process_spawned" || event === "process_exited" ? "INFO" : "WARN";
+    writeEntry({
+        ts: new Date().toISOString(),
+        level,
+        event,
+        agent,
+        pid,
+        ...details,
+    });
 }
 export function rlogBlacklist(model, ttlSeconds, reason, exitCode, duration) {
     // model_blacklisted is always a key event
