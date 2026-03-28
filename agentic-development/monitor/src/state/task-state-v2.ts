@@ -9,14 +9,15 @@ function debug(...args: unknown[]): void {
   console.error(`[${new Date().toISOString().slice(11, 23)}] [state]`, ...args);
 }
 
-export type TaskStatus = 
-  | "pending" 
-  | "in_progress" 
-  | "waiting_answer" 
-  | "completed" 
-  | "failed" 
-  | "cancelled" 
-  | "suspended" 
+export type TaskStatus =
+  | "todo"
+  | "pending"
+  | "in_progress"
+  | "waiting_answer"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "suspended"
   | "stopped";
 
 export type AgentStatus = "pending" | "running" | "done" | "failed" | "waiting_answer";
@@ -179,7 +180,7 @@ export function createDefaultState(taskDir: string): TaskState {
   return {
     task_id: taskId,
     workflow: "foundry",
-    status: "pending",
+    status: "todo",
     created_at: new Date().toISOString(),
     agents: {},
   };

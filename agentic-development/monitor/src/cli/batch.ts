@@ -258,8 +258,7 @@ function promoteNextTodoToPending(): string | null {
     if (!entry.endsWith("--foundry")) continue;
     const taskDir = join(TASKS_ROOT, entry);
     const state = readTaskState(taskDir);
-    // "todo" is used by bash layer but not in TS TaskStatus union — cast to string
-    if (!state || (state.status as string) !== "todo") continue;
+    if (!state || state.status !== "todo") continue;
 
     let priority = 1;
     const taskFile = join(taskDir, "task.md");
@@ -279,7 +278,7 @@ function promoteNextTodoToPending(): string | null {
   for (const { taskDir } of candidates) {
     // Re-check state (race guard)
     const state = readTaskState(taskDir);
-    if (!state || (state.status as string) !== "todo") continue;
+    if (!state || state.status !== "todo") continue;
 
     setStateStatus(taskDir, "pending");
     return taskDir;

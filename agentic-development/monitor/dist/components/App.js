@@ -6,7 +6,7 @@ import { join, basename } from "node:path";
 import { execSync } from "node:child_process";
 import { readAllTasks } from "../lib/tasks.js";
 import { formatDuration, formatTokens, formatCost } from "../lib/format.js";
-import { startWorkers, stopWorkers, retryFailed, runAutotest, archiveTask, ultraworksLaunch, ultraworksAttach, ultraworksCleanup, findRepoRoot, cleanZombies, runDoctor, runDoctorTask, getProcessStatusAsync, tailLog, } from "../lib/actions.js";
+import { startWorkers, stopWorkers, retryFailed, runAutotest, archiveTask, ultraworksLaunch, ultraworksAttach, ultraworksCleanup, findRepoRoot, cleanZombies, runDoctor, runDoctorTask, getProcessStatusAsync, tailLog, getWorkerCount, cycleWorkerCount, } from "../lib/actions.js";
 const VERSION = "2.4.0";
 const REFRESH_MS = 3000;
 const PROC_REFRESH_MS = 15000; // Process status refresh — less frequent (was 3s, now 15s)
@@ -185,16 +185,23 @@ export function App({ tasksRoot }) {
         }
         // ── Tab 2: Commands ──────────────────────────────────────────────
         if (tab === 2) {
+            // Total items: 1 (worker selector) + executable commands
+            const totalItems = 1 + EXECUTABLE_COMMANDS.length;
             if (key.upArrow || input === "k") {
                 setCmdIdx((i) => Math.max(0, i - 1));
                 return;
             }
             if (key.downArrow || input === "j") {
-                setCmdIdx((i) => Math.min(EXECUTABLE_COMMANDS.length - 1, i + 1));
+                setCmdIdx((i) => Math.min(totalItems - 1, i + 1));
                 return;
             }
             if (key.return) {
-                const cmd = EXECUTABLE_COMMANDS[cmdIdx];
+                if (cmdIdx === 0) {
+                    // Worker count selector — cycle 1→2→3→4→5→1
+                    handleCmd(cycleWorkerCount(repoRoot));
+                    return;
+                }
+                const cmd = EXECUTABLE_COMMANDS[cmdIdx - 1];
                 if (cmd?.action)
                     handleCmd(cmd.action(repoRoot));
                 return;
@@ -371,10 +378,10 @@ export function App({ tasksRoot }) {
     if (tab === 1 && view !== "list" && view !== "detail" && view !== "qa")
         footerHint = "  [y] copy slug  [Esc] back  [q] quit";
     if (tab === 2)
-        footerHint = "  ↑/↓ select  Enter run  ←/→ tabs  [q] quit";
+        footerHint = "  ↑/↓ select  Enter run/toggle  ←/→ tabs  [q] quit";
     if (tab === 3)
         footerHint = "  ↑/↓ select process  [z] clean zombies  ←/→ tabs  [q] quit";
-    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time] })] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 }), _jsx(TabLabel, { n: 3, label: "Processes", active: tab === 3, hasAlert: procStatus.zombies.length > 0 || procStatus.lock?.zombie === true })] }), _jsx(Text, { children: " " }), tab === 1 && (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: cols, rows: rows, tick: tick, detailTab: detailTab, detailScrollOffsets: detailScrollOffsets, setDetailScrollOffsets: setDetailScrollOffsets, setMsg: setMsg, setView: setView })), tab === 2 && _jsx(CommandsTab, { cols: cols, selectedIdx: cmdIdx }), tab === 3 && (_jsx(ProcessesTab, { procStatus: procStatus, selectedIdx: procIdx, logLines: procLogLines, cols: cols, rows: rows, tick: tick })), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsx(Text, { dimColor: true, children: footerHint })] }));
+    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time] })] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 }), _jsx(TabLabel, { n: 3, label: "Processes", active: tab === 3, hasAlert: procStatus.zombies.length > 0 || procStatus.lock?.zombie === true })] }), _jsx(Text, { children: " " }), tab === 1 && (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: cols, rows: rows, tick: tick, detailTab: detailTab, detailScrollOffsets: detailScrollOffsets, setDetailScrollOffsets: setDetailScrollOffsets, setMsg: setMsg, setView: setView })), tab === 2 && _jsx(CommandsTab, { cols: cols, selectedIdx: cmdIdx, repoRoot: repoRoot }), tab === 3 && (_jsx(ProcessesTab, { procStatus: procStatus, selectedIdx: procIdx, logLines: procLogLines, cols: cols, rows: rows, tick: tick })), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsx(Text, { dimColor: true, children: footerHint })] }));
 }
 // ── Tab label ─────────────────────────────────────────────────────
 function TabLabel({ n, label, active, hasAlert }) {
@@ -760,10 +767,12 @@ const CMD_SECTIONS = [
     { section: "ultraworks", label: "Ultraworks", color: "magenta" },
     { section: "flow", label: "Flow Shortcuts", color: "yellow" },
 ];
-function CommandsTab({ cols, selectedIdx }) {
+function CommandsTab({ cols, selectedIdx, repoRoot }) {
     const sep = "─".repeat(Math.min(cols - 4, 50));
-    let execIdx = 0;
-    return (_jsxs(Box, { flexDirection: "column", children: [CMD_SECTIONS.map(({ section, label, color }) => {
+    const workerCount = getWorkerCount(repoRoot);
+    // Index 0 = worker selector, then 1..N = executable commands
+    let execIdx = 1;
+    return (_jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { bold: true, color: "white", children: "  \u041D\u0430\u043B\u0430\u0448\u0442\u0443\u0432\u0430\u043D\u043D\u044F" }), _jsxs(Text, { dimColor: true, children: ["  ", sep] }), _jsxs(Box, { children: [_jsx(Text, { color: "cyan", children: selectedIdx === 0 ? "  ▶ " : "    " }), _jsx(Text, { bold: true, children: "w".padEnd(8) }), _jsx(Text, { dimColor: selectedIdx !== 0, children: "\u041C\u0430\u043A\u0441\u0438\u043C\u0430\u043B\u044C\u043D\u0430 \u043A\u0456\u043B\u044C\u043A\u0456\u0441\u0442\u044C \u043E\u0434\u043D\u043E\u0447\u0430\u0441\u043D\u0438\u0445 \u0437\u0430\u0434\u0430\u0447: " }), _jsx(Text, { bold: true, color: "yellow", children: " " + "●".repeat(workerCount) + "○".repeat(5 - workerCount) + " " }), _jsx(Text, { bold: true, color: "cyan", children: workerCount }), selectedIdx === 0 && _jsx(Text, { color: "green", children: " \u23CE (Enter \u2014 \u0437\u043C\u0456\u043D\u0438\u0442\u0438)" })] }), _jsx(Text, { children: " " }), CMD_SECTIONS.map(({ section, label, color }) => {
                 const cmds = COMMANDS.filter((c) => c.section === section && c.action);
                 if (cmds.length === 0)
                     return null;

@@ -7,6 +7,9 @@ export interface CmdResult {
     attachCmd: string;
     message: string;
 }
+export declare function getWorkerCount(repoRoot: string): number;
+export declare function setWorkerCount(repoRoot: string, count: number): CmdResult;
+export declare function cycleWorkerCount(repoRoot: string): CmdResult;
 export declare function startWorkers(repoRoot: string): CmdResult;
 export declare function stopWorkers(repoRoot: string): CmdResult;
 export declare function retryFailed(repoRoot: string): CmdResult;
