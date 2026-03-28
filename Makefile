@@ -508,7 +508,7 @@ sync-skills:
 monitor-foundry:
 	@echo "=== Foundry Monitor ==="
 	@echo "Keys: [s] start, [k] kill, [f] retry, [+/-] priority, [q] quit"
-	@./agentic-development/foundry.sh
+	@./agentic-development/foundry
 
 monitor-builder: monitor-foundry
 
@@ -538,27 +538,27 @@ monitor-ultraworks-menu:
 
 # ── Multi-Agent Builder Pipeline ─────────────────────────────────────
 foundry:
-	@./agentic-development/foundry.sh
+	@./agentic-development/foundry
 
 foundry-headless:
-	@./agentic-development/foundry.sh headless
+	@./agentic-development/foundry headless
 
 pipeline:
 	@test -n "$(TASK)" || (echo "Usage: make pipeline TASK=\"your task description\"" && exit 1)
-	./agentic-development/foundry.sh run "$(TASK)"
+	./agentic-development/foundry run "$(TASK)"
 
 pipeline-batch:
 	@test -n "$(FILE)" || (echo "Usage: make pipeline-batch FILE=tasks.txt" && exit 1)
-	./agentic-development/foundry.sh batch "$(FILE)"
+	./agentic-development/foundry batch "$(FILE)"
 
 builder-setup:
-	./agentic-development/foundry.sh setup
+	./agentic-development/foundry setup
 
 builder-cleanup:
-	./agentic-development/foundry.sh cleanup
+	./agentic-development/foundry cleanup
 
 builder-cleanup-apply:
-	./agentic-development/foundry.sh cleanup --apply
+	./agentic-development/foundry cleanup --apply
 
 # ── Kubernetes / K3S Targets ───────────────────────────────────────────────
 
