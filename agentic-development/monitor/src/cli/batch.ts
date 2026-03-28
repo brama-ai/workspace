@@ -42,7 +42,14 @@ function findRepoRoot(): string {
 }
 
 const REPO_ROOT = findRepoRoot();
-const TASKS_ROOT = env.PIPELINE_TASKS_ROOT || join(REPO_ROOT, "tasks");
+
+/** Lazy tasks root — re-reads env so tests can override PIPELINE_TASKS_ROOT */
+function getTasksRoot(): string {
+  return env.PIPELINE_TASKS_ROOT || join(REPO_ROOT, "tasks");
+}
+// For backward compat: code that reads TASKS_ROOT gets it at call time
+const TASKS_ROOT = getTasksRoot();
+
 const PIPELINE_DIR = join(REPO_ROOT, ".opencode", "pipeline");
 const LOCKFILE = join(PIPELINE_DIR, ".batch.lock");
 const WORKER_CONFIG_FILE = join(PIPELINE_DIR, "monitor-workers");
@@ -240,47 +247,59 @@ function cancelInProgressTasks(): void {
  * Returns the promoted task directory or null.
  */
 export function promoteNextTodoToPending(): string | null {
-  if (!existsSync(TASKS_ROOT)) return null;
-
-  const entries = readdirSync(TASKS_ROOT);
-
-  // Check if any pending task already exists
-  for (const entry of entries) {
-    if (!entry.endsWith("--foundry")) continue;
-    const taskDir = join(TASKS_ROOT, entry);
-    const state = readTaskState(taskDir);
-    if (state?.status === "pending") return null; // already have a pending task
+  const tasksRoot = getTasksRoot();
+  if (!existsSync(tasksRoot)) {
+    logBatch("promoteNextTodoToPending: TASKS_ROOT does not exist: " + tasksRoot);
+    return null;
   }
 
-  // Collect todo tasks with priority
-  const candidates: Array<{ priority: number; taskDir: string }> = [];
+  const entries = readdirSync(tasksRoot);
+
+  // Check if any pending or in_progress task already exists
   for (const entry of entries) {
     if (!entry.endsWith("--foundry")) continue;
-    const taskDir = join(TASKS_ROOT, entry);
+    const taskDir = join(tasksRoot, entry);
+    const state = readTaskState(taskDir);
+    if (state?.status === "pending") {
+      logBatch(`promoteNextTodoToPending: pending slot occupied by ${entry}`);
+      return null;
+    }
+  }
+
+  // Collect todo tasks with priority (from state.json or task.md header)
+  const candidates: Array<{ priority: number; taskDir: string; slug: string }> = [];
+  for (const entry of entries) {
+    if (!entry.endsWith("--foundry")) continue;
+    const taskDir = join(tasksRoot, entry);
     const state = readTaskState(taskDir);
     if (!state || state.status !== "todo") continue;
 
-    let priority = 1;
+    // Priority: state.json.priority > task.md "priority: N" > default 1
+    let priority = (state as any).priority ?? 1;
     const taskFile = join(taskDir, "task.md");
-    if (existsSync(taskFile)) {
+    if (priority === 1 && existsSync(taskFile)) {
       const firstLine = readFileSync(taskFile, "utf8").split("\n")[0] || "";
-      const m = firstLine.match(/priority:\s*(\d+)/);
+      const m = firstLine.match(/priority:\s*(\d+)/i);
       if (m) priority = parseInt(m[1], 10);
     }
-    candidates.push({ priority, taskDir });
+    candidates.push({ priority, taskDir, slug: entry });
   }
 
-  if (candidates.length === 0) return null;
+  if (candidates.length === 0) {
+    logBatch("promoteNextTodoToPending: no todo tasks found");
+    return null;
+  }
 
-  // Sort by priority descending
-  candidates.sort((a, b) => b.priority - a.priority);
+  // Sort by priority: higher number = higher priority (P1 > P2 > P3)
+  candidates.sort((a, b) => a.priority - b.priority);
 
-  for (const { taskDir } of candidates) {
+  for (const { taskDir, slug } of candidates) {
     // Re-check state (race guard)
     const state = readTaskState(taskDir);
     if (!state || state.status !== "todo") continue;
 
     setStateStatus(taskDir, "pending");
+    logBatch(`promoteNextTodoToPending: ${slug} → pending (priority=${candidates[0].priority})`);
     return taskDir;
   }
 
