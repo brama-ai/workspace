@@ -59,8 +59,8 @@ export function emitEvent(type: EventType, details: Record<string, string | numb
 
   try {
     appendFileSync(eventsLogPath, line, "utf8");
-  } catch {
-    // Silently ignore write errors
+  } catch (err) {
+    console.error(`[events] ERROR: failed to write event ${type} to ${eventsLogPath}: ${err}`);
   }
 }
 

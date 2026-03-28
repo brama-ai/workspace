@@ -1,8 +1,10 @@
 import { env } from "node:process";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { executeAgent, AgentConfig, AgentResult, getTimeout } from "../agents/executor.js";
 import { checkAndCompact, getSessionContextStatus } from "../agents/context-guard.js";
 import { emitEvent, initEventsLog, EventType } from "../state/events.js";
 import { rlog } from "../lib/runtime-logger.js";
+import { initHandoff, appendHandoff } from "./handoff.js";
 
 const DEBUG = env.FOUNDRY_DEBUG === "true";
 
@@ -71,9 +73,23 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
     agents,
     profile: config.profile,
     logDir,
+    pid: process.pid,
   });
 
   debug("pipeline start", { branch, agents, profile: config.profile });
+
+  // Initialize task directory and handoff
+  if (taskDir) {
+    try {
+      mkdirSync(taskDir, { recursive: true });
+      initHandoff(taskDir, taskMessage, branch);
+      rlog("handoff_init", { taskDir, branch });
+      debug("handoff initialized", taskDir);
+    } catch (err) {
+      rlog("handoff_init_error", { taskDir, error: String(err) }, "ERROR");
+      debug("handoff init failed", err);
+    }
+  }
 
   const completedAgents: string[] = [];
   let failedAgent: string | null = null;
@@ -129,6 +145,30 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
         cost: result.tokensUsed.cost,
       });
       rlog("agent_end", { agent, status: "done", duration: result.duration, cost: result.tokensUsed.cost });
+
+      // Record agent result in handoff
+      if (taskDir) {
+        try {
+          const handoffFile = `${taskDir}/handoff.md`;
+          appendHandoff(handoffFile, agent, `Status: done | Duration: ${result.duration}s | Model: ${result.modelUsed} | Cost: $${result.tokensUsed.cost.toFixed(4)}`);
+
+          // Save per-agent result artifact
+          const artifactDir = `${taskDir}/artifacts/${agent}`;
+          mkdirSync(artifactDir, { recursive: true });
+          writeFileSync(`${artifactDir}/result.json`, JSON.stringify({
+            agent,
+            status: "done",
+            duration: result.duration,
+            model: result.modelUsed,
+            exitCode: result.exitCode,
+            logFile: result.logFile,
+            tokens: result.tokensUsed,
+          }, null, 2), "utf8");
+        } catch (err) {
+          rlog("artifact_write_error", { agent, taskDir, error: String(err) }, "WARN");
+        }
+      }
+
       debug("agent completed", agent, "duration", result.duration);
       continue;
     }
@@ -155,6 +195,17 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
       duration: result.duration,
     });
     rlog("agent_end", { agent, status: "failed", exitCode: result.exitCode, duration: result.duration }, "ERROR");
+
+    // Record failure in handoff
+    if (taskDir) {
+      try {
+        const handoffFile = `${taskDir}/handoff.md`;
+        appendHandoff(handoffFile, agent, `Status: FAILED | Exit: ${result.exitCode} | Duration: ${result.duration}s | Model: ${result.modelUsed}`);
+      } catch (err) {
+        rlog("artifact_write_error", { agent, taskDir, error: String(err) }, "WARN");
+      }
+    }
+
     debug("agent failed", agent, "exitCode", result.exitCode);
     break;
   }
@@ -178,6 +229,22 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
     failedAgent: failedAgent || null,
     totalCost,
   }, success ? "INFO" : "ERROR");
+
+  // Write pipeline summary to handoff
+  if (taskDir) {
+    try {
+      const handoffFile = `${taskDir}/handoff.md`;
+      appendHandoff(handoffFile, "Pipeline Result", [
+        `Status: ${success ? "SUCCESS" : "FAILED"}`,
+        `Duration: ${duration}s`,
+        `Agents completed: ${completedAgents.join(", ") || "none"}`,
+        failedAgent ? `Failed at: ${failedAgent}` : "",
+        `Total cost: $${totalCost.toFixed(4)}`,
+      ].filter(Boolean).join("\n"));
+    } catch (err) {
+      rlog("artifact_write_error", { stage: "pipeline_end", taskDir, error: String(err) }, "WARN");
+    }
+  }
 
   debug("pipeline end", { success, duration, completedAgents: completedAgents.length });
 

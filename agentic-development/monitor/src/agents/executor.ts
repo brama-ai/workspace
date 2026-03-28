@@ -3,7 +3,7 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync, appendFileSync, mk
 import { join } from "node:path";
 import { env, platform } from "node:process";
 import { emitEvent, EventType } from "../state/events.js";
-import { rlog, rlogModelCall, rlogModelResult, rlogBlacklist } from "../lib/runtime-logger.js";
+import { rlog, rlogModelCall, rlogModelResult, rlogBlacklist, rlogProcess } from "../lib/runtime-logger.js";
 
 const BLACKLIST_FILE = join(env.FOUNDRY_ROOT || process.cwd(), ".foundry-blacklist.json");
 
@@ -118,9 +118,10 @@ async function runWithTimeout(
     timeout: number;
     logFile: string;
     eventsFile?: string;
+    agentName?: string;
   }
 ): Promise<{ exitCode: number; pid: number }> {
-  const { cwd, timeout, logFile, eventsFile } = options;
+  const { cwd, timeout, logFile, eventsFile, agentName = "unknown" } = options;
 
   // Ensure log directory exists
   try {
@@ -138,6 +139,7 @@ async function runWithTimeout(
     });
 
     const pid = proc.pid || 0;
+    rlogProcess("process_spawned", agentName, pid, { command, timeout });
     let timeoutId: NodeJS.Timeout | null = null;
     let resolved = false;
 
@@ -157,9 +159,11 @@ async function runWithTimeout(
 
     timeoutId = setTimeout(() => {
       debug("timeout reached, killing process", pid);
+      rlogProcess("process_timeout", agentName, pid, { timeout, signal: "SIGTERM" });
       proc.kill("SIGTERM");
       setTimeout(() => {
         if (!proc.killed) {
+          rlogProcess("process_killed", agentName, pid, { signal: "SIGKILL", reason: "sigterm_ignored" });
           proc.kill("SIGKILL");
         }
       }, 5000);
@@ -209,12 +213,14 @@ async function runWithTimeout(
         handleStdoutLine(stdoutRemainder);
         stdoutRemainder = "";
       }
+      const exitCode = code ?? 1;
+      rlogProcess("process_exited", agentName, pid, { exitCode, logFile });
       try {
         writeFileSync(logFile, logBuffer, "utf8");
       } catch {
         // Ignore write errors
       }
-      doResolve(code ?? 1);
+      doResolve(exitCode);
     });
 
     proc.on("error", (err) => {
@@ -262,10 +268,11 @@ export async function executeAgent(
     const currentModel = allModels[modelIndex];
     attempt++;
 
-    debug("attempt", attempt, "/", maxRetries, "model", currentModel);
+    debug("attempt", attempt, "/", maxRetries, "model", currentModel, "fallbackIndex", modelIndex);
 
     if (attempt > 1) {
       emitEvent("AGENT_RETRY", { agent: name, attempt, model: currentModel });
+      rlog("agent_fallback", { agent: name, attempt, modelIndex, model: currentModel, totalModels: allModels.length });
       await sleep(retryDelay * 1000);
     }
 
@@ -275,7 +282,7 @@ export async function executeAgent(
     const result = await runWithTimeout(
       "opencode",
       ["run", "--agent", name, "--format", "json", prompt],
-      { cwd: repoRoot, timeout, logFile, eventsFile }
+      { cwd: repoRoot, timeout, logFile, eventsFile, agentName: name }
     );
 
     const callDuration = Math.floor((Date.now() - callStart) / 1000);

@@ -27,11 +27,16 @@ export function readHandoff(handoffFile: string): string {
 
 export function writeHandoff(handoffFile: string, content: string): void {
   const dir = dirname(handoffFile);
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+  try {
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+    writeFileSync(handoffFile, content, "utf8");
+    debug("Wrote handoff:", handoffFile, `(${content.length} bytes)`);
+  } catch (err) {
+    console.error(`[handoff] ERROR: failed to write ${handoffFile}: ${err}`);
+    throw err; // Re-throw so caller can log via rlog
   }
-  writeFileSync(handoffFile, content, "utf8");
-  debug("Wrote handoff:", handoffFile);
 }
 
 export function appendHandoff(handoffFile: string, section: string, content: string): void {

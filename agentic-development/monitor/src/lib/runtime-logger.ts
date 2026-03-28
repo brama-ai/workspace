@@ -28,6 +28,15 @@ const KEY_EVENTS = new Set([
   "model_blacklisted",
   "model_call_started",
   "model_call_error",
+  "model_call_success",
+  "process_spawned",
+  "process_timeout",
+  "process_killed",
+  "process_exited",
+  "pipeline_start",
+  "pipeline_end",
+  "agent_start",
+  "agent_end",
 ]);
 
 export function rlog(
@@ -95,6 +104,23 @@ export function rlogModelResult(
   };
 
   writeEntry(entry);
+}
+
+export function rlogProcess(
+  event: "process_spawned" | "process_timeout" | "process_killed" | "process_exited",
+  agent: string,
+  pid: number,
+  details: Record<string, unknown> = {}
+): void {
+  const level: "INFO" | "WARN" = event === "process_spawned" || event === "process_exited" ? "INFO" : "WARN";
+  writeEntry({
+    ts: new Date().toISOString(),
+    level,
+    event,
+    agent,
+    pid,
+    ...details,
+  });
 }
 
 export function rlogBlacklist(

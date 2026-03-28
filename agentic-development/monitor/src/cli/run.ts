@@ -126,7 +126,13 @@ async function main(): Promise<void> {
 
   const repoRoot = env.REPO_ROOT || cwd();
   const branch = values.branch || generateBranchName(taskMessage);
-  const taskDir = env.TASK_DIR || "";
+
+  // Derive taskDir from TASK_DIR env or auto-create from branch slug
+  let taskDir = env.TASK_DIR || "";
+  if (!taskDir) {
+    const slug = branch.replace("pipeline/", "");
+    taskDir = `${repoRoot}/tasks/${slug}--foundry`;
+  }
 
   const config: PipelineConfig = {
     repoRoot,
