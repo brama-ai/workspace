@@ -30,14 +30,21 @@ When generating the final summary:
 1. Read all agent `result.json` files from `tasks/<slug>--foundry/artifacts/<agent>/result.json`
 2. Read `tasks/<slug>--foundry/qa.json` to include Q&A log in the summary
 3. Read `tasks/<slug>--foundry/handoff.md` for full pipeline narrative
-4. Include a **Q&A Log** section if `qa.json` exists with answered questions:
+4. **Generate telemetry** by running:
+   ```bash
+   npx tsx agentic-development/monitor/src/cli/render-summary.ts foundry <slug>
+   ```
+   This produces per-agent tables: tokens, tools, files read, MCP calls, cost, cache efficiency.
+   Include the full output in the summary under `## Telemetry`.
+   If the command fails or returns empty — write `## Telemetry\n\n_No telemetry recorded._`
+5. Include a **Q&A Log** section if `qa.json` exists with answered questions:
    ```markdown
    ## Q&A Log
    | # | Asked by | Question | Answered by | Answer |
    |---|----------|----------|-------------|--------|
    | 1 | u-architect | Which auth system? | human | edge-auth |
    ```
-5. Include agent self-assessments (confidence, what went well/wrong) from `result.json`
+6. Include agent self-assessments (confidence, what went well/wrong) from `result.json`
 
 ## Human-in-the-Loop Protocol
 

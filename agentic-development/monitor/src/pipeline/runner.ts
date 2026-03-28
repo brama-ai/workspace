@@ -198,6 +198,26 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
             logFile: result.logFile,
             tokens: result.tokensUsed,
           }, null, 2), "utf8");
+
+          // Save telemetry record for render-summary.ts
+          const telemetryDir = `${taskDir}/artifacts/telemetry`;
+          mkdirSync(telemetryDir, { recursive: true });
+          writeFileSync(`${telemetryDir}/${agent}.json`, JSON.stringify({
+            agent,
+            model: result.modelUsed,
+            tokens: {
+              input_tokens: result.tokensUsed.input,
+              output_tokens: result.tokensUsed.output,
+              cache_read: result.tokensUsed.cacheRead ?? 0,
+              cache_write: result.tokensUsed.cacheWrite ?? 0,
+            },
+            tools: [],
+            files_read: [],
+            context: {},
+            cost: result.tokensUsed.cost,
+            duration_seconds: result.duration,
+            session_id: "",
+          }, null, 2), "utf8");
         } catch (err) {
           rlog("artifact_write_error", { agent, taskDir, error: String(err) }, "WARN");
         }
