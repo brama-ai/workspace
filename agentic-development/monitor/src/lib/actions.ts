@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, renameSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, basename, dirname } from "node:path";
 import { execSync, exec } from "node:child_process";
 import { readState, writeState, type TaskState } from "./task-state.js";
@@ -144,6 +144,39 @@ function runQuick(cmd: string, cwd: string): CmdResult {
   } catch (e: any) {
     return { session: "", attachCmd: "", message: e.stderr?.trim() || e.message || "Failed" };
   }
+}
+
+// ── Worker count ────────────────────────────────────────────────
+
+const MAX_WORKERS = 5;
+
+function workerConfigFile(repoRoot: string): string {
+  return join(repoRoot, ".opencode", "pipeline", "monitor-workers");
+}
+
+export function getWorkerCount(repoRoot: string): number {
+  const file = workerConfigFile(repoRoot);
+  if (!existsSync(file)) return 1;
+  try {
+    const val = parseInt(readFileSync(file, "utf-8").trim(), 10);
+    return val >= 1 && val <= MAX_WORKERS ? val : 1;
+  } catch {
+    return 1;
+  }
+}
+
+export function setWorkerCount(repoRoot: string, count: number): CmdResult {
+  const clamped = Math.max(1, Math.min(MAX_WORKERS, count));
+  const dir = dirname(workerConfigFile(repoRoot));
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(workerConfigFile(repoRoot), String(clamped), "utf-8");
+  return { session: "", attachCmd: "", message: `Максимальна кількість воркерів: ${clamped}` };
+}
+
+export function cycleWorkerCount(repoRoot: string): CmdResult {
+  const current = getWorkerCount(repoRoot);
+  const next = current >= MAX_WORKERS ? 1 : current + 1;
+  return setWorkerCount(repoRoot, next);
 }
 
 // ── Foundry actions ─────────────────────────────────────────────

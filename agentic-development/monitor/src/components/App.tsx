@@ -20,6 +20,8 @@ import {
   runDoctorTask,
   getProcessStatusAsync,
   tailLog,
+  getWorkerCount,
+  cycleWorkerCount,
   type CmdResult,
   type ProcessStatus,
   type ProcessEntry,
@@ -213,10 +215,17 @@ export function App({ tasksRoot }: Props) {
 
     // ── Tab 2: Commands ──────────────────────────────────────────────
     if (tab === 2) {
+      // Total items: 1 (worker selector) + executable commands
+      const totalItems = 1 + EXECUTABLE_COMMANDS.length;
       if (key.upArrow   || input === "k") { setCmdIdx((i) => Math.max(0, i - 1)); return; }
-      if (key.downArrow || input === "j") { setCmdIdx((i) => Math.min(EXECUTABLE_COMMANDS.length - 1, i + 1)); return; }
+      if (key.downArrow || input === "j") { setCmdIdx((i) => Math.min(totalItems - 1, i + 1)); return; }
       if (key.return) {
-        const cmd = EXECUTABLE_COMMANDS[cmdIdx];
+        if (cmdIdx === 0) {
+          // Worker count selector — cycle 1→2→3→4→5→1
+          handleCmd(cycleWorkerCount(repoRoot));
+          return;
+        }
+        const cmd = EXECUTABLE_COMMANDS[cmdIdx - 1];
         if (cmd?.action) handleCmd(cmd.action(repoRoot));
         return;
       }
@@ -338,7 +347,7 @@ export function App({ tasksRoot }: Props) {
   if (tab === 1 && view === "detail") footerHint = "  ←/→ tabs  ↑/↓ scroll  PgUp/PgDn  [g] top  [G] end  [y] copy  [Esc] back  [q] quit";
   if (tab === 1 && view === "qa")     footerHint = "  ↑/↓ select question  Tab switch panel  Esc save & back  Ctrl+S save  1-9 quick-select option";
   if (tab === 1 && view !== "list" && view !== "detail" && view !== "qa") footerHint = "  [y] copy slug  [Esc] back  [q] quit";
-  if (tab === 2) footerHint = "  ↑/↓ select  Enter run  ←/→ tabs  [q] quit";
+  if (tab === 2) footerHint = "  ↑/↓ select  Enter run/toggle  ←/→ tabs  [q] quit";
   if (tab === 3) footerHint = "  ↑/↓ select process  [z] clean zombies  ←/→ tabs  [q] quit";
 
   return (
@@ -376,7 +385,7 @@ export function App({ tasksRoot }: Props) {
           setView={setView}
         />
       )}
-      {tab === 2 && <CommandsTab cols={cols} selectedIdx={cmdIdx} />}
+      {tab === 2 && <CommandsTab cols={cols} selectedIdx={cmdIdx} repoRoot={repoRoot} />}
       {tab === 3 && (
         <ProcessesTab
           procStatus={procStatus}
@@ -1172,12 +1181,27 @@ const CMD_SECTIONS: { section: Command["section"]; label: string; color: string 
   { section: "flow",       label: "Flow Shortcuts",  color: "yellow" },
 ];
 
-function CommandsTab({ cols, selectedIdx }: { cols: number; selectedIdx: number }) {
+function CommandsTab({ cols, selectedIdx, repoRoot }: { cols: number; selectedIdx: number; repoRoot: string }) {
   const sep = "─".repeat(Math.min(cols - 4, 50));
-  let execIdx = 0;
+  const workerCount = getWorkerCount(repoRoot);
+  // Index 0 = worker selector, then 1..N = executable commands
+  let execIdx = 1;
 
   return (
     <Box flexDirection="column">
+      {/* Worker count selector */}
+      <Text bold color="white">  Налаштування</Text>
+      <Text dimColor>  {sep}</Text>
+      <Box>
+        <Text color="cyan">{selectedIdx === 0 ? "  ▶ " : "    "}</Text>
+        <Text bold>{"w".padEnd(8)}</Text>
+        <Text dimColor={selectedIdx !== 0}>Максимальна кількість одночасних задач: </Text>
+        <Text bold color="yellow">{" " + "●".repeat(workerCount) + "○".repeat(5 - workerCount) + " "}</Text>
+        <Text bold color="cyan">{workerCount}</Text>
+        {selectedIdx === 0 && <Text color="green"> ⏎ (Enter — змінити)</Text>}
+      </Box>
+      <Text> </Text>
+
       {CMD_SECTIONS.map(({ section, label, color }) => {
         const cmds = COMMANDS.filter((c) => c.section === section && c.action);
         if (cmds.length === 0) return null;
