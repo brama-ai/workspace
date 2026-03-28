@@ -6,7 +6,18 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { execSync, execFileSync } from "node:child_process";
 
 const VERSION = "2.0.0";
-const REPO_ROOT = env.REPO_ROOT || cwd();
+
+function findRepoRoot(): string {
+  if (env.REPO_ROOT) return env.REPO_ROOT;
+  let dir = cwd();
+  while (dir !== "/") {
+    if (existsSync(join(dir, "agentic-development", "foundry"))) return dir;
+    dir = dirname(dir);
+  }
+  return cwd();
+}
+
+const REPO_ROOT = findRepoRoot();
 const TASKS_ROOT = env.PIPELINE_TASKS_ROOT || join(REPO_ROOT, "tasks");
 
 import { runPipeline, PipelineConfig } from "../pipeline/runner.js";

@@ -1,12 +1,22 @@
-import { appendFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { appendFileSync, existsSync, mkdirSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { env } from "node:process";
 
 const DEBUG = env.FOUNDRY_DEBUG === "true";
 
+function findRepoRoot(): string {
+  if (env.FOUNDRY_ROOT) return env.FOUNDRY_ROOT;
+  if (env.REPO_ROOT) return env.REPO_ROOT;
+  let dir = process.cwd();
+  while (dir !== "/") {
+    if (existsSync(join(dir, "agentic-development", "foundry"))) return dir;
+    dir = dirname(dir);
+  }
+  return process.cwd();
+}
+
 function getLogDir(): string {
-  const root = env.FOUNDRY_ROOT || process.cwd();
-  return join(root, "agentic-development", "runtime", "logs");
+  return join(findRepoRoot(), "agentic-development", "runtime", "logs");
 }
 
 function getLogFile(): string {

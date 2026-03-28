@@ -58,7 +58,7 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
   const startTime = Date.now();
 
   const timestamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 15);
-  const logDir = `${env.FOUNDRY_ROOT || repoRoot}/agentic-development/runtime/logs`;
+  const logDir = `${repoRoot}/agentic-development/runtime/logs`;
 
   initEventsLog(`${repoRoot}/.opencode/pipeline`);
 
