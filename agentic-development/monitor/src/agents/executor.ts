@@ -28,6 +28,7 @@ export interface AgentResult {
   exitCode: number;
   duration: number;
   modelUsed: string;
+  pid: number;
   tokensUsed: {
     input: number;
     output: number;
@@ -119,9 +120,10 @@ async function runWithTimeout(
     logFile: string;
     eventsFile?: string;
     agentName?: string;
+    taskDir?: string;
   }
 ): Promise<{ exitCode: number; pid: number }> {
-  const { cwd, timeout, logFile, eventsFile, agentName = "unknown" } = options;
+  const { cwd, timeout, logFile, eventsFile, agentName = "unknown", taskDir } = options;
 
   // Ensure log directory exists
   try {
@@ -140,6 +142,13 @@ async function runWithTimeout(
 
     const pid = proc.pid || 0;
     rlogProcess("process_spawned", agentName, pid, { command, timeout });
+
+    // Write .pid file in taskDir for health monitoring
+    const pidFile = taskDir ? join(taskDir, ".pid") : null;
+    if (pidFile && pid > 0) {
+      try { writeFileSync(pidFile, `${pid}\n`, "utf8"); } catch { /* ignore */ }
+    }
+
     let timeoutId: NodeJS.Timeout | null = null;
     let resolved = false;
 
@@ -220,6 +229,10 @@ async function runWithTimeout(
       } catch {
         // Ignore write errors
       }
+      // Clean up .pid file on exit
+      if (pidFile) {
+        try { unlinkSync(pidFile); } catch { /* ignore */ }
+      }
       doResolve(exitCode);
     });
 
@@ -237,10 +250,11 @@ export async function executeAgent(
     repoRoot: string;
     logDir: string;
     timestamp: string;
+    taskDir?: string;
   }
 ): Promise<AgentResult> {
   const { name, timeout, maxRetries, retryDelay, fallbackChain } = config;
-  const { repoRoot, logDir, timestamp } = options;
+  const { repoRoot, logDir, timestamp, taskDir } = options;
 
   const logFile = join(logDir, `${timestamp}_${name}.log`);
   const eventsFile = join(logDir, `${timestamp}_${name}_events.jsonl`);
@@ -282,7 +296,7 @@ export async function executeAgent(
     const result = await runWithTimeout(
       "opencode",
       ["run", "--agent", name, "--format", "json", prompt],
-      { cwd: repoRoot, timeout, logFile, eventsFile, agentName: name }
+      { cwd: repoRoot, timeout, logFile, eventsFile, agentName: name, taskDir }
     );
 
     const callDuration = Math.floor((Date.now() - callStart) / 1000);
@@ -303,6 +317,7 @@ export async function executeAgent(
         exitCode: 0,
         duration,
         modelUsed: currentModel,
+        pid: result.pid,
         tokensUsed: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
         logFile,
         loopDetected: false,
@@ -320,6 +335,7 @@ export async function executeAgent(
         exitCode: 75,
         duration,
         modelUsed: currentModel,
+        pid: result.pid,
         tokensUsed: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
         logFile,
         loopDetected: false,
@@ -368,6 +384,7 @@ export async function executeAgent(
     exitCode: 1,
     duration,
     modelUsed: allModels[0] || "unknown",
+    pid: 0,
     tokensUsed: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
     logFile,
     loopDetected: false,

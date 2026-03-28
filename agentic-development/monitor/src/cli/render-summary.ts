@@ -12,6 +12,7 @@ import { join, dirname } from "node:path";
 import { env, argv, exit } from "node:process";
 import { tmpdir } from "node:os";
 import { calculateCost, getModelPricing, estimateUsage, PROVIDER_LIMITS, type UsageEstimate } from "../state/telemetry.js";
+import { getCacheStats, exportSession as dbExportSession, type CacheStats } from "../lib/db-info.js";
 
 const REPO_ROOT = env.REPO_ROOT || process.cwd();
 
@@ -149,55 +150,11 @@ function extractContext(data: SessionExport): AgentRow["context"] {
   };
 }
 
-interface CacheStats {
-  model: string;
-  messages: number;
-  avg_input: number;
-  avg_cache_read: number;
-  sum_input: number;
-  sum_cache_read: number;
-  sum_cache_write: number;
-  sum_output: number;
-  max_cache_read: number;
-  cache_hit_pct: number;
-}
+// CacheStats type imported from db-info
 
+/** Delegate to db-info for cache statistics */
 function queryCacheStats(sessionId?: string): CacheStats[] {
-  const sessionFilter = sessionId
-    ? `m.session_id = '${sessionId}'`
-    : `m.session_id = (SELECT id FROM session ORDER BY time_updated DESC LIMIT 1)`;
-
-  const sql = `
-    SELECT
-      json_extract(m.data, '$.providerID') || '/' || json_extract(m.data, '$.modelID') as model,
-      COUNT(*) as messages,
-      ROUND(AVG(json_extract(m.data, '$.tokens.input')), 0) as avg_input,
-      ROUND(AVG(json_extract(m.data, '$.tokens.cache.read')), 0) as avg_cache_read,
-      SUM(json_extract(m.data, '$.tokens.input')) as sum_input,
-      SUM(json_extract(m.data, '$.tokens.cache.read')) as sum_cache_read,
-      SUM(COALESCE(json_extract(m.data, '$.tokens.cache.write'), 0)) as sum_cache_write,
-      SUM(json_extract(m.data, '$.tokens.output')) as sum_output,
-      MAX(json_extract(m.data, '$.tokens.cache.read')) as max_cache_read,
-      CASE
-        WHEN SUM(json_extract(m.data, '$.tokens.input')) + SUM(json_extract(m.data, '$.tokens.cache.read')) > 0
-        THEN ROUND(100.0 * SUM(json_extract(m.data, '$.tokens.cache.read')) / (SUM(json_extract(m.data, '$.tokens.input')) + SUM(json_extract(m.data, '$.tokens.cache.read'))), 1)
-        ELSE 0
-      END as cache_hit_pct
-    FROM message m
-    WHERE ${sessionFilter}
-      AND json_extract(m.data, '$.role') = 'assistant'
-      AND (json_extract(m.data, '$.tokens.input') > 0 OR json_extract(m.data, '$.tokens.cache.read') > 0)
-    GROUP BY model
-    ORDER BY (SUM(json_extract(m.data, '$.tokens.input')) + SUM(json_extract(m.data, '$.tokens.cache.read'))) DESC
-  `.replace(/\n/g, " ");
-
-  try {
-    const result = exec(`opencode db "${sql}" --format json`);
-    if (!result) return [];
-    return JSON.parse(result) as CacheStats[];
-  } catch {
-    return [];
-  }
+  return getCacheStats(sessionId);
 }
 
 function formatTokens(n: number): string {

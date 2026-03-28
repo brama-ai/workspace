@@ -196,24 +196,87 @@ ATTEMPT=$(jq -r '.attempt // 1' tasks/<slug>--foundry/state.json)
 
 Report concisely: `[3m] in_progress | u-coder | $0.45 | attempt 1`
 
-#### S3 — Auto-Fix on Failure
+#### S3 — Root-Cause Analysis & Auto-Fix on Failure
 
 When status is `failed` or `stopped`:
 
-1. **Diagnose** — read events.jsonl + agent logs
-2. **Categorize** — timeout / rate_limit / git_conflict / zombie / agent_error
-3. **Fix automatically:**
-   - **Stale lock** → `rm .claim.lock`
-   - **Zombie** → `./agentic-development/foundry stop && sleep 5`
-   - **Rate limit** → wait 60s
-   - **Timeout** → retry (fallback models will be used)
-   - **Git conflict** → report to user (cannot auto-fix)
-4. **Retry:**
-   ```bash
-   ./agentic-development/foundry retry <slug>
-   ./agentic-development/foundry headless  # ensure workers running
-   ```
-5. Return to S2
+**Step 1 — Root-Cause Analysis (ALWAYS do this first before retry):**
+
+```bash
+# Run db-info root-cause — gathers session info, last messages, cache stats, idle time
+npx tsx agentic-development/monitor/src/lib/db-info.ts root-cause
+```
+
+Also gather file-based diagnostics:
+```bash
+# Failed agents and last events
+cat tasks/<slug>--foundry/state.json | jq '.agents[] | select(.status == "failed")'
+tail -20 tasks/<slug>--foundry/events.jsonl | jq -c '{type, message, step}'
+
+# Agent logs
+cat tasks/<slug>--foundry/artifacts/<failed-agent>/*.log 2>/dev/null | tail -50
+
+# Check PID health
+npx tsx agentic-development/monitor/src/lib/db-info.ts health tasks/<slug>--foundry
+```
+
+**Step 2 — Save root-cause report:**
+
+Write the analysis to `tasks/<slug>--foundry/root-cause-N.md` where N is incremented per crash:
+- First crash → `root-cause-0.md`
+- Second crash → `root-cause-1.md`
+- Third crash → `root-cause-2.md`
+
+To determine N: count existing `root-cause-*.md` files in the task directory.
+
+Report format:
+```markdown
+# Root Cause — Crash N
+
+**Time:** <ISO timestamp>
+**Failed agent:** <agent name>
+**Model:** <model from db-info>
+**Session:** <session-id>
+**Idle:** <N>s since last DB activity
+
+## Possible Cause
+<possibleCause from db-info root-cause output>
+
+## Events (last 10)
+<paste from events.jsonl>
+
+## Last Messages (from DB)
+<last 5 messages: role, model, tokens>
+
+## Agent Log Tail
+<last 20 lines of failed agent log>
+
+## Cache Stats
+<cache hit %, avg input — from db-info>
+```
+
+This creates a history of crashes — if the task keeps failing for different reasons, each root-cause file documents a different failure. This is critical for diagnosing cascading issues (fix one thing, break another).
+
+**Step 3 — Categorize & Fix:**
+
+| Category | Symptoms | Fix |
+|----------|----------|-----|
+| **Zombie/dead PID** | db-info health shows `pidAlive: false` | `foundry stop`, clean locks, restart |
+| **Context overflow** | `possibleCause` mentions context overflow | Run compact, or split task |
+| **Zero/few messages** | `totalMessages` < 3 | Auth/config issue — check `opencode.json`, model availability |
+| **Session stale** | `idleSeconds` > 1800 | Kill process, clean locks, retry |
+| **Rate limit** | 429/503 in events | Wait 60s, retry |
+| **Timeout** | exit code 124 | Retry with fallback models |
+| **Git conflict** | merge/conflict in events | Report to user (cannot auto-fix) |
+| **Cache eviction** | Low cache_hit_pct | Switch model family or lower compact threshold |
+
+**Step 4 — Retry:**
+```bash
+./agentic-development/foundry retry <slug>
+./agentic-development/foundry headless  # ensure workers running
+```
+
+**Step 5 —** Return to S2
 
 #### S4 — Analyze FAIL Summary
 
@@ -432,6 +495,36 @@ for line in sys.stdin:
     except: pass
 " | head -100
 ```
+
+### db-info — OpenCode DB Query Layer
+
+The `db-info` component (`monitor/src/lib/db-info.ts`) provides centralized access to OpenCode's SQLite database for diagnostics.
+
+#### CLI Commands
+
+```bash
+# Session info (id, timestamps, idle seconds)
+npx tsx agentic-development/monitor/src/lib/db-info.ts session [session-id]
+
+# Token usage for latest/specific session
+npx tsx agentic-development/monitor/src/lib/db-info.ts tokens [session-id]
+
+# Per-model cache efficiency
+npx tsx agentic-development/monitor/src/lib/db-info.ts cache [session-id]
+
+# Last N messages (what agent was doing when it died)
+npx tsx agentic-development/monitor/src/lib/db-info.ts messages <session-id>
+
+# Process health: .pid file + DB session freshness
+npx tsx agentic-development/monitor/src/lib/db-info.ts health <task-dir>
+
+# Full root-cause analysis — one command, all info
+npx tsx agentic-development/monitor/src/lib/db-info.ts root-cause [session-id]
+```
+
+#### PID File
+
+Each agent writes PID to `tasks/<slug>--foundry/.pid` during execution. Cleaned up on normal exit. If file exists but PID is dead → zombie or crash. Supervisor uses this automatically.
 
 ### Monitoring Quick Reference
 

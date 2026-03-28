@@ -10,6 +10,7 @@
 import { execSync } from "node:child_process";
 import { env } from "node:process";
 import { emitEvent } from "../state/events.js";
+import { getSessionTokens } from "../lib/db-info.js";
 
 const DEBUG = env.FOUNDRY_DEBUG === "true";
 
@@ -130,115 +131,48 @@ export function getCompactThreshold(model: string): CompactThreshold {
   };
 }
 
-function execDb(sql: string): string {
-  try {
-    return execSync(`opencode db "${sql.replace(/"/g, '\\"')}" --format json`, {
-      encoding: "utf8",
-      timeout: 10_000,
-    }).trim();
-  } catch {
-    return "";
-  }
-}
-
 /**
  * Query the latest session's context size from opencode DB.
+ * Delegates to db-info for all SQL queries.
  */
 export function getSessionContextStatus(sessionId?: string): ContextStatus {
-  const sessionFilter = sessionId
-    ? `m.session_id = '${sessionId}'`
-    : `m.session_id = (SELECT id FROM session ORDER BY time_updated DESC LIMIT 1)`;
+  const tokens = getSessionTokens(sessionId);
 
-  // Get latest assistant message with tokens
-  const sql = `
-    SELECT
-      m.session_id,
-      json_extract(m.data, '$.providerID') as provider,
-      json_extract(m.data, '$.modelID') as model,
-      json_extract(m.data, '$.tokens.input') as last_input,
-      json_extract(m.data, '$.tokens.cache.read') as last_cache_read,
-      json_extract(m.data, '$.tokens.output') as last_output
-    FROM message m
-    WHERE ${sessionFilter}
-      AND json_extract(m.data, '$.role') = 'assistant'
-      AND (json_extract(m.data, '$.tokens.input') > 0 OR json_extract(m.data, '$.tokens.cache.read') > 0)
-    ORDER BY m.time_created DESC
-    LIMIT 1
-  `.replace(/\n/g, " ");
-
-  const countSql = `
-    SELECT COUNT(*) as cnt
-    FROM message m
-    WHERE ${sessionFilter}
-      AND json_extract(m.data, '$.role') = 'assistant'
-  `.replace(/\n/g, " ");
-
-  const avgSql = `
-    SELECT
-      ROUND(AVG(json_extract(m.data, '$.tokens.input')), 0) as avg_input,
-      MAX(json_extract(m.data, '$.tokens.cache.read')) as max_cache_read
-    FROM message m
-    WHERE ${sessionFilter}
-      AND json_extract(m.data, '$.role') = 'assistant'
-      AND (json_extract(m.data, '$.tokens.input') > 0 OR json_extract(m.data, '$.tokens.cache.read') > 0)
-  `.replace(/\n/g, " ");
-
-  try {
-    const latestRaw = execDb(sql);
-    const countRaw = execDb(countSql);
-    const avgRaw = execDb(avgSql);
-
-    if (!latestRaw) {
-      return {
-        sessionId: null, model: null, provider: null,
-        totalMessages: 0, lastContextSize: 0, maxCacheRead: 0, avgInput: 0,
-        needsCompact: false, threshold: 0, reason: "No session data",
-      };
-    }
-
-    const latest = JSON.parse(latestRaw)[0] || {};
-    const count = JSON.parse(countRaw)[0]?.cnt || 0;
-    const avg = JSON.parse(avgRaw)[0] || {};
-
-    const lastInput = latest.last_input || 0;
-    const lastCacheRead = latest.last_cache_read || 0;
-    const lastContextSize = lastInput + lastCacheRead;
-
-    const model = latest.provider && latest.model
-      ? `${latest.provider}/${latest.model}`
-      : latest.model || "unknown";
-
-    const threshold = getCompactThreshold(model);
-    const needsCompact = lastContextSize > threshold.maxContextTokens;
-
-    debug("context status", {
-      model,
-      lastContextSize,
-      threshold: threshold.maxContextTokens,
-      needsCompact,
-      messages: count,
-    });
-
-    return {
-      sessionId: latest.session_id || null,
-      model,
-      provider: latest.provider || null,
-      totalMessages: count,
-      lastContextSize,
-      maxCacheRead: avg.max_cache_read || 0,
-      avgInput: avg.avg_input || 0,
-      needsCompact,
-      threshold: threshold.maxContextTokens,
-      reason: needsCompact ? threshold.reason : "Context within limits",
-    };
-  } catch (err) {
-    debug("Failed to query context status:", err);
+  if (!tokens) {
     return {
       sessionId: null, model: null, provider: null,
       totalMessages: 0, lastContextSize: 0, maxCacheRead: 0, avgInput: 0,
-      needsCompact: false, threshold: 0, reason: "Query failed",
+      needsCompact: false, threshold: 0, reason: "No session data",
     };
   }
+
+  const model = tokens.provider && tokens.model
+    ? `${tokens.provider}/${tokens.model}`
+    : tokens.model || "unknown";
+
+  const threshold = getCompactThreshold(model);
+  const needsCompact = tokens.lastContextSize > threshold.maxContextTokens;
+
+  debug("context status", {
+    model,
+    lastContextSize: tokens.lastContextSize,
+    threshold: threshold.maxContextTokens,
+    needsCompact,
+    messages: tokens.totalMessages,
+  });
+
+  return {
+    sessionId: tokens.sessionId || null,
+    model,
+    provider: tokens.provider || null,
+    totalMessages: tokens.totalMessages,
+    lastContextSize: tokens.lastContextSize,
+    maxCacheRead: tokens.maxCacheRead,
+    avgInput: tokens.avgInput,
+    needsCompact,
+    threshold: threshold.maxContextTokens,
+    reason: needsCompact ? threshold.reason : "Context within limits",
+  };
 }
 
 /**

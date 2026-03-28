@@ -9,6 +9,7 @@ vi.mock("../agents/executor.js", () => ({
         exitCode: 1,
         duration: 10,
         modelUsed: "test-model",
+        pid: 0,
         tokensUsed: { input: 100, output: 50, cacheRead: 0, cacheWrite: 0, cost: 0.01 },
         logFile: "/tmp/test.log",
         loopDetected: false,
@@ -23,6 +24,7 @@ vi.mock("../agents/executor.js", () => ({
         exitCode: 75,
         duration: 5,
         modelUsed: "test-model",
+        pid: 0,
         tokensUsed: { input: 50, output: 25, cacheRead: 0, cacheWrite: 0, cost: 0.005 },
         logFile: "/tmp/test.log",
         loopDetected: false,
@@ -36,6 +38,7 @@ vi.mock("../agents/executor.js", () => ({
       exitCode: 0,
       duration: 30,
       modelUsed: "test-model",
+      pid: 12345,
       tokensUsed: { input: 1000, output: 500, cacheRead: 100, cacheWrite: 50, cost: 0.05 },
       logFile: "/tmp/test.log",
       loopDetected: false,
@@ -44,6 +47,20 @@ vi.mock("../agents/executor.js", () => ({
     };
   }),
   getTimeout: (agent: string) => 1800,
+}));
+
+// Mock context-guard to avoid opencode DB calls in tests
+vi.mock("../agents/context-guard.js", () => ({
+  checkAndCompact: vi.fn(() => ({
+    sessionId: null, model: null, provider: null,
+    totalMessages: 0, lastContextSize: 0, maxCacheRead: 0, avgInput: 0,
+    needsCompact: false, threshold: 0, reason: "mocked",
+  })),
+  getSessionContextStatus: vi.fn(() => ({
+    sessionId: null, model: null, provider: null,
+    totalMessages: 0, lastContextSize: 0, maxCacheRead: 0, avgInput: 0,
+    needsCompact: false, threshold: 0, reason: "mocked",
+  })),
 }));
 
 describe("runner", () => {

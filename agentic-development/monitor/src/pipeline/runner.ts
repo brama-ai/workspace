@@ -132,6 +132,7 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
       repoRoot,
       logDir,
       timestamp,
+      taskDir,
     });
 
     totalCost += result.tokensUsed.cost;
@@ -161,6 +162,7 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
             duration: result.duration,
             model: result.modelUsed,
             exitCode: result.exitCode,
+            pid: result.pid,
             logFile: result.logFile,
             tokens: result.tokensUsed,
           }, null, 2), "utf8");

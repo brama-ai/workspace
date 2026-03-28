@@ -33,6 +33,7 @@ import { parseEventLine, type PipelineEvent } from "../state/events.js";
 import { runPipeline, type PipelineConfig } from "../pipeline/runner.js";
 import { slugifyBranch } from "../infra/git.js";
 import { initEventsLog } from "../state/events.js";
+import { getProcessHealth, getRootCauseInfo, type ProcessHealth } from "../lib/db-info.js";
 
 // ── Config ────────────────────────────────────────────────────────
 
@@ -270,17 +271,26 @@ export function diagnose(taskDir: string, state: TaskState): Diagnosis {
     return { category: "preflight", action: "fix_env", detail: "Preflight check failed" };
   }
 
+  // Enrich with DB root-cause analysis
+  let dbDetail = "";
+  try {
+    const rca = getRootCauseInfo();
+    if (rca.sessionId) {
+      dbDetail = ` | DB: ${rca.possibleCause} (${rca.totalMessages} msgs, ${Math.round(rca.idleSeconds / 60)}m idle)`;
+    }
+  } catch { /* ignore */ }
+
   // Show agent log snippet for unknown failures
   if (failed.length > 0) {
     const logSnippet = getAgentLogTail(taskDir, failed[0], 5).join("\n");
     return {
       category: "agent_error",
       action: "retry",
-      detail: `${failed.join(", ")} failed.\n  Last log: ${logSnippet.slice(0, 200)}`,
+      detail: `${failed.join(", ")} failed.\n  Last log: ${logSnippet.slice(0, 200)}${dbDetail}`,
     };
   }
 
-  return { category: "unknown", action: "retry", detail: "No clear error pattern" };
+  return { category: "unknown", action: "retry", detail: `No clear error pattern${dbDetail}` };
 }
 
 // ── Fix & Retry ───────────────────────────────────────────────────
@@ -359,6 +369,100 @@ async function applyFixAndRetry(
   return true;
 }
 
+// ── Root-Cause Report ─────────────────────────────────────────────
+
+function writeRootCauseReport(taskDir: string, state: TaskState): string {
+  // Determine next N: count existing root-cause-*.md files
+  let n = 0;
+  try {
+    const files = readdirSync(taskDir).filter((f) => /^root-cause-\d+\.md$/.test(f));
+    n = files.length;
+  } catch { /* ignore */ }
+
+  const fileName = `root-cause-${n}.md`;
+  const filePath = join(taskDir, fileName);
+  const failed = getFailedAgents(state);
+  const events = getLastEvents(taskDir, 10);
+
+  // Gather DB info
+  let rca: ReturnType<typeof getRootCauseInfo> | null = null;
+  try {
+    rca = getRootCauseInfo();
+  } catch { /* ignore */ }
+
+  const lines: string[] = [
+    `# Root Cause — Crash ${n}`,
+    "",
+    `**Time:** ${new Date().toISOString()}`,
+    `**Failed agent:** ${failed.join(", ") || "unknown"}`,
+    `**Attempt:** ${state.attempt ?? 1}`,
+    `**Status:** ${state.status}`,
+  ];
+
+  if (rca?.sessionId) {
+    lines.push(`**Session:** ${rca.sessionId}`);
+    lines.push(`**Model:** ${rca.lastModel ?? "unknown"}`);
+    lines.push(`**Idle:** ${rca.idleSeconds}s since last DB activity`);
+    lines.push(`**Messages:** ${rca.totalMessages}`);
+  }
+
+  lines.push("");
+  lines.push("## Possible Cause");
+  lines.push(rca?.possibleCause ?? "Could not determine (DB unavailable)");
+
+  // Events
+  lines.push("");
+  lines.push("## Events (last 10)");
+  if (events.length > 0) {
+    for (const e of events) {
+      lines.push(`- \`${e.type}\` ${e.details?.message ?? ""} ${e.details?.step ?? ""}`);
+    }
+  } else {
+    lines.push("_No events found_");
+  }
+
+  // Last messages from DB
+  if (rca?.lastMessages && rca.lastMessages.length > 0) {
+    lines.push("");
+    lines.push("## Last Messages (from DB)");
+    lines.push("| Role | Model | Input | Output | Cache Read |");
+    lines.push("|------|-------|------:|-------:|-----------:|");
+    for (const msg of rca.lastMessages) {
+      lines.push(`| ${msg.role} | ${msg.provider}/${msg.model} | ${msg.inputTokens} | ${msg.outputTokens} | ${msg.cacheRead} |`);
+    }
+  }
+
+  // Agent log tail
+  if (failed.length > 0) {
+    lines.push("");
+    lines.push("## Agent Log Tail");
+    const logTail = getAgentLogTail(taskDir, failed[0], 20);
+    if (logTail.length > 0) {
+      lines.push("```");
+      lines.push(...logTail);
+      lines.push("```");
+    } else {
+      lines.push("_No log available_");
+    }
+  }
+
+  // Cache stats
+  if (rca?.cacheStats && rca.cacheStats.length > 0) {
+    lines.push("");
+    lines.push("## Cache Stats");
+    lines.push("| Model | Msgs | Cache Hit % | Avg Input |");
+    lines.push("|-------|-----:|------------:|----------:|");
+    for (const stat of rca.cacheStats) {
+      lines.push(`| ${stat.model} | ${stat.messages} | ${stat.cache_hit_pct}% | ${stat.avg_input} |`);
+    }
+  }
+
+  const content = lines.join("\n") + "\n";
+  writeFileSync(filePath, content, "utf-8");
+  log(`Root-cause report saved: ${fileName}`);
+  return filePath;
+}
+
 // ── FAIL Summary Analysis ─────────────────────────────────────────
 
 function analyzeFail(taskDir: string, state: TaskState): string {
@@ -425,6 +529,8 @@ export interface StallResult {
   stalled: boolean;
   idleSec: number;
   threshold: number;
+  /** DB-based health (null if DB check was skipped) */
+  dbHealth: ProcessHealth | null;
 }
 
 /** @internal exported for testing */
@@ -440,7 +546,27 @@ export function checkStall(taskDir: string, status: string, step: string | null)
     threshold = DEFAULT_STALL_SEC;
   }
 
-  return { stalled: idleSec > threshold, idleSec, threshold };
+  // Enrich with DB-based health check when status is in_progress
+  let dbHealth: ProcessHealth | null = null;
+  if (status === "in_progress") {
+    try {
+      dbHealth = getProcessHealth(taskDir, threshold);
+    } catch { /* ignore DB errors */ }
+  }
+
+  // Combine: stalled if file-based idle exceeds threshold,
+  // OR if DB says session is stale AND PID is dead
+  const fileStalled = idleSec > threshold;
+  const dbStalled = dbHealth
+    ? (!dbHealth.alive && !dbHealth.pidAlive)
+    : false;
+
+  return {
+    stalled: fileStalled || dbStalled,
+    idleSec,
+    threshold,
+    dbHealth,
+  };
 }
 
 // ── Main Supervisor Loop ──────────────────────────────────────────
@@ -582,14 +708,32 @@ export async function cmdSupervisor(args: string[]): Promise<number> {
 
       // ── In Progress ────────────────────────────────────────
       case "in_progress": {
-        log(`🔄 ${step ?? "?"} | $${cost.toFixed(2)} | attempt ${attempt} | idle ${stall.idleSec}s`);
+        const dbInfo = stall.dbHealth;
+        const modelStr = dbInfo?.lastModel ? ` | ${dbInfo.lastModel}` : "";
+        const msgStr = dbInfo?.messageCount ? ` | ${dbInfo.messageCount} msgs` : "";
+        log(`🔄 ${step ?? "?"} | $${cost.toFixed(2)} | attempt ${attempt} | idle ${stall.idleSec}s${modelStr}${msgStr}`);
         if (stall.stalled) {
           warn(`STALL: ${step ?? "?"} no activity for ${Math.round(stall.idleSec / 60)} min (threshold ${Math.round(stall.threshold / 60)} min)`);
+
+          // DB-enriched diagnostics
+          if (dbInfo) {
+            if (dbInfo.pid && !dbInfo.pidAlive) {
+              warn(`PID ${dbInfo.pid} is dead (zombie or crashed) — resetting to pending`);
+              removeStaleLock(taskDir);
+              setStateStatus(taskDir, "pending", undefined);
+              startWorkers();
+              break;
+            }
+            if (!dbInfo.alive) {
+              warn(`DB session stale (${Math.round(dbInfo.idleSeconds / 60)} min idle in DB)`);
+            }
+          }
+
           const lastEvents = getLastEvents(taskDir, 3);
           for (const e of lastEvents) {
             console.log(`  ${e.type}: ${e.details?.message ?? ""}`);
           }
-          // Check if worker is alive
+          // Fallback: check if worker is alive
           if (state.worker_id && !workersAlive()) {
             warn("Worker appears dead — resetting to pending");
             removeStaleLock(taskDir);
@@ -645,6 +789,7 @@ export async function cmdSupervisor(args: string[]): Promise<number> {
 
         if (summaryStatus === "FAIL") {
           warn("Task completed but summary = FAIL");
+          writeRootCauseReport(taskDir, state);
           const proposal = analyzeFail(taskDir, state);
           console.log(proposal);
 
@@ -671,6 +816,10 @@ export async function cmdSupervisor(args: string[]): Promise<number> {
       case "failed":
       case "stopped": {
         warn(`Task ${status} at step: ${step ?? "?"}`);
+
+        // Always write root-cause report before retry
+        writeRootCauseReport(taskDir, state);
+
         retryCount++;
 
         if (retryCount > opts.maxRetries) {
