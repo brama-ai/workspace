@@ -112,3 +112,4 @@ Port the utility bash scripts to TypeScript and wire them into foundry.ts CLI.
 ---
 
 - **Commit (u-coder)**: 673ff08
+- **Commit (u-validator)**: 4e6463c
