@@ -160,30 +160,52 @@ Agent name in env: strip `u-` prefix, uppercase, hyphens to underscores.
 ## Task Lifecycle
 
 ```
-                    ┌──────────┐
-                    │ task.md   │  ← request body
-                    │ created   │
-                    └────┬─────┘
-                         │
-                    ┌────▼─────┐
-                    │ pending   │  ← in queue, waiting for worker
-                    └────┬─────┘
-                         │ worker claims (flock)
-                    ┌────▼──────────┐
-                    │ in_progress    │  ← worker executing agent chain
-                    │ state.json     │
-                    │ events.jsonl   │
-                    └────┬──────────┘
-                         │
-           ┌─────────────┼─────────────┐
-           ▼             ▼             ▼
-      completed       failed      waiting_answer
-           │             │             │
-      ┌────▼────┐   ┌────▼────┐   ┌────▼────┐
-      │summary.md│   │retry?   │   │ qa.json │
-      │= response│   │or report│   │  HITL   │
-      └─────────┘   └─────────┘   └─────────┘
+  ┌──────────┐
+  │ task.md   │  ← request body (created manually or via CLI)
+  │ created   │
+  └────┬─────┘
+       │ createDefaultState() → status: "todo"
+  ┌────▼─────┐
+  │   todo    │  ← backlog, waiting for slot (can have many)
+  └────┬─────┘
+       │ promoteNextTodoToPending() — max 1 in pending at a time
+  ┌────▼─────┐
+  │ pending   │  ← single slot: next task to run (branch/worktree prepared)
+  └────┬─────┘
+       │ worker claims (flock) → in_progress
+  ┌────▼──────────┐
+  │ in_progress    │  ← worker executing agent chain (max = worker count)
+  │ state.json     │
+  │ events.jsonl   │
+  └────┬──────────┘
+       │
+       ├─────────────┬─────────────┐
+       ▼             ▼             ▼
+  completed       failed      waiting_answer
+       │             │             │
+  ┌────▼────┐   ┌────▼────┐   ┌────▼────┐
+  │summary.md│   │retry →  │   │ qa.json │
+  │= response│   │back to  │   │  HITL   │
+  └─────────┘   │  todo    │   └─────────┘
+                └─────────┘
 ```
+
+### How tasks start
+
+| Method | Flow | Who promotes |
+|--------|------|-------------|
+| `foundry run "task"` | Creates task dir → immediately `in_progress` (skip todo/pending) | runner.ts inline |
+| `foundry headless` (batch) | Polls `tasks/` every 15s → `todo→pending→in_progress` | batch.ts `promoteNextTodoToPending()` |
+| Manual task.md creation | TUI auto-watcher (5s) detects todo + no headless → starts headless | App.tsx auto-watcher |
+| TUI `[s] Start` | If headless running → +1 worker. If not → start headless | actions.ts `startWorkers()` |
+
+### Rules
+
+- **Max 1 task in `pending`** at any time (single-slot gate)
+- **`in_progress` count = worker count** (default 1, max 5, configurable via TUI `[+/-]`)
+- **`todo` is the backlog** — unlimited tasks can wait here
+- On **retry**: failed → todo (goes back to queue)
+- On **`foundry run`**: bypasses todo/pending, goes straight to in_progress (direct execution)
 
 ### State files
 

@@ -22,10 +22,13 @@ import {
   tailLog,
   getWorkerCount,
   cycleWorkerCount,
+  isHeadlessRunning,
+  ensureHeadless,
   type CmdResult,
   type ProcessStatus,
   type ProcessEntry,
 } from "../lib/actions.js";
+import { promoteNextTodoToPending } from "../cli/batch.js";
 
 const VERSION = "2.4.0";
 const REFRESH_MS = 3000;
@@ -151,6 +154,23 @@ export function App({ tasksRoot }: Props) {
     const id = setInterval(refreshProcs, PROC_REFRESH_MS);
     return () => clearInterval(id);
   }, [repoRoot]);
+
+  // Auto-watcher: if todo tasks exist but headless is not running → start it
+  useEffect(() => {
+    const autoWatch = () => {
+      try {
+        const hasTodo = data.tasks.some((t) => t.status === "todo");
+        const hasPendingOrRunning = data.tasks.some((t) => t.status === "pending" || t.status === "in_progress");
+        if (hasTodo && !hasPendingOrRunning && !isHeadlessRunning()) {
+          promoteNextTodoToPending();
+          ensureHeadless(repoRoot);
+          setMsg("Auto-started headless for todo task");
+        }
+      } catch { /* ignore */ }
+    };
+    const id = setInterval(autoWatch, 5000);
+    return () => clearInterval(id);
+  }, [repoRoot, data.tasks.length]);
 
   // Clear message after 5s
   useEffect(() => {

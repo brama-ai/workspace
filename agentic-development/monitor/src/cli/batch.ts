@@ -239,7 +239,7 @@ function cancelInProgressTasks(): void {
  * Promote the highest-priority "todo" task to "pending" if no pending task exists.
  * Returns the promoted task directory or null.
  */
-function promoteNextTodoToPending(): string | null {
+export function promoteNextTodoToPending(): string | null {
   if (!existsSync(TASKS_ROOT)) return null;
 
   const entries = readdirSync(TASKS_ROOT);

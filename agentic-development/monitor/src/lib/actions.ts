@@ -185,7 +185,38 @@ function foundryPath(repoRoot: string): string {
   return join(repoRoot, "agentic-development", "foundry");
 }
 
+/** Check if foundry headless is running */
+export function isHeadlessRunning(): boolean {
+  try {
+    const out = execSync("pgrep -f 'foundry.*headless'", { stdio: "pipe", encoding: "utf-8" }).trim();
+    return out.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Start foundry headless workers.
+ * If already running → increment worker count instead.
+ */
 export function startWorkers(repoRoot: string): CmdResult {
+  if (isHeadlessRunning()) {
+    // Already running → bump workers +1
+    const current = getWorkerCount(repoRoot);
+    const next = Math.min(current + 1, MAX_WORKERS);
+    setWorkerCount(repoRoot, next);
+    return { session: "foundry-headless", attachCmd: "tmux attach -t foundry-headless", message: `Headless running, workers: ${current} → ${next}` };
+  }
+  const cmd = `"${foundryPath(repoRoot)}" headless`;
+  return runInTmux("foundry-headless", cmd, repoRoot);
+}
+
+/**
+ * Ensure headless is running. If not → start it.
+ * Called by auto-watcher when todo tasks exist but no headless process.
+ */
+export function ensureHeadless(repoRoot: string): CmdResult | null {
+  if (isHeadlessRunning()) return null;
   const cmd = `"${foundryPath(repoRoot)}" headless`;
   return runInTmux("foundry-headless", cmd, repoRoot);
 }
