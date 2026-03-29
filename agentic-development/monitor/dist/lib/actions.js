@@ -55,10 +55,10 @@ export function archiveTask(taskDir) {
     const tasksRoot = dirname(taskDir);
     const slug = basename(taskDir);
     const now = new Date();
-    const day = String(now.getDate()).padStart(2, "0");
-    const month = String(now.getMonth() + 1).padStart(2, "0");
     const year = now.getFullYear();
-    const dateDir = `${day}-${month}-${year}`;
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    const dateDir = `${year}-${month}-${day}`;
     const archiveBase = join(tasksRoot, "archives", dateDir);
     mkdirSync(archiveBase, { recursive: true });
     const dest = join(archiveBase, slug);
