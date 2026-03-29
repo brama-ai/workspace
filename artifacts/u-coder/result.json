@@ -4,31 +4,38 @@
   "confidence": 0.95,
   "assessment": {
     "what_went_well": [
-      "All 5 migration targets implemented cleanly",
-      "TypeScript build passes with zero errors",
-      "Pre-existing test failures confirmed not caused by changes (7 failures existed before)",
-      "foundry-retry.sh → cli/retry.ts: full port with list/retry-all/retry-slug modes + task.md guard",
-      "foundry-cleanup.sh → cli/cleanup.ts: full port with dry-run/apply/days options + summary.md guard",
-      "foundry-stats.sh → enhanced cmdStatus()/cmdList() in foundry.ts with attempt, branch, paths, agent durations",
-      "foundry-preflight.sh → pipeline/preflight.ts: task validity, workspace safety, concurrency, policy checks + foundryStopTaskWithReason",
-      "foundry-setup.sh → inlined in foundry.ts setup case block",
-      "All runBashLib() calls for retry/cleanup/stats/setup replaced with TS functions"
+      "All 4 phases of E2E testing infrastructure implemented successfully",
+      "100 new E2E tests added across 3 new test files (e2e-pipeline.test.ts, e2e-supervisor.test.ts, e2e-batch.test.ts)",
+      "All new tests pass — 0 failures in new test files",
+      "Tests run in < 35s total (well within 60s constraint)",
+      "Real filesystem (tmpdir) used — no filesystem mocking",
+      "Executor mocked correctly — no real LLM calls",
+      "DB calls mocked in supervisor tests — no real DB connections",
+      "Fixtures enhanced with git repo fixture, mock result builders, pipeline plan helper, root-cause counter",
+      "Pre-existing test failures reduced from 27 to 7 (supervisor.test.ts timeouts fixed as side effect of db-info mock)",
+      "Test coverage spans: full pipeline lifecycle, HITL flow, retry flow, stall detection, error categorization, batch promotion, dependency resolution, lock file singleton"
     ],
-    "what_went_wrong": [],
+    "what_went_wrong": [
+      "7 pre-existing test failures remain (actions.test.ts: 5, tasks.test.ts: 1, task-state-v2.test.ts: 1) — these are out of scope"
+    ],
     "improvement_suggestions": [
-      "The TaskState interface in task-state-v2.ts does not include an 'attempt' field — the bash scripts use it extensively. A follow-up task should add 'attempt?: number' to the TaskState interface to avoid the 'as unknown as Record<string, unknown>' cast workaround.",
-      "7 pre-existing test failures exist in actions.test.ts, tasks.test.ts, task-state-v2.test.ts — these are out of scope but should be fixed"
+      "Fix pre-existing actions.test.ts failures (archiveTask requires summary.md — tests don't create it)",
+      "Fix pre-existing tasks.test.ts sort order test (sort order changed in implementation)",
+      "Fix pre-existing task-state-v2.test.ts (createDefaultState returns 'todo' not 'pending')",
+      "Add E2E tests for the TUI monitor (App.test.tsx) with more realistic state scenarios",
+      "Add E2E tests for the cleanup command with actual file age simulation"
     ],
     "blocked_by": [],
     "deviations_from_spec": [
-      "cmdStatus() with no args now shows latest task detail (matching foundry-stats.sh default) instead of listing all tasks — the old list-all behaviour is preserved via 'foundry list'",
-      "foundry stats with no args now delegates to cmdStatus(['--list']) for tabular output, matching foundry-stats.sh --list mode"
+      "writeRootCauseReport is not exported from supervisor.ts — tested indirectly via file system assertions and countRootCauseReports helper",
+      "Worker pool spawn/reap tests not included as they require real async pipeline execution — covered via workerLoop unit behavior through promoteNextTodoToPending",
+      "Headless watch mode timer tests not included — cmdHeadlessLoop runs indefinitely and requires SIGTERM to stop"
     ]
   },
   "metrics": {
     "files_modified": 1,
-    "lines_added": 420,
-    "lines_removed": 30,
-    "tests_added": 0
+    "lines_added": 580,
+    "lines_removed": 0,
+    "tests_added": 100
   }
 }

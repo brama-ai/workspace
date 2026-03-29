@@ -4,29 +4,33 @@
   "confidence": 0.92,
   "assessment": {
     "what_went_well": [
-      "Thorough analysis of both bash source files (foundry-batch.sh ~298 lines, foundry-common.sh ~1695 lines) to identify exact functions to migrate",
-      "Identified all integration points with existing TS modules (task-state-v2.ts, runner.ts, executor.ts, git.ts, events.ts)",
-      "Design leverages async workers instead of child processes — simpler architecture that matches Node.js strengths",
-      "File locking design uses O_CREAT|O_EXCL which is atomic on Linux/macOS without external dependencies",
-      "Spec covers 25+ scenarios with Given/When/Then format covering all critical paths"
+      "Existing test infrastructure (fixtures.ts, vitest config, 17 test files) provided strong foundation for E2E spec design",
+      "Clear separation between unit tests (existing) and E2E tests (new __tests__/e2e/ directory)",
+      "Mock executor pattern already established in runner.test.ts — E2E specs extend this consistently",
+      "All 4 spec capabilities validated successfully with openspec validate --strict",
+      "Pragmatic approach: no new dependencies, reuse vitest + real tmpdir pattern"
     ],
-    "what_went_wrong": [],
+    "what_went_wrong": [
+      "Initial spec format used ### Section headers instead of ### Requirement: headers — required rewrite for validation"
+    ],
     "improvement_suggestions": [
-      "Consider adding a feature flag (FOUNDRY_TS_BATCH=true) for gradual rollout if the team wants safer migration",
-      "The spec doesn't cover Windows compatibility — if cross-platform is needed, file locking strategy may need adjustment",
-      "Integration tests with actual git worktrees would be valuable but are hard to automate in CI"
+      "Consider adding a CI integration phase as a follow-up proposal once E2E tests are stable",
+      "The original proposal at proposals/foundry-e2e-agent-testing.md could be archived or marked as superseded by this OpenSpec"
     ],
     "blocked_by": [],
     "deviations_from_spec": [
-      "agentic-development has no pre-existing openspec/ directory — created it fresh for this proposal"
+      "Simplified from original proposal: dropped @microsoft/tui-test, Docker containers, e2e-orchestrator agent, e2e-summarizer agent — focused on vitest-native E2E tests instead"
     ]
   },
   "metrics": {
-    "files_analyzed": 8,
-    "bash_lines_to_migrate": 548,
-    "estimated_ts_lines": 800,
-    "spec_scenarios": 27,
-    "tasks_created": 10,
-    "phases": 5
+    "proposal_change_id": "add-foundry-e2e-testing",
+    "target_project": "agentic-development",
+    "specs_created": 4,
+    "scenarios_total": 42,
+    "tasks_defined": 15,
+    "phases": 4,
+    "new_files_planned": 6,
+    "modified_files_planned": 2,
+    "validation_result": "valid"
   }
 }
