@@ -256,15 +256,21 @@ export function promoteNextTodoToPending(): string | null {
 
   const entries = readdirSync(tasksRoot);
 
-  // Check if any pending or in_progress task already exists
+  // Gate: pending + in_progress combined must not exceed desired worker count
+  const desiredWorkers = getDesiredWorkers(1);
+  let pendingCount = 0;
+  let runningCount = 0;
   for (const entry of entries) {
     if (!entry.endsWith("--foundry")) continue;
     const taskDir = join(tasksRoot, entry);
     const state = readTaskState(taskDir);
-    if (state?.status === "pending") {
-      logBatch(`promoteNextTodoToPending: pending slot occupied by ${entry}`);
-      return null;
-    }
+    if (state?.status === "pending") pendingCount++;
+    if (state?.status === "in_progress") runningCount++;
+  }
+  const activeCount = pendingCount + runningCount;
+  if (activeCount >= desiredWorkers) {
+    logBatch(`promoteNextTodoToPending: slots full (${pendingCount} pending + ${runningCount} running >= ${desiredWorkers} workers)`);
+    return null;
   }
 
   // Collect todo tasks with priority (from state.json or task.md header)

@@ -133,6 +133,18 @@ describe("task lifecycle", () => {
       const second = promote();
       expect(second).toBeNull(); // already have a pending task
     });
+
+    it("does not promote when in_progress task exists (1 worker)", async () => {
+      createTask(testRoot, "running", { status: "in_progress" });
+      createTask(testRoot, "waiting", { status: "todo" });
+
+      const promote = await getPromote();
+      const result = promote();
+      expect(result).toBeNull();
+
+      const state = readTaskState(join(testRoot, "waiting--foundry"));
+      expect(state?.status).toBe("todo");
+    });
   });
 
   describe("blocked_by dependencies", () => {
@@ -165,17 +177,18 @@ describe("task lifecycle", () => {
       expect(state?.status).toBe("pending");
     });
 
-    it("promotes unblocked task even when blocked tasks exist", async () => {
+    it("does not promote when dep is in_progress (slot full)", async () => {
       createTask(testRoot, "dep-wip", { status: "in_progress" });
       createTask(testRoot, "blocked", { status: "todo", blocked_by: ["dep-wip"], priority: 1 });
       createTask(testRoot, "free-task", { status: "todo", priority: 2 });
 
       const promote = await getPromoteFn();
       const result = promote();
-      expect(result).not.toBeNull();
+      // in_progress slot is full → nothing promoted
+      expect(result).toBeNull();
 
       const freeState = readTaskState(join(testRoot, "free-task--foundry"));
-      expect(freeState?.status).toBe("pending");
+      expect(freeState?.status).toBe("todo");
 
       const blockedState = readTaskState(join(testRoot, "blocked--foundry"));
       expect(blockedState?.status).toBe("todo");
