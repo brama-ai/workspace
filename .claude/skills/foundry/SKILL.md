@@ -334,6 +334,21 @@ If the same status + step persists for more than 10 consecutive polls (30 minute
 
 ---
 
+## Task Archiving
+
+Completed/failed tasks are archived into `tasks/archives/YYYY-MM-DD/<slug>/` date folders.
+
+| Method | Command | Behavior |
+|--------|---------|----------|
+| **TUI** | Press `D` on a selected task | Archives immediately via `archiveTask()` |
+| **CLI cleanup** | `./agentic-development/foundry cleanup --apply` | Archives all completed/failed/cancelled tasks older than 7 days |
+| **CLI cleanup (dry-run)** | `./agentic-development/foundry cleanup` | Shows what would be archived (no changes) |
+| **CLI cleanup (custom age)** | `./agentic-development/foundry cleanup --apply --days 3` | Archives tasks older than 3 days |
+
+**Archive guard:** tasks without a non-empty `summary.md` are skipped (not archived).
+
+---
+
 ## Important Notes
 
 - **Do NOT modify task files** (task.md, state.json) directly — always use foundry commands
