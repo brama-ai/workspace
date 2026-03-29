@@ -4,9 +4,9 @@
   "started_at": "2026-03-29T06:07:12Z",
   "attempt": 1,
   "status": "in_progress",
-  "current_step": "u-tester",
-  "resume_from": "u-tester",
-  "updated_at": "2026-03-29T06:22:22Z",
+  "current_step": "u-summarizer",
+  "resume_from": "u-summarizer",
+  "updated_at": "2026-03-29T06:25:27Z",
   "task_file": "/workspaces/brama/tasks/delete-all-legacy-bash-scripts-after-ts-migration--foundry/task.md",
   "branch": "pipeline/delete-all-legacy-bash-scripts-after-ts-migration",
   "agents": [
@@ -41,25 +41,26 @@
       "attempt": 1,
       "status": "done",
       "model": "opencode-go/kimi-k2.5",
-      "duration_seconds": 4,
+      "duration_seconds": 6,
       "input_tokens": 0,
       "output_tokens": 0,
       "cost": 0,
       "call_count": 1,
-      "updated_at": "2026-03-29T06:22:22Z",
+      "updated_at": "2026-03-29T06:22:23Z",
       "session_id": "ses_2c7be13e9ffeVIMJEupuahv1Ks"
     },
     {
       "agent": "u-summarizer",
       "attempt": 1,
-      "status": "pending",
-      "model": "",
-      "duration_seconds": 0,
-      "input_tokens": 0,
-      "output_tokens": 0,
-      "cost": 0,
-      "call_count": 0,
-      "updated_at": ""
+      "status": "done",
+      "model": "openai/gpt-5.4",
+      "duration_seconds": 181,
+      "input_tokens": 87487,
+      "output_tokens": 8261,
+      "cost": 0.353943,
+      "call_count": 1,
+      "updated_at": "2026-03-29T06:25:27Z",
+      "session_id": "ses_2c7bdf7d1ffei5KMvcR602dBP0"
     }
   ]
 }

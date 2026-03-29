@@ -124,10 +124,11 @@ From `agentic-development/`:
 
 ## Summarizer
 
-- **Status**: pending
-- **Summary file**: —
-- **Next task recommendation**: —
+- **Status**: done
+- **Summary file**: `/workspaces/brama/tasks/delete-all-legacy-bash-scripts-after-ts-migration--foundry/summary.md`
+- **Next task recommendation**: `Мігрувати legacy тести Foundry з bash-скриптів на TypeScript API`
 
 ---
 
 - **Commit (u-validator)**: 9e6fc7e
+- **Commit (u-tester)**: e757a43
