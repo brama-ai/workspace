@@ -46,6 +46,12 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends postgresql-client-16 redis-tools tmux \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Install cloudflared (Cloudflare Tunnel)
+RUN ARCH=$(dpkg --print-architecture) \
+    && curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${ARCH}" \
+       -o /usr/local/bin/cloudflared \
+    && chmod +x /usr/local/bin/cloudflared
+
 # Install kubectl
 RUN ARCH=$(dpkg --print-architecture) \
     && curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/${ARCH}/kubectl" \
