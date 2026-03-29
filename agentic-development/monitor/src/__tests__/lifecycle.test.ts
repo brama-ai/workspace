@@ -136,7 +136,7 @@ describe("task lifecycle", () => {
   });
 
   describe("blocked_by dependencies", () => {
-    async function getPromote() {
+    async function getPromoteFn() {
       const mod = await import("../cli/batch.js");
       return mod.promoteNextTodoToPending;
     }
@@ -145,19 +145,19 @@ describe("task lifecycle", () => {
       createTask(testRoot, "dep-task", { status: "in_progress" });
       createTask(testRoot, "blocked-task", { status: "todo", blocked_by: ["dep-task"] });
 
-      const promote = await getPromote();
+      const promote = await getPromoteFn();
       const result = promote();
       expect(result).toBeNull();
 
       const state = readTaskState(join(testRoot, "blocked-task--foundry"));
-      expect(state?.status).toBe("todo"); // still blocked
+      expect(state?.status).toBe("todo");
     });
 
     it("promotes todo task when all blocked_by dependencies are completed", async () => {
       createTask(testRoot, "dep-done", { status: "completed" });
       createTask(testRoot, "ready-task", { status: "todo", blocked_by: ["dep-done"] });
 
-      const promote = await getPromote();
+      const promote = await getPromoteFn();
       const result = promote();
       expect(result).not.toBeNull();
 
@@ -170,26 +170,23 @@ describe("task lifecycle", () => {
       createTask(testRoot, "blocked", { status: "todo", blocked_by: ["dep-wip"], priority: 1 });
       createTask(testRoot, "free-task", { status: "todo", priority: 2 });
 
-      const promote = await getPromote();
+      const promote = await getPromoteFn();
       const result = promote();
       expect(result).not.toBeNull();
 
-      // free-task should be promoted (not blocked)
       const freeState = readTaskState(join(testRoot, "free-task--foundry"));
       expect(freeState?.status).toBe("pending");
 
-      // blocked should remain todo
       const blockedState = readTaskState(join(testRoot, "blocked--foundry"));
       expect(blockedState?.status).toBe("todo");
     });
 
     it("handles missing dependency task dir gracefully", async () => {
-      // blocked_by references a task that doesn't exist
       createTask(testRoot, "orphan", { status: "todo", blocked_by: ["nonexistent"] });
 
-      const promote = await getPromote();
+      const promote = await getPromoteFn();
       const result = promote();
-      expect(result).toBeNull(); // can't verify dep = stays blocked
+      expect(result).toBeNull();
     });
   });
 
