@@ -257,6 +257,32 @@ else
   echo "  [SKIP] No .ssh-env found (copy .ssh-env.example to .ssh-env to configure)"
 fi
 
+# ---------------------------------------------------------------------------
+# OpenCode server: headless server for TelegramCoder and web UI
+# ---------------------------------------------------------------------------
+if command -v opencode &>/dev/null; then
+  pkill -f "opencode serve" 2>/dev/null || true
+  sleep 1
+  (nohup opencode serve --port 4096 >> /tmp/opencode-serve.log 2>&1 &)
+  echo "  [OK]   OpenCode server started on :4096 (log: /tmp/opencode-serve.log)"
+else
+  echo "  [SKIP] OpenCode not installed"
+fi
+
+# ---------------------------------------------------------------------------
+# TelegramCoder: start the Telegram terminal bot in the background
+# ---------------------------------------------------------------------------
+_tc_dir="/home/vscode/.local/share/telegramcoder"
+if [ -d "$_tc_dir" ] && [ -f "$_tc_dir/dist/app.js" ]; then
+  # Kill any previous instance
+  pkill -f "node.*telegramcoder.*app.js" 2>/dev/null || true
+  (cd "$_tc_dir" && nohup node dist/app.js >> /tmp/telegramcoder.log 2>&1 &)
+  echo "  [OK]   TelegramCoder bot started (log: /tmp/telegramcoder.log)"
+else
+  echo "  [SKIP] TelegramCoder not installed"
+fi
+unset _tc_dir
+
 ssh_snippet='# SSH agent: reuse running agent across shell sessions
 if [ -f "$HOME/.ssh/agent.env" ]; then . "$HOME/.ssh/agent.env" > /dev/null; fi'
 

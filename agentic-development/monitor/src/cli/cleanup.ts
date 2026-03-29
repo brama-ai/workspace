@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync, rmSync, writeFileSync } from "node:
 import { join, basename } from "node:path";
 import { env } from "node:process";
 import { listAllTasks } from "../state/task-state-v2.js";
+import { archiveTask } from "../lib/actions.js";
 
 const REPO_ROOT = env.REPO_ROOT || process.cwd();
 
@@ -88,7 +89,16 @@ export function cmdCleanup(args: string[]): number {
       continue;
     }
 
-    removePath(dir, apply);
+    if (apply) {
+      try {
+        const dest = archiveTask(dir);
+        console.log(`archived ${basename(dir)} → ${dest.split("/archives/")[1] || dest}`);
+      } catch (e: any) {
+        console.log(`[skip] ${basename(dir)} — ${e.message}`);
+      }
+    } else {
+      console.log(`[dry-run] archive ${basename(dir)}`);
+    }
   }
 
   // Clean up __pycache__ directories
