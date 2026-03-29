@@ -8,7 +8,7 @@ Foundry is a **process manager for AI agents**, architecturally similar to PHP-F
 PHP-FPM                          Foundry
 ─────────────────────────────    ─────────────────────────────
 master process                   foundry / foundry CLI
-worker pool (php-fpm workers)    batch workers (foundry-batch.sh)
+worker pool (php-fpm workers)    batch workers (batch.ts / cmdBatch)
 request queue                    tasks/ directory (task pool)
 php script execution             agent execution (u-planner, u-coder, …)
 HTTP response                    summary.md (response)
@@ -44,7 +44,7 @@ php.ini                          .env (PIPELINE_*, FOUNDRY_*)
 
 ## Language Policy
 
-### TypeScript first, bash only for glue
+### TypeScript first
 
 | Layer | Language | Why |
 |-------|----------|-----|
@@ -55,13 +55,14 @@ php.ini                          .env (PIPELINE_*, FOUNDRY_*)
 | State management | TypeScript | JSON read/write, validation |
 | Telemetry | TypeScript | Pricing, token counting |
 | TUI monitor | TypeScript (React/Ink) | Interactive UI, real-time rendering |
-| Batch worker pool | Bash | Process forking, flock, worktrees, signal handling |
-| Headless launcher | Bash | `nohup`, background process management |
-| Setup/cleanup | Bash | Directory creation, file permissions |
+| Batch worker pool | TypeScript | Process forking, flock, worktrees, signal handling |
+| Headless launcher | TypeScript | Background queue processing |
+| Setup/cleanup | TypeScript | Directory creation, artifact management |
+| E2E autofix | Bash (`lib/foundry-e2e.sh`) | E2E test runner + task creation (pending TS port) |
 
-**Rule:** If it has logic — write it in TypeScript. If it only spawns processes or manages files — bash is acceptable.
+**Rule:** All new logic must be written in TypeScript. Bash is only acceptable for thin glue scripts that spawn processes.
 
-**Migration direction:** Bash → TypeScript. Never add new logic to bash scripts. When touching an existing bash function that has complex logic, consider rewriting it in TS.
+**Migration complete:** All core bash scripts have been migrated to TypeScript. The only remaining bash script is `lib/foundry-e2e.sh` (E2E autofix runner, pending TS port).
 
 ---
 
@@ -312,14 +313,11 @@ Based on agent timeouts — if no new event appears within the threshold, the ag
 
 ```
 agentic-development/
-├── foundry                  # Entry dispatcher (bash → TS routing)
-├── foundry               # Main CLI entrypoint
+├── foundry                  # Main CLI entrypoint (bash → npx tsx foundry.ts)
 ├── CONVENTIONS.md              # This file
 ├── lib/
-│   ├── foundry-common.sh       # Shared bash helpers (legacy)
-│   ├── foundry-batch.sh        # Worker pool manager (bash — process management)
-│   ├── foundry-retry.sh        # Retry helper (bash)
-│   └── ...                     # Other bash scripts (legacy)
+│   ├── foundry-e2e.sh          # E2E autofix runner (pending TS port)
+│   └── ultraworks-postmortem-summary.sh  # Ultraworks postmortem helper
 ├── monitor/
 │   └── src/
 │       ├── cli/

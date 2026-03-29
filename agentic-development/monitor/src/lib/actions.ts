@@ -397,11 +397,36 @@ export function getProcessStatusAsync(repoRoot: string, cb: (status: ProcessStat
 
 /** Clean zombie processes and stale batch lock */
 export function cleanZombies(repoRoot: string): CmdResult {
-  const commonSh = join(repoRoot, "agentic-development", "lib", "foundry-common.sh");
-  return runQuick(
-    `bash -c 'REPO_ROOT="${repoRoot}" source "${commonSh}" && n=$(foundry_cleanup_zombies) && echo "Cleaned: $n zombie(s)/stale lock(s)"'`,
-    repoRoot
-  );
+  let cleaned = 0;
+
+  // Check and clean stale batch lock
+  const lockfile = join(repoRoot, ".opencode", "pipeline", ".batch.lock");
+  if (existsSync(lockfile)) {
+    try {
+      const lockPid = readFileSync(lockfile, "utf8").trim();
+      if (lockPid) {
+        const statusFile = `/proc/${lockPid}/status`;
+        let pidAlive = false;
+        let isZombie = false;
+        if (existsSync(statusFile)) {
+          const statusContent = readFileSync(statusFile, "utf8");
+          const stateMatch = statusContent.match(/^State:\s+(\S)/m);
+          const state = stateMatch ? stateMatch[1] : "";
+          pidAlive = state !== "";
+          isZombie = state === "Z";
+        }
+        if (!pidAlive || isZombie) {
+          try {
+            const { unlinkSync } = require("node:fs");
+            unlinkSync(lockfile);
+            cleaned++;
+          } catch { /* ignore */ }
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  return { session: "", attachCmd: "", message: `Cleaned: ${cleaned} zombie(s)/stale lock(s)` };
 }
 
 // ── Doctor diagnostics ──────────────────────────────────────────

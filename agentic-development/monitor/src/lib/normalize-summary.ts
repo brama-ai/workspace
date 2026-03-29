@@ -292,13 +292,14 @@ function taskNameFromHandoff(text: string): string {
 }
 
 function telemetryBlock(workflow: string, taskSlug: string, sessionId: string | null): string {
-  const trackerWorkflow = workflow === "builder" || workflow === "foundry" ? "builder" : workflow;
-  const cmd = [join(REPO_ROOT, "agentic-development/lib/cost-tracker.sh"), "summary-block", "--workflow", trackerWorkflow];
+  const renderScript = join(REPO_ROOT, "agentic-development/monitor/src/cli/render-summary.ts");
+  const trackerWorkflow = workflow === "builder" || workflow === "foundry" ? "foundry" : "ultraworks";
   
-  if (trackerWorkflow === "builder") {
-    cmd.push("--task-slug", taskSlug);
-  } else if (sessionId) {
-    cmd.push("--session-id", sessionId);
+  let cmd: string[];
+  if (trackerWorkflow === "foundry") {
+    cmd = ["npx", "tsx", renderScript, "foundry", taskSlug];
+  } else {
+    cmd = ["npx", "tsx", renderScript, "ultraworks", ...(sessionId ? [sessionId] : [])];
   }
   
   const text = run(cmd).trim();

@@ -347,16 +347,16 @@ If the same status + step persists for more than 10 consecutive polls (30 minute
 
 ## Observability & Debugging
 
-Foundry has two parallel execution paths with separate log sources. Always check both.
+Foundry is fully TypeScript-based. All execution paths use the TS runner.
 
-### Two Execution Paths
+### Execution Path
 
 | Path | Entry point | State management | Logs |
 |------|------------|------------------|------|
-| **TS runner** (`foundry run`) | `monitor/src/cli/run.ts` → `runner.ts` → `executor.ts` | No state.json — runs agents sequentially in-process | Runtime logs + per-agent logs |
-| **Bash batch** (`foundry headless/batch`) | `lib/foundry-batch.sh` → `lib/foundry-run.sh` | Full state.json + events.jsonl in task dir | Task artifacts + debug logs |
+| **TS runner** (`foundry run`) | `monitor/src/cli/foundry.ts` → `runner.ts` → `executor.ts` | Full state.json + events.jsonl in task dir | Runtime logs + per-agent logs + task artifacts |
+| **TS batch** (`foundry headless/batch`) | `monitor/src/cli/batch.ts` → `runner.ts` → `executor.ts` | Full state.json + events.jsonl in task dir | Task artifacts + debug logs |
 
-**Key difference:** `foundry run` does NOT write state.json or task events.jsonl — it runs agents directly via the TS executor. Only the bash batch path writes task-level state files.
+**Note:** Both `foundry run` and `foundry headless/batch` write state.json and task events.jsonl via the TS pipeline runner.
 
 ### Log Locations (Priority Order for Debugging)
 
@@ -412,7 +412,7 @@ ls agentic-development/runtime/logs/*_u-coder*_events.jsonl
 
 The events.jsonl contains the agent's internal steps: tool calls, file reads, edits, etc. Useful for understanding what the agent actually did.
 
-#### 3. Task Directory Artifacts (bash batch path only)
+#### 3. Task Directory Artifacts
 
 ```bash
 TASK=tasks/<slug>--foundry
@@ -443,7 +443,7 @@ ls $TASK/artifacts/*.session.json
 cat agentic-development/runtime/logs/foundry-debug.log | tail -50
 ```
 
-Contains bash-level debug_log entries: process spawning, stall detection, git operations, model swaps.
+Contains TS-level debug entries: process spawning, stall detection, git operations, model swaps.
 
 #### 5. Process Status (live)
 
@@ -451,11 +451,8 @@ Contains bash-level debug_log entries: process spawning, stall detection, git op
 # Active opencode agent processes
 ps aux | grep 'opencode run' | grep -v grep | grep -v defunct
 
-# Active foundry batch workers
-ps aux | grep foundry-batch | grep -v grep
-
-# Active foundry-run.sh sessions
-ps aux | grep foundry-run | grep -v grep
+# Active foundry headless workers
+ps aux | grep 'foundry.*headless' | grep -v grep
 
 # Zombie processes (cleanup needed)
 ps aux | grep -E 'opencode|foundry' | grep defunct

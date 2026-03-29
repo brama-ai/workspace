@@ -65,19 +65,6 @@ import { cmdRetry } from "./retry.js";
 import { cmdCleanup } from "./cleanup.js";
 
 const SCRIPT_DIR = join(REPO_ROOT, "agentic-development");
-const LIB_DIR = join(SCRIPT_DIR, "lib");
-
-function runBashLib(script: string, args: string[] = []): number {
-  try {
-    execFileSync(join(LIB_DIR, script), args, {
-      stdio: "inherit",
-      env: { ...process.env, REPO_ROOT, PIPELINE_TASKS_ROOT: TASKS_ROOT },
-    });
-    return 0;
-  } catch (e: any) {
-    return e.status ?? 1;
-  }
-}
 
 function showHelp(): void {
   console.log(`
@@ -503,9 +490,8 @@ async function main(): Promise<void> {
       exitCode = await cmdHeadless(args);
       break;
     case "stop":
-      // Stop any running headless/batch processes (both TS and legacy bash)
+      // Stop any running headless/batch processes
       try { execSync("pkill -f 'foundry.*headless'", { stdio: "pipe" }); } catch {}
-      try { execSync("pkill -f 'foundry-batch\\.sh'", { stdio: "pipe" }); } catch {}
       console.log("Foundry headless workers stopped");
       break;
     case "batch":
@@ -535,9 +521,18 @@ async function main(): Promise<void> {
       break;
     }
     case "e2e-autofix":
-    case "autotest":
-      exitCode = runBashLib("foundry-e2e.sh", args);
+    case "autotest": {
+      const e2eScript = join(SCRIPT_DIR, "lib", "foundry-e2e.sh");
+      try {
+        execFileSync(e2eScript, args, {
+          stdio: "inherit",
+          env: { ...process.env, REPO_ROOT, PIPELINE_TASKS_ROOT: TASKS_ROOT },
+        });
+      } catch (e: any) {
+        exitCode = e.status ?? 1;
+      }
       break;
+    }
 
     default:
       console.error(`Unknown command: ${cmd}`);

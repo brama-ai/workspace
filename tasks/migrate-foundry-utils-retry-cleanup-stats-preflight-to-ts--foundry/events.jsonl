@@ -1,4 +1,0 @@
-{"timestamp":"2026-03-28T17:35:38Z","type":"run_started","message":"Foundry run started","step":"u-planner"}
-{"timestamp":"2026-03-28T17:38:43Z","type":"promoted","message":"Task promoted from todo to pending (next in pipeline)"}
-{"timestamp":"2026-03-28T17:39:02Z","type":"promoted","message":"Task promoted from todo to pending (next in pipeline)"}
-{"timestamp":"2026-03-28T17:39:20Z","type":"run_started","message":"Foundry run started","step":"u-planner"}
