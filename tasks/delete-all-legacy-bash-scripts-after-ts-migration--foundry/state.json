@@ -1,0 +1,64 @@
+{
+  "task_id": "delete-all-legacy-bash-scripts-after-ts-migration",
+  "workflow": "foundry",
+  "started_at": "2026-03-29T06:07:12Z",
+  "attempt": 1,
+  "status": "in_progress",
+  "current_step": "u-validator",
+  "resume_from": "u-validator",
+  "updated_at": "2026-03-29T06:22:16Z",
+  "task_file": "/workspaces/brama/tasks/delete-all-legacy-bash-scripts-after-ts-migration--foundry/task.md",
+  "branch": "pipeline/delete-all-legacy-bash-scripts-after-ts-migration",
+  "agents": [
+    {
+      "agent": "u-coder",
+      "attempt": 1,
+      "status": "done",
+      "model": "anthropic/claude-sonnet-4-6",
+      "duration_seconds": 532,
+      "input_tokens": 88,
+      "output_tokens": 24440,
+      "cost": 2.844744,
+      "call_count": 1,
+      "updated_at": "2026-03-29T06:17:26Z",
+      "session_id": "ses_2c7ca9f5effed3r22wuZboiYYf"
+    },
+    {
+      "agent": "u-validator",
+      "attempt": 1,
+      "status": "done",
+      "model": "minimax-coding-plan/MiniMax-M2.7",
+      "duration_seconds": 287,
+      "input_tokens": 26215,
+      "output_tokens": 8221,
+      "cost": 0,
+      "call_count": 1,
+      "updated_at": "2026-03-29T06:22:16Z",
+      "session_id": "ses_2c7c28085ffefG1ugDAAj8KGy5"
+    },
+    {
+      "agent": "u-tester",
+      "attempt": 1,
+      "status": "pending",
+      "model": "",
+      "duration_seconds": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost": 0,
+      "call_count": 0,
+      "updated_at": ""
+    },
+    {
+      "agent": "u-summarizer",
+      "attempt": 1,
+      "status": "pending",
+      "model": "",
+      "duration_seconds": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost": 0,
+      "call_count": 0,
+      "updated_at": ""
+    }
+  ]
+}
