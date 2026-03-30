@@ -80,3 +80,16 @@ Blacklist entries MAY include `reasonCode`, `errorMessage`, `lastCheckedAt`, and
 - **WHEN** a failed recheck updates a blacklist entry
 - **THEN** the entry is written back with the blocking status preserved
 - **AND** includes the latest available error metadata for the UI
+
+### Requirement: Recheck progress feedback
+The monitor SHALL provide visible feedback while a recheck is in progress so the operator knows the probe is running.
+
+#### Scenario: Recheck in progress indicator
+- **WHEN** the operator triggers a recheck and the probe has not yet completed
+- **THEN** the Models tab shows a progress indicator (e.g. "recheck in progress…")
+- **AND** the recheck keyboard shortcut is disabled until the probe completes
+
+#### Scenario: Recheck result message
+- **WHEN** the probe completes (success or failure)
+- **THEN** the monitor shows a brief result message with the model ID and outcome
+- **AND** the Models tab refreshes to reflect the updated blacklist state

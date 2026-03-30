@@ -109,4 +109,48 @@ describe("model-routing", () => {
       "openrouter/free",
     ]);
   });
+
+  it("resolves u-architect from config (runtime matches TUI source)", () => {
+    const repoRoot = createRepo(`{
+      "agents": {
+        "u-architect": {
+          "model": "anthropic/claude-opus-4-6",
+          "fallback_models": ["google/gemini-2.5-flash", "openai/gpt-5.4"]
+        }
+      }
+    }`);
+
+    const routing = resolveAgentRouting(repoRoot, "u-architect");
+    expect(routing.source).toBe("config");
+    expect(routing.primaryModel).toBe("anthropic/claude-opus-4-6");
+    expect(routing.fallbackChain).toEqual(["google/gemini-2.5-flash", "openai/gpt-5.4"]);
+    expect(routing.warning).toBeUndefined();
+  });
+
+  it("emits warning when agent has no routing entry and no models available", () => {
+    const repoRoot = mkdtempSync(join(tmpdir(), "model-routing-empty-"));
+    tempDirs.push(repoRoot);
+    mkdirSync(join(repoRoot, ".opencode"), { recursive: true });
+    writeFileSync(join(repoRoot, ".opencode", "oh-my-opencode.jsonc"), "{}", "utf8");
+
+    const routing = resolveAgentRouting(repoRoot, "u-coder");
+    expect(routing.source).toBe("degraded_random");
+    expect(routing.primaryModel).toBe("");
+    expect(routing.warning).toContain("Missing model routing for u-coder");
+    expect(routing.warning).toContain("no fallback models are available");
+  });
+
+  it("degraded fallback warning contains agent name", () => {
+    const repoRoot = createRepo(`{
+      "agents": {
+        "u-architect": { "model": "anthropic/claude-opus-4-6" }
+      }
+    }`);
+
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const routing = resolveAgentRouting(repoRoot, "u-missing-agent");
+    expect(routing.source).toBe("degraded_random");
+    expect(routing.warning).toContain("u-missing-agent");
+    expect(routing.warning).toContain("degraded random fallback");
+  });
 });

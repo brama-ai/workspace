@@ -1,7 +1,7 @@
 # Add Models Tab and Health Recheck to Foundry TUI
 
 **Change ID:** `add-models-tab-health-recheck`
-**Status:** draft
+**Status:** approved
 **Created:** 2026-03-30
 **Author:** OpenCode
 

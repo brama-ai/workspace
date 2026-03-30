@@ -4,43 +4,43 @@
   "confidence": 0.93,
   "assessment": {
     "what_went_well": [
-      "100 new E2E tests across 3 test files — all pass in 1.14s (well within 60s constraint)",
-      "TypeScript compiles cleanly with zero errors (tsc --noEmit passes)",
+      "All 37 new tests pass cleanly across 3 test files (model-inventory, model-probe, model-routing)",
+      "TypeScript compiles with zero errors before and after audit fix",
+      "Pre-existing test failures improved: 7 failing files before changes → 5 after (no regressions introduced)",
+      "Backwards-compatible blacklist metadata extension preserves legacy entries without breaking existing code",
+      "Clean module separation: model-inventory.ts, model-routing.ts, model-probe.ts are well-isolated with clear responsibilities",
+      "Proper error classification with 5+ categories and case-insensitive regex matching",
+      "TUI integration follows existing codebase patterns (tab cycling, keyboard shortcuts, Ink components)",
       "No hardcoded secrets, tokens, or .env files with real values in any changed file",
-      "All imports reference real, existing modules with correct export signatures",
-      "Mock patterns are consistent: executor mocked at boundary, context-guard mocked, db-info mocked — no real LLM/DB calls",
-      "Real filesystem (tmpdir) used for all test state — no fs mocking, matching project conventions",
-      "Proper test isolation: each test gets its own createTestRoot(), cleanup in afterEach with rmSync",
-      "Comprehensive coverage: pipeline lifecycle, HITL flow, retry flow, stall detection, error categorization, batch promotion, dependency resolution, singleton lock",
-      "Fixtures extended cleanly: git repo fixture, mock result builders (mockSuccess/mockFailure/mockHitlWaiting), pipeline plan helper, root-cause counter",
-      "Artifact result.json files updated to reflect current task context accurately"
+      "spawn() used with shell:false — no command injection risk in model probe",
+      "path.join() used for config file paths — no path traversal risk",
+      "JSON.parse used for config parsing — no code execution risk",
+      "Documentation updated in README with operator-facing recovery workflow",
+      "OpenSpec specs updated with new requirements (recheck progress feedback, tab alert badge, empty inventory state)",
+      "Structured logging (rlog) used for all key operations: probe_success, probe_failed, recheck_success, recheck_failed, blacklist_unblocked",
+      "Debug logging with timestamps for all probe operations"
     ],
     "what_went_wrong": [
-      "fixtures.ts used require('node:fs') for readdirSync inside ESM module — FIXED by auditor (replaced with top-level import)"
+      "model-probe.ts had unused 'lower' variable (declared but only used once inconsistently) — FIXED by auditor (removed variable, used regex /i flag consistently)"
     ],
     "improvement_suggestions": [
-      "Design spec called for __tests__/e2e/ subdirectory but tests placed directly in __tests__/ — acceptable pragmatic deviation but spec should be updated to match",
-      "Design spec called for separate mock-executor.ts and git-fixture.ts helper files but functionality was inlined into fixtures.ts — simpler but deviates from spec",
-      "vitest.config.ts was not updated with E2E-specific timeout configuration as specified in tasks.md task 1.4 — tests pass without it since they're fast, but could be fragile",
-      "Some tests use 'as any' type casts (e2e-batch.test.ts lines 320-338) for worker_id/claimed_at — indicates TaskState interface may need extension",
-      "7 pre-existing test failures remain (out of scope but noted)"
+      "Consider adding component-level render tests for ModelsTab using ink-testing-library (non-blocking, TUI render testing is complex)",
+      "HTTP status code regex patterns (/429/, /503/, /502/, /500/) in classifyProbeError could match false positives in model IDs containing those numbers — consider using word boundary anchors (\\b429\\b) for stricter matching (non-blocking, low risk since error output context is narrow)",
+      "The 27 pre-existing test failures in e2e-pipeline, runner, supervisor, tasks, task-state-v2, actions should be investigated separately (not caused by this change)"
     ],
     "blocked_by": [],
     "deviations_from_spec": [
-      "File placement: __tests__/e2e-*.test.ts instead of __tests__/e2e/*.test.ts (flat vs subdirectory)",
-      "Helper consolidation: mock executor and git fixture inlined into fixtures.ts instead of separate files",
-      "vitest.config.ts not updated with E2E timeout configuration (task 1.4 from tasks.md)",
-      "Some task items from tasks.md not implemented: headless watch mode tests (4.3), worker pool spawn/reap simulation (4.2), circular dependency detection (2.2)"
+      "Task 4.4 (openspec validate CLI) was not executed — requires openspec CLI in environment (acknowledged by coder, non-blocking)"
     ]
   },
   "metrics": {
     "files_modified": 1,
-    "findings_count": 6,
+    "findings_count": 3,
     "critical_count": 0,
-    "warning_count": 5,
+    "warning_count": 2,
     "fixes_applied": 1,
     "fixes_applied_detail": [
-      "fixtures.ts: Replaced require('node:fs') with top-level ESM import of readdirSync — consistent with module system"
+      "model-probe.ts: Removed unused 'lower' variable, replaced lower.includes() calls with regex /i flag for consistency"
     ]
   }
 }

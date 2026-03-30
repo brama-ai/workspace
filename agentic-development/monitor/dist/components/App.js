@@ -10,6 +10,9 @@ import { startWorkers, stopWorkers, retryFailed, runAutotest, archiveTask, ultra
 import { checkEnvStatusAsync, upEnvironment, invalidateEnvCheckConfigCache } from "../lib/env-status.js";
 import { generateEnvCheck } from "../cli/init-env.js";
 import { promoteNextTodoToPending } from "../cli/batch.js";
+import { loadModelInventory, formatModelUsage } from "../lib/model-inventory.js";
+import { getAllBlacklistEntries } from "../agents/executor.js";
+import { recheckModel, formatReasonCode } from "../agents/model-probe.js";
 const VERSION = "2.5.0";
 const REFRESH_MS = 3000;
 const PROC_REFRESH_MS = 15000; // Process status refresh — less frequent (was 3s, now 15s)
@@ -95,6 +98,11 @@ export function App({ tasksRoot }) {
     const [procStatus, setProcStatus] = useState({ workers: [], zombies: [], lock: null });
     const [procIdx, setProcIdx] = useState(0);
     const [procLogLines, setProcLogLines] = useState([]);
+    // Models tab state
+    const [modelInventory, setModelInventory] = useState([]);
+    const [modelIdx, setModelIdx] = useState(0);
+    const [modelRecheckInProgress, setModelRecheckInProgress] = useState(false);
+    const [modelBlacklistEntries, setModelBlacklistEntries] = useState([]);
     // Auto-watcher tick counter (triggers every ~5 refreshes = 15s)
     const autoWatchCounter = React.useRef(0);
     // Refresh task data periodically (fast — pure file reads)
@@ -154,6 +162,14 @@ export function App({ tasksRoot }) {
         const id = setInterval(refreshEnv, ENV_REFRESH_MS);
         return () => clearInterval(id);
     }, [repoRoot]);
+    // Refresh model inventory when tab 4 is active or on tick
+    useEffect(() => {
+        if (tab !== 4)
+            return;
+        const inventory = loadModelInventory(repoRoot);
+        setModelInventory(inventory);
+        setModelBlacklistEntries(getAllBlacklistEntries());
+    }, [tab, tick, repoRoot]);
     // Clear message after 5s
     useEffect(() => {
         if (!msg)
@@ -219,15 +235,19 @@ export function App({ tasksRoot }) {
             setTab(3);
             return;
         }
+        if (input === "4") {
+            setTab(4);
+            return;
+        }
         // Left/right: cycle tabs (except inside detail sub-tabs)
         if (view !== "detail") {
             if (key.leftArrow) {
-                setTab((t) => (t === 1 ? 3 : (t - 1)));
+                setTab((t) => (t === 1 ? 4 : (t - 1)));
                 setView("list");
                 return;
             }
             if (key.rightArrow) {
-                setTab((t) => (t === 3 ? 1 : (t + 1)));
+                setTab((t) => (t === 4 ? 1 : (t + 1)));
                 setView("list");
                 return;
             }
@@ -270,6 +290,40 @@ export function App({ tasksRoot }) {
             // z — clean zombies
             if (input === "z" || input === "Z") {
                 handleCmd(cleanZombies(repoRoot));
+                return;
+            }
+            return;
+        }
+        // ── Tab 4: Models ────────────────────────────────────────────────
+        if (tab === 4) {
+            if (key.upArrow || input === "k") {
+                setModelIdx((i) => Math.max(0, i - 1));
+                return;
+            }
+            if (key.downArrow || input === "j") {
+                setModelIdx((i) => Math.min(Math.max(0, modelInventory.length - 1), i + 1));
+                return;
+            }
+            // r — recheck selected model
+            if ((input === "r" || input === "R") && !modelRecheckInProgress) {
+                const selected = modelInventory[modelIdx];
+                if (selected) {
+                    setModelRecheckInProgress(true);
+                    setMsg(`Rechecking ${selected.modelId}…`);
+                    recheckModel(repoRoot, selected.modelId).then((result) => {
+                        setModelRecheckInProgress(false);
+                        setModelBlacklistEntries(getAllBlacklistEntries());
+                        if (result.success) {
+                            setMsg(`✓ ${selected.modelId} is healthy — removed from blacklist`);
+                        }
+                        else {
+                            setMsg(`✗ ${selected.modelId} failed: ${formatReasonCode(result.reasonCode)}`);
+                        }
+                    }).catch((err) => {
+                        setModelRecheckInProgress(false);
+                        setMsg(`Recheck error: ${err.message}`);
+                    });
+                }
                 return;
             }
             return;
@@ -448,6 +502,10 @@ export function App({ tasksRoot }) {
         footerHint = "  ↑/↓ select  Enter run/toggle  ←/→ tabs  [q] quit";
     if (tab === 3)
         footerHint = "  ↑/↓ select process  [z] clean zombies  ←/→ tabs  [q] quit";
+    if (tab === 4)
+        footerHint = modelRecheckInProgress
+            ? "  Recheck in progress…"
+            : "  ↑/↓ select model  [r] recheck selected  ←/→ tabs  [q] quit";
     // ENV indicator
     const envLoading = envStatus.checkedAt === 0;
     const envColor = envLoading
@@ -469,7 +527,7 @@ export function App({ tasksRoot }) {
         : !envStatus.ready && envStatus.errors.length > 0 && !envLoading
             ? envStatus.errors.slice(0, 3).join(" | ")
             : "";
-    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time, "  "] }), _jsxs(Text, { bold: true, color: envColor, children: [envIcon, " ENV"] }), envHint ? _jsxs(Text, { color: envStatus.configMissing ? "yellow" : "red", dimColor: true, children: [" ", envHint] }) : null, envStatus.ready && _jsxs(Text, { dimColor: true, children: [" (", envStatus.services.length, " services)"] }), envStatus.configMissing && _jsx(Text, { color: "yellow", children: "  [i] generate" }), !envStatus.ready && !envStatus.configMissing && !envLoading && _jsx(Text, { dimColor: true, children: "  [e] up env" })] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 }), _jsx(TabLabel, { n: 3, label: "Processes", active: tab === 3, hasAlert: procStatus.zombies.length > 0 || procStatus.lock?.zombie === true })] }), _jsx(Text, { children: " " }), tab === 1 && (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: cols, rows: rows, tick: tick, detailTab: detailTab, detailScrollOffsets: detailScrollOffsets, setDetailScrollOffsets: setDetailScrollOffsets, setMsg: setMsg, setView: setView })), tab === 2 && _jsx(CommandsTab, { cols: cols, selectedIdx: cmdIdx, repoRoot: repoRoot }), tab === 3 && (_jsx(ProcessesTab, { procStatus: procStatus, selectedIdx: procIdx, logLines: procLogLines, cols: cols, rows: rows, tick: tick })), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsx(Text, { dimColor: true, children: footerHint })] }));
+    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time, "  "] }), _jsxs(Text, { bold: true, color: envColor, children: [envIcon, " ENV"] }), envHint ? _jsxs(Text, { color: envStatus.configMissing ? "yellow" : "red", dimColor: true, children: [" ", envHint] }) : null, envStatus.ready && _jsxs(Text, { dimColor: true, children: [" (", envStatus.services.length, " services)"] }), envStatus.configMissing && _jsx(Text, { color: "yellow", children: "  [i] generate" }), !envStatus.ready && !envStatus.configMissing && !envLoading && _jsx(Text, { dimColor: true, children: "  [e] up env" })] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 }), _jsx(TabLabel, { n: 3, label: "Processes", active: tab === 3, hasAlert: procStatus.zombies.length > 0 || procStatus.lock?.zombie === true }), _jsx(TabLabel, { n: 4, label: "Models", active: tab === 4, hasAlert: modelBlacklistEntries.length > 0 })] }), _jsx(Text, { children: " " }), tab === 1 && (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: cols, rows: rows, tick: tick, detailTab: detailTab, detailScrollOffsets: detailScrollOffsets, setDetailScrollOffsets: setDetailScrollOffsets, setMsg: setMsg, setView: setView })), tab === 2 && _jsx(CommandsTab, { cols: cols, selectedIdx: cmdIdx, repoRoot: repoRoot }), tab === 3 && (_jsx(ProcessesTab, { procStatus: procStatus, selectedIdx: procIdx, logLines: procLogLines, cols: cols, rows: rows, tick: tick })), tab === 4 && (_jsx(ModelsTab, { inventory: modelInventory, blacklistEntries: modelBlacklistEntries, selectedIdx: modelIdx, recheckInProgress: modelRecheckInProgress, cols: cols, rows: rows })), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsx(Text, { dimColor: true, children: footerHint })] }));
 }
 // ── Tab label ─────────────────────────────────────────────────────
 function TabLabel({ n, label, active, hasAlert }) {
@@ -516,6 +574,29 @@ function ProcessesTab({ procStatus, selectedIdx, logLines, cols, rows, tick, }) 
                             const proc = allProcs[selectedIdx];
                             return (_jsxs(_Fragment, { children: [_jsxs(Text, { dimColor: true, bold: true, children: [" Log: ", proc ? (proc.log ? proc.log.split("/").slice(-1)[0] : "(no log file)") : "—"] }), _jsx(Text, { dimColor: true, children: " " + "─".repeat(rightW - 2) }), logLines.length > 0 ? (logLines.slice(0, logH).map((line, i) => (_jsx(Text, { dimColor: true, children: " " + line.replace(/\x1b\[[0-9;]*m/g, "").slice(0, rightW - 2) }, i)))) : (_jsx(Text, { dimColor: true, children: "  (no log output)" }))] }));
                         })() })] })), lockInfo && (_jsx(Box, { children: _jsx(Text, { dimColor: true, children: "  " + "─".repeat(cols - 4) }) })), lockInfo && (_jsxs(Box, { gap: 2, children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Batch lock:" }), _jsxs(Text, { color: lockInfo.zombie ? "red" : "green", bold: true, children: ["PID ", lockInfo.pid] }), _jsx(Text, { color: lockInfo.zombie ? "red" : "green", children: lockInfo.zombie ? "ZOMBIE — stale lock!" : `state=${lockInfo.state}` })] }))] }));
+}
+// ── Models Tab ────────────────────────────────────────────────────
+function ModelsTab({ inventory, blacklistEntries, selectedIdx, recheckInProgress, cols, rows, }) {
+    const blockedSet = new Map();
+    for (const entry of blacklistEntries) {
+        blockedSet.set(entry.model, entry);
+    }
+    const blockedCount = inventory.filter((m) => blockedSet.has(m.modelId)).length;
+    const listH = rows - 10;
+    return (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Models" }), blockedCount > 0 && (_jsxs(Text, { color: "red", bold: true, children: ["  \u2717 ", blockedCount, " blocked"] })), recheckInProgress && (_jsx(Text, { color: "yellow", bold: true, children: "  \u27F3 recheck in progress\u2026" }))] }), _jsx(Text, { dimColor: true, children: "  " + "─".repeat(cols - 4) }), inventory.length === 0 ? (_jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { children: " " }), _jsx(Text, { dimColor: true, children: "  No models found in .opencode/oh-my-opencode.jsonc" }), _jsx(Text, { dimColor: true, children: "  Configure agent routing to see the model inventory." })] })) : (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { dimColor: true, children: "   " }), _jsx(Text, { bold: true, dimColor: true, children: "Status".padEnd(8) }), _jsx(Text, { bold: true, dimColor: true, children: "Model ID".padEnd(40) }), _jsx(Text, { bold: true, dimColor: true, children: "Used by" })] }), _jsx(Text, { dimColor: true, children: "   " + "─".repeat(Math.min(cols - 6, 80)) }), inventory.slice(0, listH).map((entry, i) => {
+                        const cursor = i === selectedIdx;
+                        const blacklistEntry = blockedSet.get(entry.modelId);
+                        const isBlocked = !!blacklistEntry;
+                        const statusIcon = isBlocked ? "✗" : "✓";
+                        const statusColor = isBlocked ? "red" : "green";
+                        const usageSummary = formatModelUsage(entry);
+                        const shortModelId = entry.modelId.length > 38
+                            ? entry.modelId.slice(0, 35) + "…"
+                            : entry.modelId;
+                        return (_jsxs(React.Fragment, { children: [_jsxs(Box, { children: [_jsx(Text, { color: "cyan", children: cursor ? " ▶ " : "   " }), _jsx(Text, { color: statusColor, bold: cursor, children: statusIcon.padEnd(8) }), _jsx(Text, { bold: cursor, dimColor: !cursor && !isBlocked, children: shortModelId.padEnd(40) }), _jsx(Text, { dimColor: true, children: usageSummary })] }), isBlocked && (_jsxs(Box, { children: [_jsx(Text, { children: "   " }), _jsx(Text, { dimColor: true, children: "        " }), _jsx(Text, { color: "red", dimColor: true, children: blacklistEntry.reasonCode
+                                                ? `  ↳ ${formatReasonCode(blacklistEntry.reasonCode)}${blacklistEntry.errorMessage ? ": " + blacklistEntry.errorMessage.slice(0, 60) : ""}`
+                                                : "  ↳ blocked (no error details)" })] }))] }, entry.modelId));
+                    }), inventory.length > listH && (_jsxs(Text, { dimColor: true, children: ["  \u2026 ", inventory.length - listH, " more models (scroll not available)"] }))] })), _jsx(Text, { children: " " }), _jsxs(Box, { children: [_jsxs(Text, { dimColor: true, children: ["  Total: ", inventory.length, " models"] }), blockedCount > 0 && _jsxs(Text, { color: "red", dimColor: true, children: ["  |  ", blockedCount, " blocked"] }), blockedCount === 0 && inventory.length > 0 && _jsx(Text, { color: "green", dimColor: true, children: "  |  all healthy" })] })] }));
 }
 // ── Progress bar ──────────────────────────────────────────────────
 function ProgressBar({ done, total, width }) {

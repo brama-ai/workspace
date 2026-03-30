@@ -67,3 +67,19 @@ If the latest known blacklist metadata contains failure details, the Models tab 
 - **WHEN** a model is blacklisted by a legacy entry that does not include error metadata
 - **THEN** the Models tab still shows the red cross
 - **AND** the inline detail falls back to a generic blocked message instead of failing to render
+
+### Requirement: Tab alert badge for blacklisted models
+The Models tab label in the tab bar SHALL show a visual alert indicator when one or more models are currently blacklisted.
+
+#### Scenario: Tab badge when models are blocked
+- **WHEN** at least one model in the inventory has an active blacklist entry
+- **THEN** the `4:Models` tab label shows a warning badge (e.g. ⚠)
+- **AND** the badge is removed when no models are blacklisted
+
+### Requirement: Empty inventory graceful state
+The Models tab SHALL handle the case where no models are configured in `.opencode/oh-my-opencode.jsonc` without crashing.
+
+#### Scenario: No models configured
+- **WHEN** `.opencode/oh-my-opencode.jsonc` contains no agent or category entries with model fields
+- **THEN** the Models tab shows an informational message instead of an empty table
+- **AND** the monitor remains fully functional

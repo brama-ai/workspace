@@ -4,31 +4,48 @@
   "confidence": 0.95,
   "assessment": {
     "what_went_well": [
-      "Comprehensive context gathering: reviewed existing admin patterns (TenantsController CRUD, dashboard widgets, sidebar navigation), Telegram backend services (TelegramBotRegistry, TelegramApiClient, repositories), and archived proposal tasks",
-      "Spec deltas cover all 3 capabilities with 14 requirements and 34 scenarios total",
-      "Design decisions align with established codebase patterns (manual HTML forms, multi-action controller for CRUD, single-action for read-only)",
-      "Tasks are ordered by dependency and scoped to be completable in single agent sessions",
-      "Validation passed on first attempt with --strict mode"
+      "Comprehensive proposal already existed with all 5 files: proposal.md, design.md, tasks.md, and 2 spec deltas (models-tab, model-health-recheck)",
+      "Implementation is substantially complete — all Phase 1-3 tasks verified against source code",
+      "All 37 unit tests pass across model-inventory, model-routing, and model-probe test suites",
+      "Spec deltas cover 2 capabilities with clear Given/When/Then scenarios",
+      "Design decisions are well-reasoned: single config source, backwards-compatible blacklist metadata, exact-model probe, shallow error classification",
+      "TUI Models tab is fully implemented with tab navigation, status icons, inline error details, recheck command, and alert badge",
+      "Runner model resolution already uses .opencode/oh-my-opencode.jsonc as single source of truth — no DEFAULT_FALLBACKS found",
+      "Summary generation correctly prepends model alerts via appendModelAlert() + prependModelAlertsToSummary()"
     ],
     "what_went_wrong": [],
     "improvement_suggestions": [
-      "Activity counts (24h/7d) require a message tracking mechanism that may not exist yet — the telegram_chats table only has last_message_at, not per-message timestamps. The coder should verify if a message log table exists or if activity counts should be derived from OpenSearch logs instead.",
-      "The webhook status indicator requires calling getWebhookInfo for each bot on page load, which could be slow with many bots. Consider caching webhook info or fetching it on-demand via AJAX."
+      "Specs were missing scenarios for: tab alert badge, empty inventory graceful state, recheck progress feedback, and recheck result message — added during this review",
+      "Tasks.md lacked implementation references (file paths) — added during this review to help downstream agents locate code",
+      "Task 4.1 (operator documentation) is the only remaining uncompleted task — docs should cover the Models tab, recheck workflow, and degraded fallback behavior",
+      "Consider adding a component-level render test for ModelsTab using ink-testing-library to cover the TUI rendering scenarios in the spec"
     ],
     "blocked_by": [],
     "deviations_from_spec": []
   },
   "metrics": {
-    "proposal_change_id": "add-telegram-admin-ui",
-    "target_project": "brama-core",
-    "affected_specs": ["telegram-admin-bots", "telegram-admin-chats", "admin-tools-navigation"],
+    "proposal_change_id": "add-models-tab-health-recheck",
+    "target_project": "agentic-development",
+    "affected_specs": ["models-tab", "model-health-recheck"],
     "delta_operations": ["ADDED"],
-    "capabilities_affected": 3,
-    "requirements_added": 14,
+    "capabilities_affected": 2,
+    "requirements_added": 12,
     "requirements_modified": 0,
-    "total_scenarios": 34,
-    "tasks_in_checklist": 30,
-    "task_groups": 9,
-    "validation_result": "pass"
+    "total_scenarios": 22,
+    "tasks_in_checklist": 14,
+    "tasks_completed": 13,
+    "tasks_remaining": 1,
+    "task_groups": 4,
+    "validation_result": "pass",
+    "tests_passing": 37,
+    "test_files": ["model-inventory.test.ts", "model-probe.test.ts", "model-routing.test.ts"],
+    "implementation_files": [
+      "monitor/src/lib/model-inventory.ts",
+      "monitor/src/lib/model-routing.ts",
+      "monitor/src/agents/model-probe.ts",
+      "monitor/src/agents/executor.ts",
+      "monitor/src/components/App.tsx",
+      "monitor/src/pipeline/runner.ts"
+    ]
   }
 }

@@ -8,6 +8,20 @@ import { calculateCost } from "../state/telemetry.js";
 
 const BLACKLIST_FILE = join(env.FOUNDRY_ROOT || process.cwd(), ".foundry-blacklist.json");
 
+// Track the currently running agent child process so it can be killed on SIGTERM/SIGINT
+let _activeProc: ChildProcess | null = null;
+
+/**
+ * Kill the currently running agent child process (if any).
+ * Called from runner.ts signal handlers to prevent orphaned opencode processes.
+ */
+export function killActiveAgent(): void {
+  if (_activeProc) {
+    try { _activeProc.kill("SIGTERM"); } catch { /* already dead */ }
+    _activeProc = null;
+  }
+}
+
 const DEBUG = env.FOUNDRY_DEBUG === "true";
 
 function debug(...args: unknown[]): void {
@@ -54,7 +68,22 @@ export interface AgentResult {
 export interface BlacklistEntry {
   model: string;
   expiresAt: number;
+  // Optional metadata fields (backwards-compatible — legacy entries without these are still valid)
+  reasonCode?: BlacklistReasonCode;
+  errorMessage?: string;
+  lastCheckedAt?: number;
+  lastSuccessAt?: number;
 }
+
+export type BlacklistReasonCode =
+  | "quota_or_tokens"
+  | "rate_limit"
+  | "service_unavailable"
+  | "timeout"
+  | "provider_error"
+  | "billing_error"
+  | "hard_timeout"
+  | "near_timeout";
 
 const modelBlacklist: Map<string, BlacklistEntry> = new Map();
 
@@ -92,13 +121,67 @@ function persistBlacklist(): void {
 // Load persisted blacklist on module init
 loadBlacklist();
 
-export function blacklistModel(model: string, ttlSeconds: number): void {
+export function blacklistModel(
+  model: string,
+  ttlSeconds: number,
+  metadata?: { reasonCode?: BlacklistReasonCode; errorMessage?: string }
+): void {
+  const existing = modelBlacklist.get(model);
   modelBlacklist.set(model, {
     model,
     expiresAt: Date.now() + ttlSeconds * 1000,
+    reasonCode: metadata?.reasonCode ?? existing?.reasonCode,
+    errorMessage: metadata?.errorMessage ?? existing?.errorMessage,
+    lastCheckedAt: Date.now(),
+    lastSuccessAt: existing?.lastSuccessAt,
   });
   persistBlacklist();
-  debug("blacklisted model", model, "ttl", ttlSeconds);
+  debug("blacklisted model", model, "ttl", ttlSeconds, "reason", metadata?.reasonCode);
+}
+
+/**
+ * Remove a specific model from the blacklist and persist the change.
+ * Records the successful probe timestamp.
+ */
+export function unblockModel(model: string): void {
+  const existing = modelBlacklist.get(model);
+  if (!existing) return;
+  modelBlacklist.delete(model);
+  // Persist the updated list (without this model)
+  persistBlacklist();
+  debug("unblocked model", model);
+  rlog("blacklist_unblocked", { model, lastCheckedAt: existing.lastCheckedAt });
+}
+
+/**
+ * Get the current blacklist entry for a model, including optional metadata.
+ * Returns undefined if the model is not blacklisted or the entry has expired.
+ */
+export function getBlacklistEntry(model: string): BlacklistEntry | undefined {
+  const entry = modelBlacklist.get(model);
+  if (!entry) return undefined;
+  if (Date.now() > entry.expiresAt) {
+    modelBlacklist.delete(model);
+    persistBlacklist();
+    return undefined;
+  }
+  return entry;
+}
+
+/**
+ * Get all currently active blacklist entries (non-expired).
+ */
+export function getAllBlacklistEntries(): BlacklistEntry[] {
+  const now = Date.now();
+  const active: BlacklistEntry[] = [];
+  for (const [model, entry] of modelBlacklist.entries()) {
+    if (entry.expiresAt > now) {
+      active.push(entry);
+    } else {
+      modelBlacklist.delete(model);
+    }
+  }
+  return active;
 }
 
 export function isModelBlacklisted(model: string): boolean {
@@ -352,7 +435,10 @@ async function runWithTimeout(
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
       shell: false,
+      detached: false,
     });
+
+    _activeProc = proc;
 
     const pid = proc.pid || 0;
     rlogProcess("process_spawned", agentName, pid, { command, timeout });
@@ -378,6 +464,7 @@ async function runWithTimeout(
       if (resolved) return;
       resolved = true;
       cleanup();
+      _activeProc = null;
       resolve({ exitCode, pid, billingError: detectedBillingError });
     };
 
@@ -655,7 +742,7 @@ export async function executeAgent(
 
       emitEvent("AGENT_END", { agent: name, model: currentModel, exitCode: result.exitCode, duration: callDuration, status: "billing_error" });
       // Blacklist for 1 hour — billing issues don't resolve quickly
-      blacklistModel(currentModel, 3600);
+      blacklistModel(currentModel, 3600, { reasonCode: "billing_error", errorMessage: `Billing or quota error for ${currentModel}` });
       modelIndex++;
       // Don't count billing failures as retry attempts
       attempt = Math.max(0, attempt - 1);
@@ -678,7 +765,7 @@ export async function executeAgent(
       rlogBlacklist(currentModel, 1800, blReason, result.exitCode, callDuration);
 
       emitEvent("AGENT_STALL", { agent: name, model: currentModel, exitCode: result.exitCode, duration: agentDuration });
-      blacklistModel(currentModel, 1800);
+      blacklistModel(currentModel, 1800, { reasonCode: isHardTimeout ? "hard_timeout" : "timeout", errorMessage: `Timeout while running ${name} on ${currentModel}` });
       modelIndex++;
       attempt = Math.max(0, attempt - 1);
       continue;

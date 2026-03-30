@@ -50,6 +50,55 @@ agentic-development/
 | `./foundry batch` | Bash | Parallel worker manager |
 | `./foundry stop` | Bash | Stop background workers |
 
+## Foundry Monitor TUI
+
+The interactive TUI (`./foundry monitor`) has four top-level tabs:
+
+| Key | Tab | Description |
+|-----|-----|-------------|
+| `1` | Tasks | Task queue, status, detail view, Q&A |
+| `2` | Commands | Foundry/Ultraworks actions |
+| `3` | Processes | Running workers, zombie detection |
+| `4` | Models | Active model inventory and health recheck |
+
+### Models Tab (`4`)
+
+The Models tab shows every active model referenced by Foundry routing configuration.
+
+**Model inventory source:** `.opencode/oh-my-opencode.jsonc` is the single source of truth for Foundry model routing. Both the runtime execution order and the Models tab inventory are derived from this file. The runner does **not** use hardcoded fallback defaults — all primary and fallback chains come from the config.
+
+**Status indicators:**
+- `✓` (green) — model is active and not currently blacklisted
+- `✗` (red) — model is currently blacklisted; one error detail line is shown below the row
+
+**Inline error detail:** When a blacklisted model has failure metadata, the tab shows a short categorized error under the model row:
+- `quota/tokens` — billing, quota, or token-limit failure
+- `rate limit` — too many requests
+- `service unavailable` — provider 5xx or overloaded
+- `timeout` — probe or execution timed out
+- `provider error` — unclassified provider failure (raw message shown)
+
+**Recheck workflow:**
+1. Select a model with `↑/↓`
+2. Press `r` to trigger a health recheck
+3. The probe targets the exact model with fallback disabled and a 30s timeout
+4. On success: model is removed from the blacklist, row turns green
+5. On failure: blacklist entry is updated with the latest error category
+
+**Missing agent config:** If an agent has no routing entry in `.opencode/oh-my-opencode.jsonc`, Foundry emits a visible warning and uses a random available model as degraded fallback. This warning is preserved in `model-alerts.md` and prepended to `summary.md`.
+
+**Recovery workflow:**
+```bash
+# Open the monitor
+./foundry monitor
+
+# Press 4 to go to Models tab
+# Select a blocked model with ↑/↓
+# Press r to recheck
+# If healthy: row turns green, model returns to rotation
+# If still failing: error detail updates with latest reason
+```
+
 ## TypeScript Modules (2945 lines)
 
 ### `cli/` — CLI Entrypoints
@@ -79,7 +128,8 @@ agentic-development/
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `executor.ts` | 286 | Agent execution with timeout, fallback, blacklist |
+| `executor.ts` | 286 | Agent execution with timeout, fallback, blacklist (with metadata) |
+| `model-probe.ts` | ~120 | Single-model health probe, error classification, recheck workflow |
 
 ### `infra/` — Infrastructure
 
@@ -97,6 +147,8 @@ agentic-development/
 | `tasks.ts` | 307 | Task filesystem helpers |
 | `actions.ts` | 252 | TUI actions (start, stop, retry) |
 | `format.ts` | 27 | Formatting helpers |
+| `model-inventory.ts` | ~80 | Active model inventory from `.opencode/oh-my-opencode.jsonc` |
+| `model-routing.ts` | ~150 | Agent routing resolution from config (single source of truth) |
 
 ## Bash Scripts (7568 lines, 4 Python calls remaining)
 

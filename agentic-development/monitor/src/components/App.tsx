@@ -31,6 +31,9 @@ import {
 import { checkEnvStatusAsync, upEnvironment, invalidateEnvCheckConfigCache, type EnvStatus } from "../lib/env-status.js";
 import { generateEnvCheck } from "../cli/init-env.js";
 import { promoteNextTodoToPending } from "../cli/batch.js";
+import { loadModelInventory, formatModelUsage, type ModelInventoryEntry } from "../lib/model-inventory.js";
+import { getBlacklistEntry, getAllBlacklistEntries, type BlacklistEntry } from "../agents/executor.js";
+import { recheckModel, formatReasonCode } from "../agents/model-probe.js";
 
 const VERSION = "2.5.0";
 const REFRESH_MS = 3000;
@@ -39,7 +42,7 @@ const ENV_REFRESH_MS = 30000; // Environment status refresh — 30s (docker comp
 
 type ViewMode = "list" | "detail" | "logs" | "agents" | "qa";
 type DetailTab = "summary" | "agents" | "state" | "task" | "handoff";
-type MainTab = 1 | 2 | 3;
+type MainTab = 1 | 2 | 3 | 4;
 
 // Scroll state per detail tab
 type TabScrollState = Record<DetailTab, number>;
@@ -143,6 +146,12 @@ export function App({ tasksRoot }: Props) {
   const [procIdx, setProcIdx] = useState(0);
   const [procLogLines, setProcLogLines] = useState<string[]>([]);
 
+  // Models tab state
+  const [modelInventory, setModelInventory] = useState<ModelInventoryEntry[]>([]);
+  const [modelIdx, setModelIdx] = useState(0);
+  const [modelRecheckInProgress, setModelRecheckInProgress] = useState(false);
+  const [modelBlacklistEntries, setModelBlacklistEntries] = useState<BlacklistEntry[]>([]);
+
   // Auto-watcher tick counter (triggers every ~5 refreshes = 15s)
   const autoWatchCounter = React.useRef(0);
 
@@ -208,6 +217,14 @@ export function App({ tasksRoot }: Props) {
     return () => clearInterval(id);
   }, [repoRoot]);
 
+  // Refresh model inventory when tab 4 is active or on tick
+  useEffect(() => {
+    if (tab !== 4) return;
+    const inventory = loadModelInventory(repoRoot);
+    setModelInventory(inventory);
+    setModelBlacklistEntries(getAllBlacklistEntries());
+  }, [tab, tick, repoRoot]);
+
   // Clear message after 5s
   useEffect(() => {
     if (!msg) return;
@@ -262,11 +279,12 @@ export function App({ tasksRoot }: Props) {
     if (input === "1") { setTab(1); setView("list"); return; }
     if (input === "2") { setTab(2); setView("list"); return; }
     if (input === "3") { setTab(3); return; }
+    if (input === "4") { setTab(4); return; }
 
     // Left/right: cycle tabs (except inside detail sub-tabs)
     if (view !== "detail") {
-      if (key.leftArrow)  { setTab((t) => (t === 1 ? 3 : (t - 1) as MainTab) as MainTab); setView("list"); return; }
-      if (key.rightArrow) { setTab((t) => (t === 3 ? 1 : (t + 1) as MainTab) as MainTab); setView("list"); return; }
+      if (key.leftArrow)  { setTab((t) => (t === 1 ? 4 : (t - 1) as MainTab) as MainTab); setView("list"); return; }
+      if (key.rightArrow) { setTab((t) => (t === 4 ? 1 : (t + 1) as MainTab) as MainTab); setView("list"); return; }
     }
 
     // ── Tab 2: Commands ──────────────────────────────────────────────
@@ -294,6 +312,34 @@ export function App({ tasksRoot }: Props) {
       if (key.downArrow || input === "j") { setProcIdx((i) => Math.min(Math.max(0, allProcs.length - 1), i + 1)); return; }
       // z — clean zombies
       if (input === "z" || input === "Z") { handleCmd(cleanZombies(repoRoot)); return; }
+      return;
+    }
+
+    // ── Tab 4: Models ────────────────────────────────────────────────
+    if (tab === 4) {
+      if (key.upArrow   || input === "k") { setModelIdx((i) => Math.max(0, i - 1)); return; }
+      if (key.downArrow || input === "j") { setModelIdx((i) => Math.min(Math.max(0, modelInventory.length - 1), i + 1)); return; }
+      // r — recheck selected model
+      if ((input === "r" || input === "R") && !modelRecheckInProgress) {
+        const selected = modelInventory[modelIdx];
+        if (selected) {
+          setModelRecheckInProgress(true);
+          setMsg(`Rechecking ${selected.modelId}…`);
+          recheckModel(repoRoot, selected.modelId).then((result) => {
+            setModelRecheckInProgress(false);
+            setModelBlacklistEntries(getAllBlacklistEntries());
+            if (result.success) {
+              setMsg(`✓ ${selected.modelId} is healthy — removed from blacklist`);
+            } else {
+              setMsg(`✗ ${selected.modelId} failed: ${formatReasonCode(result.reasonCode)}`);
+            }
+          }).catch((err: Error) => {
+            setModelRecheckInProgress(false);
+            setMsg(`Recheck error: ${err.message}`);
+          });
+        }
+        return;
+      }
       return;
     }
 
@@ -423,6 +469,9 @@ export function App({ tasksRoot }: Props) {
   if (tab === 1 && view !== "list" && view !== "detail" && view !== "qa") footerHint = "  [y] copy slug  [Esc] back  [q] quit";
   if (tab === 2) footerHint = "  ↑/↓ select  Enter run/toggle  ←/→ tabs  [q] quit";
   if (tab === 3) footerHint = "  ↑/↓ select process  [z] clean zombies  ←/→ tabs  [q] quit";
+  if (tab === 4) footerHint = modelRecheckInProgress
+    ? "  Recheck in progress…"
+    : "  ↑/↓ select model  [r] recheck selected  ←/→ tabs  [q] quit";
 
   // ENV indicator
   const envLoading = envStatus.checkedAt === 0;
@@ -466,6 +515,7 @@ export function App({ tasksRoot }: Props) {
         <TabLabel n={1} label="Tasks"     active={tab === 1} />
         <TabLabel n={2} label="Commands"  active={tab === 2} />
         <TabLabel n={3} label="Processes" active={tab === 3} hasAlert={procStatus.zombies.length > 0 || procStatus.lock?.zombie === true} />
+        <TabLabel n={4} label="Models"    active={tab === 4} hasAlert={modelBlacklistEntries.length > 0} />
       </Box>
       <Text> </Text>
 
@@ -495,6 +545,16 @@ export function App({ tasksRoot }: Props) {
           cols={cols}
           rows={rows}
           tick={tick}
+        />
+      )}
+      {tab === 4 && (
+        <ModelsTab
+          inventory={modelInventory}
+          blacklistEntries={modelBlacklistEntries}
+          selectedIdx={modelIdx}
+          recheckInProgress={modelRecheckInProgress}
+          cols={cols}
+          rows={rows}
         />
       )}
 
@@ -702,6 +762,115 @@ function ProcessesTab({
           </Text>
         </Box>
       )}
+    </Box>
+  );
+}
+
+// ── Models Tab ────────────────────────────────────────────────────
+function ModelsTab({
+  inventory,
+  blacklistEntries,
+  selectedIdx,
+  recheckInProgress,
+  cols,
+  rows,
+}: {
+  inventory: ModelInventoryEntry[];
+  blacklistEntries: BlacklistEntry[];
+  selectedIdx: number;
+  recheckInProgress: boolean;
+  cols: number;
+  rows: number;
+}) {
+  const blockedSet = new Map<string, BlacklistEntry>();
+  for (const entry of blacklistEntries) {
+    blockedSet.set(entry.model, entry);
+  }
+
+  const blockedCount = inventory.filter((m) => blockedSet.has(m.modelId)).length;
+  const listH = rows - 10;
+
+  return (
+    <Box flexDirection="column">
+      {/* Header */}
+      <Box>
+        <Text bold color="cyan">  Models</Text>
+        {blockedCount > 0 && (
+          <Text color="red" bold>  ✗ {blockedCount} blocked</Text>
+        )}
+        {recheckInProgress && (
+          <Text color="yellow" bold>  ⟳ recheck in progress…</Text>
+        )}
+      </Box>
+      <Text dimColor>{"  " + "─".repeat(cols - 4)}</Text>
+
+      {inventory.length === 0 ? (
+        <Box flexDirection="column">
+          <Text> </Text>
+          <Text dimColor>  No models found in .opencode/oh-my-opencode.jsonc</Text>
+          <Text dimColor>  Configure agent routing to see the model inventory.</Text>
+        </Box>
+      ) : (
+        <Box flexDirection="column">
+          {/* Column headers */}
+          <Box>
+            <Text dimColor>{"   "}</Text>
+            <Text bold dimColor>{"Status".padEnd(8)}</Text>
+            <Text bold dimColor>{"Model ID".padEnd(40)}</Text>
+            <Text bold dimColor>{"Used by"}</Text>
+          </Box>
+          <Text dimColor>{"   " + "─".repeat(Math.min(cols - 6, 80))}</Text>
+
+          {inventory.slice(0, listH).map((entry, i) => {
+            const cursor = i === selectedIdx;
+            const blacklistEntry = blockedSet.get(entry.modelId);
+            const isBlocked = !!blacklistEntry;
+            const statusIcon = isBlocked ? "✗" : "✓";
+            const statusColor = isBlocked ? "red" : "green";
+            const usageSummary = formatModelUsage(entry);
+            const shortModelId = entry.modelId.length > 38
+              ? entry.modelId.slice(0, 35) + "…"
+              : entry.modelId;
+
+            return (
+              <React.Fragment key={entry.modelId}>
+                <Box>
+                  <Text color="cyan">{cursor ? " ▶ " : "   "}</Text>
+                  <Text color={statusColor as any} bold={cursor}>{statusIcon.padEnd(8)}</Text>
+                  <Text bold={cursor} dimColor={!cursor && !isBlocked}>
+                    {shortModelId.padEnd(40)}
+                  </Text>
+                  <Text dimColor>{usageSummary}</Text>
+                </Box>
+                {/* Inline error detail for blocked models */}
+                {isBlocked && (
+                  <Box>
+                    <Text>{"   "}</Text>
+                    <Text dimColor>{"        "}</Text>
+                    <Text color="red" dimColor>
+                      {blacklistEntry.reasonCode
+                        ? `  ↳ ${formatReasonCode(blacklistEntry.reasonCode)}${blacklistEntry.errorMessage ? ": " + blacklistEntry.errorMessage.slice(0, 60) : ""}`
+                        : "  ↳ blocked (no error details)"}
+                    </Text>
+                  </Box>
+                )}
+              </React.Fragment>
+            );
+          })}
+
+          {inventory.length > listH && (
+            <Text dimColor>  … {inventory.length - listH} more models (scroll not available)</Text>
+          )}
+        </Box>
+      )}
+
+      {/* Summary footer */}
+      <Text> </Text>
+      <Box>
+        <Text dimColor>  Total: {inventory.length} models</Text>
+        {blockedCount > 0 && <Text color="red" dimColor>  |  {blockedCount} blocked</Text>}
+        {blockedCount === 0 && inventory.length > 0 && <Text color="green" dimColor>  |  all healthy</Text>}
+      </Box>
     </Box>
   );
 }

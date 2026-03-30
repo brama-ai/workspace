@@ -1,6 +1,7 @@
 import { env } from "node:process";
-import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
-import { executeAgent, AgentConfig, AgentResult, getTimeout, isBillingError } from "../agents/executor.js";
+import { mkdirSync, writeFileSync, existsSync, readFileSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
+import { executeAgent, AgentConfig, AgentResult, getTimeout, isBillingError, killActiveAgent } from "../agents/executor.js";
 import { checkAndCompact, getSessionContextStatus } from "../agents/context-guard.js";
 import { emitEvent, initEventsLog, EventType } from "../state/events.js";
 import { rlog } from "../lib/runtime-logger.js";
@@ -104,6 +105,61 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
 
   initEventsLog(`${repoRoot}/.opencode/pipeline`);
 
+  // ── Runner PID lockfile: prevent duplicate runners on the same task ──
+  const runnerPidFile = taskDir ? join(taskDir, ".runner-pid") : null;
+  if (runnerPidFile) {
+    try {
+      if (existsSync(runnerPidFile)) {
+        const existingPid = parseInt(readFileSync(runnerPidFile, "utf8").trim(), 10);
+        if (existingPid > 0) {
+          try {
+            process.kill(existingPid, 0); // signal 0 = check if alive
+            // Process is alive — abort
+            const errMsg = `Another runner is active for this task (PID ${existingPid})`;
+            rlog("runner_pid_conflict", { existingPid, taskDir }, "ERROR");
+            debug(errMsg);
+            return {
+              success: false,
+              completedAgents: [],
+              failedAgent: "runner-lock",
+              duration: 0,
+              totalCost: 0,
+              hitlWaiting: false,
+              waitingAgent: null,
+            };
+          } catch {
+            // Process is dead — stale PID file, safe to overwrite
+            debug("stale .runner-pid found, overwriting", existingPid);
+          }
+        }
+      }
+      mkdirSync(taskDir, { recursive: true });
+      writeFileSync(runnerPidFile, `${process.pid}\n`, "utf8");
+    } catch (err) {
+      rlog("runner_pid_write_error", { taskDir, error: String(err) }, "WARN");
+    }
+  }
+
+  // ── Signal handlers: clean up child processes and state on kill ──
+  let currentAgent: string | undefined;
+  const cleanupOnSignal = () => {
+    killActiveAgent();
+    if (taskDir) {
+      try { setStateStatus(taskDir, "suspended", currentAgent); } catch { /* ignore */ }
+    }
+    if (runnerPidFile) {
+      try { unlinkSync(runnerPidFile); } catch { /* ignore */ }
+    }
+    process.exit(1);
+  };
+  process.on("SIGTERM", cleanupOnSignal);
+  process.on("SIGINT", cleanupOnSignal);
+
+  const deregisterSignalHandlers = () => {
+    process.removeListener("SIGTERM", cleanupOnSignal);
+    process.removeListener("SIGINT", cleanupOnSignal);
+  };
+
   emitEvent("PIPELINE_START", {
     branch,
     agents: agents.join(","),
@@ -184,6 +240,8 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
         } catch { /* ignore */ }
       }
 
+      deregisterSignalHandlers();
+      if (runnerPidFile) { try { unlinkSync(runnerPidFile); } catch { /* ignore */ } }
       return {
         success: false,
         completedAgents: [],
@@ -214,6 +272,8 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
       }
 
       debug("env check failed", envResult.errors);
+      deregisterSignalHandlers();
+      if (runnerPidFile) { try { unlinkSync(runnerPidFile); } catch { /* ignore */ } }
       return {
         success: false,
         completedAgents: [],
@@ -235,6 +295,8 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
   let waitingAgent: string | null = null;
 
   for (const agent of agents) {
+    currentAgent = agent;
+
     // Check context size and auto-compact if needed (protects GLM, Kimi etc.)
     if (completedAgents.length > 0) {
       const ctxStatus = checkAndCompact();
@@ -528,6 +590,12 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
   }
 
   debug("pipeline end", { success, duration, completedAgents: completedAgents.length });
+
+  // Clean up runner PID file and signal handlers
+  deregisterSignalHandlers();
+  if (runnerPidFile) {
+    try { unlinkSync(runnerPidFile); } catch { /* ignore */ }
+  }
 
   return {
     success,
