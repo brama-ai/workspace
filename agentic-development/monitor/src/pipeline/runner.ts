@@ -105,44 +105,8 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
 
   initEventsLog(`${repoRoot}/.opencode/pipeline`);
 
-  // ── Global repo lock: only one pipeline runner per repo at a time ──
-  // Multiple runners on the same repo cause branch conflicts (all share one working tree).
-  const repoLockFile = join(repoRoot, ".foundry-runner.lock");
-  try {
-    if (existsSync(repoLockFile)) {
-      const existingPid = parseInt(readFileSync(repoLockFile, "utf8").trim(), 10);
-      if (existingPid > 0) {
-        try {
-          process.kill(existingPid, 0);
-          const errMsg = `Another pipeline runner is active on this repo (PID ${existingPid}). Only one task can run at a time.`;
-          rlog("repo_lock_conflict", { existingPid, repoRoot }, "ERROR");
-          debug(errMsg);
-          if (taskDir) {
-            try {
-              setStateStatus(taskDir, "pending");
-              appendHandoff(`${taskDir}/handoff.md`, "Pipeline Lock", `Queued: ${errMsg}`);
-            } catch { /* ignore */ }
-          }
-          return {
-            success: false,
-            completedAgents: [],
-            failedAgent: "repo-lock",
-            duration: 0,
-            totalCost: 0,
-            hitlWaiting: false,
-            waitingAgent: null,
-          };
-        } catch {
-          debug("stale repo lock found, overwriting", existingPid);
-        }
-      }
-    }
-    writeFileSync(repoLockFile, `${process.pid}\n`, "utf8");
-  } catch (err) {
-    rlog("repo_lock_write_error", { error: String(err) }, "WARN");
-  }
-
   // ── Task-level PID lockfile: prevent duplicate runners on the same task ──
+  // Repo-level concurrency is handled by batch.ts (.batch.lock), not here.
   const runnerPidFile = taskDir ? join(taskDir, ".runner-pid") : null;
   if (runnerPidFile) {
     try {
@@ -154,7 +118,6 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
             const errMsg = `Another runner is active for this task (PID ${existingPid})`;
             rlog("runner_pid_conflict", { existingPid, taskDir }, "ERROR");
             debug(errMsg);
-            try { unlinkSync(repoLockFile); } catch { /* release repo lock */ }
             return {
               success: false,
               completedAgents: [],
@@ -186,7 +149,6 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
     if (runnerPidFile) {
       try { unlinkSync(runnerPidFile); } catch { /* ignore */ }
     }
-    try { unlinkSync(repoLockFile); } catch { /* ignore */ }
     process.exit(1);
   };
   process.on("SIGTERM", cleanupOnSignal);
@@ -279,7 +241,6 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
 
       deregisterSignalHandlers();
       if (runnerPidFile) { try { unlinkSync(runnerPidFile); } catch { /* ignore */ } }
-      try { unlinkSync(repoLockFile); } catch { /* ignore */ }
       return {
         success: false,
         completedAgents: [],
@@ -312,7 +273,6 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
       debug("env check failed", envResult.errors);
       deregisterSignalHandlers();
       if (runnerPidFile) { try { unlinkSync(runnerPidFile); } catch { /* ignore */ } }
-      try { unlinkSync(repoLockFile); } catch { /* ignore */ }
       return {
         success: false,
         completedAgents: [],
@@ -651,7 +611,6 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
   if (runnerPidFile) {
     try { unlinkSync(runnerPidFile); } catch { /* ignore */ }
   }
-  try { unlinkSync(repoLockFile); } catch { /* ignore */ }
 
   return {
     success,
