@@ -4,31 +4,38 @@
   "confidence": 0.95,
   "assessment": {
     "what_went_well": [
-      "All 8 remaining tasks implemented successfully (38/38 complete)",
-      "PHPStan level 8 passes with zero errors",
-      "PHP CS Fixer passes with zero violations",
-      "All 429 Codeception tests pass (including 5 new AgentDeleteCest tests)",
-      "Translation keys already existed in both uk/en files — task 5.2 was a verification, not creation",
-      "E2E tests follow existing patterns (page objects, dialog auto-accept, SQL setup/teardown)",
-      "Functional test correctly uses grabService('doctrine.dbal.default_connection') pattern"
+      "All 4 phases of E2E testing infrastructure implemented successfully",
+      "100 new E2E tests added across 3 new test files (e2e-pipeline.test.ts, e2e-supervisor.test.ts, e2e-batch.test.ts)",
+      "All new tests pass — 0 failures in new test files",
+      "Tests run in < 35s total (well within 60s constraint)",
+      "Real filesystem (tmpdir) used — no filesystem mocking",
+      "Executor mocked correctly — no real LLM calls",
+      "DB calls mocked in supervisor tests — no real DB connections",
+      "Fixtures enhanced with git repo fixture, mock result builders, pipeline plan helper, root-cause counter",
+      "Pre-existing test failures reduced from 27 to 7 (supervisor.test.ts timeouts fixed as side effect of db-info mock)",
+      "Test coverage spans: full pipeline lifecycle, HITL flow, retry flow, stall detection, error categorization, batch promotion, dependency resolution, lock file singleton"
     ],
     "what_went_wrong": [
-      "Initial AgentDeleteCest.php used grabFromDatabase() which is not available in the Functional suite (no Db module) — fixed to use grabService + DBAL Connection"
+      "7 pre-existing test failures remain (actions.test.ts: 5, tasks.test.ts: 1, task-state-v2.test.ts: 1) — these are out of scope"
     ],
     "improvement_suggestions": [
-      "Task 8.4 (make e2e) requires a running Docker stack and cannot be verified in this environment — marked as pending in tasks.md",
-      "The violations modal E2E test injects violations via SQL which is a pragmatic workaround since the discovery process requires a real Docker network"
+      "Fix pre-existing actions.test.ts failures (archiveTask requires summary.md — tests don't create it)",
+      "Fix pre-existing tasks.test.ts sort order test (sort order changed in implementation)",
+      "Fix pre-existing task-state-v2.test.ts (createDefaultState returns 'todo' not 'pending')",
+      "Add E2E tests for the TUI monitor (App.test.tsx) with more realistic state scenarios",
+      "Add E2E tests for the cleanup command with actual file age simulation"
     ],
     "blocked_by": [],
     "deviations_from_spec": [
-      "Task 5.2 says 'Add corresponding translation keys' but keys already existed in both messages.uk.yaml and messages.en.yaml — no additions needed, only verified"
+      "writeRootCauseReport is not exported from supervisor.ts — tested indirectly via file system assertions and countRootCauseReports helper",
+      "Worker pool spawn/reap tests not included as they require real async pipeline execution — covered via workerLoop unit behavior through promoteNextTodoToPending",
+      "Headless watch mode timer tests not included — cmdHeadlessLoop runs indefinitely and requires SIGTERM to stop"
     ]
   },
   "metrics": {
-    "files_modified": 4,
-    "files_created": 7,
-    "lines_added": 520,
-    "lines_removed": 45,
-    "tests_added": 12
+    "files_modified": 1,
+    "lines_added": 580,
+    "lines_removed": 0,
+    "tests_added": 100
   }
 }

@@ -4,35 +4,33 @@
   "confidence": 0.92,
   "assessment": {
     "what_went_well": [
-      "Thorough analysis of existing codebase: identified all controllers, templates, tests, and specs",
-      "Found the archived original change (2026-03-21-add-admin-agent-registry) with detailed task history",
-      "Cross-referenced the OpenSpec audit document confirming 30/38 completion status",
-      "Identified concrete gaps: missing E2E tests (install flow, config save, violations modal, iframe), i18n inconsistency in settings template, TBD spec Purpose, missing docs",
-      "All 4 spec delta requirements validated successfully with openspec validate --strict",
-      "Tasks are scoped to realistic, completable work items that close the feature"
+      "Existing test infrastructure (fixtures.ts, vitest config, 17 test files) provided strong foundation for E2E spec design",
+      "Clear separation between unit tests (existing) and E2E tests (new __tests__/e2e/ directory)",
+      "Mock executor pattern already established in runner.test.ts — E2E specs extend this consistently",
+      "All 4 spec capabilities validated successfully with openspec validate --strict",
+      "Pragmatic approach: no new dependencies, reuse vitest + real tmpdir pattern"
     ],
     "what_went_wrong": [
-      "The original task description referenced 'add-admin-agent-registry' as an active change, but it was already archived — had to create a new change ID 'complete-admin-agent-registry'",
-      "The original 38-task count included many lifecycle/orchestration tasks (sections 9-11) that are aspirational and not part of the current MVP — scoped the new proposal to the practical remaining gaps instead"
+      "Initial spec format used ### Section headers instead of ### Requirement: headers — required rewrite for validation"
     ],
     "improvement_suggestions": [
-      "The archived change's unchecked tasks (lifecycle state machine, provisioning orchestration, observability) should be tracked in a separate future proposal rather than blocking this completion",
-      "Consider archiving the stale 'refactor-agent-discovery' and 'add-agent-marketplace-and-deprovision' changes whose code is already implemented",
-      "The agent-registry spec Purpose should be updated as part of this change (included in tasks)"
+      "Consider adding a CI integration phase as a follow-up proposal once E2E tests are stable",
+      "The original proposal at proposals/foundry-e2e-agent-testing.md could be archived or marked as superseded by this OpenSpec"
     ],
     "blocked_by": [],
     "deviations_from_spec": [
-      "Used change ID 'complete-admin-agent-registry' instead of 'add-admin-agent-registry' since the original was already archived",
-      "Scoped to 17 concrete tasks (8 groups) focused on test coverage, i18n, spec updates, and docs — rather than attempting to resurrect the full 38-task original scope which included unimplemented lifecycle orchestration features"
+      "Simplified from original proposal: dropped @microsoft/tui-test, Docker containers, e2e-orchestrator agent, e2e-summarizer agent — focused on vitest-native E2E tests instead"
     ]
   },
   "metrics": {
-    "change_id": "complete-admin-agent-registry",
-    "project": "brama-core",
-    "task_count": 17,
-    "task_groups": 8,
-    "spec_deltas": 4,
-    "affected_capabilities": ["agent-registry"],
+    "proposal_change_id": "add-foundry-e2e-testing",
+    "target_project": "agentic-development",
+    "specs_created": 4,
+    "scenarios_total": 42,
+    "tasks_defined": 15,
+    "phases": 4,
+    "new_files_planned": 6,
+    "modified_files_planned": 2,
     "validation_result": "valid"
   }
 }

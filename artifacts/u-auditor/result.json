@@ -1,56 +1,46 @@
 {
   "agent": "u-auditor",
   "status": "done",
-  "confidence": 0.88,
+  "confidence": 0.93,
   "assessment": {
     "what_went_well": [
-      "TypeScript compiles cleanly with zero errors (before and after audit fixes)",
-      "No new test failures introduced — 6 pre-existing failures remain unchanged (223/229 pass)",
-      "No hardcoded secrets, tokens, or .env files with real values",
-      "Proper signal handling (SIGTERM/SIGINT) with graceful shutdown",
-      "Good separation of concerns: batch.ts is self-contained with clear module boundaries",
-      "Worker count config (actions.ts + TUI) integrates cleanly with existing monitor",
-      "Singleton lock pattern prevents duplicate batch instances",
-      "runtime-logger.js fix for findRepoRoot is correct and prevents duplicated log paths"
+      "100 new E2E tests across 3 test files — all pass in 1.14s (well within 60s constraint)",
+      "TypeScript compiles cleanly with zero errors (tsc --noEmit passes)",
+      "No hardcoded secrets, tokens, or .env files with real values in any changed file",
+      "All imports reference real, existing modules with correct export signatures",
+      "Mock patterns are consistent: executor mocked at boundary, context-guard mocked, db-info mocked — no real LLM/DB calls",
+      "Real filesystem (tmpdir) used for all test state — no fs mocking, matching project conventions",
+      "Proper test isolation: each test gets its own createTestRoot(), cleanup in afterEach with rmSync",
+      "Comprehensive coverage: pipeline lifecycle, HITL flow, retry flow, stall detection, error categorization, batch promotion, dependency resolution, singleton lock",
+      "Fixtures extended cleanly: git repo fixture, mock result builders (mockSuccess/mockFailure/mockHitlWaiting), pipeline plan helper, root-cause counter",
+      "Artifact result.json files updated to reflect current task context accurately"
     ],
     "what_went_wrong": [
-      "Critical logic bug: workerLoop released failed tasks back to 'pending' when stopOnFailure=false, causing potential infinite retry loops — FIXED by auditor",
-      "Unused imports (openSync, closeSync, fstatSync) left in batch.ts — FIXED by auditor",
-      "findRepoRoot used join(dir, '..') instead of dirname(dir), inconsistent with runtime-logger.js fix — FIXED by auditor",
-      "No unit tests for batch.ts (852 lines of new code with 0 tests)",
-      "'todo' status not in TaskStatus union — requires (state.status as string) cast workaround",
-      "claimTask atomicity is weaker than spec promises — uses writeFileSync + existsSync pattern instead of true O_EXCL, creating a TOCTOU window",
-      "cmdHeadless shutdown handler doesn't clean up worktrees (only cancels tasks + releases lock)",
-      "dist/ files are committed but not rebuilt after coder changes — source and dist are out of sync",
-      "stop command in foundry.ts still uses pkill instead of lock-file PID-based SIGTERM (spec deviation)"
+      "fixtures.ts used require('node:fs') for readdirSync inside ESM module — FIXED by auditor (replaced with top-level import)"
     ],
     "improvement_suggestions": [
-      "Add 'todo' to TaskStatus union in task-state-v2.ts to eliminate unsafe casts",
-      "Write unit tests for WorkerPool, claimTask, promoteNextTodoToPending, cmdBatch arg parsing (spec tasks 1.2, 2.2, 3.3)",
-      "Use proper-lockfile npm package or fs.open with O_EXCL flag for truly atomic task claiming",
-      "Rebuild dist/ files after source changes to keep them in sync",
-      "Add worktree cleanup to cmdHeadless shutdown handler (parity with cmdBatch)",
-      "Update stop command to read batch lock PID and send SIGTERM instead of pkill"
+      "Design spec called for __tests__/e2e/ subdirectory but tests placed directly in __tests__/ — acceptable pragmatic deviation but spec should be updated to match",
+      "Design spec called for separate mock-executor.ts and git-fixture.ts helper files but functionality was inlined into fixtures.ts — simpler but deviates from spec",
+      "vitest.config.ts was not updated with E2E-specific timeout configuration as specified in tasks.md task 1.4 — tests pass without it since they're fast, but could be fragile",
+      "Some tests use 'as any' type casts (e2e-batch.test.ts lines 320-338) for worker_id/claimed_at — indicates TaskState interface may need extension",
+      "7 pre-existing test failures remain (out of scope but noted)"
     ],
     "blocked_by": [],
     "deviations_from_spec": [
-      "Spec task 1.1: claimTask/releaseTask/promoteNextTodo implemented in batch.ts instead of task-state-v2.ts as specified",
-      "Spec task 2.1: createWorktreeFromMain implemented inline in batch.ts instead of extending git.ts",
-      "Spec task 4.2: supervisor.ts not updated to use TS-native worker management",
-      "Spec: stop command still uses pkill instead of lock-file PID-based SIGTERM",
-      "Spec: cancelInProgressTasks always marks as 'cancelled', doesn't check if all agents are done (simplified from spec)"
+      "File placement: __tests__/e2e-*.test.ts instead of __tests__/e2e/*.test.ts (flat vs subdirectory)",
+      "Helper consolidation: mock executor and git fixture inlined into fixtures.ts instead of separate files",
+      "vitest.config.ts not updated with E2E timeout configuration (task 1.4 from tasks.md)",
+      "Some task items from tasks.md not implemented: headless watch mode tests (4.3), worker pool spawn/reap simulation (4.2), circular dependency detection (2.2)"
     ]
   },
   "metrics": {
     "files_modified": 1,
-    "findings_count": 11,
+    "findings_count": 6,
     "critical_count": 0,
-    "warning_count": 8,
-    "fixes_applied": 3,
+    "warning_count": 5,
+    "fixes_applied": 1,
     "fixes_applied_detail": [
-      "batch.ts: Removed unused imports (openSync, closeSync, fstatSync)",
-      "batch.ts: Fixed releaseTask-on-failure bug — failed tasks now stay failed instead of being re-queued",
-      "batch.ts: Fixed findRepoRoot to use dirname() instead of join(dir, '..')"
+      "fixtures.ts: Replaced require('node:fs') with top-level ESM import of readdirSync — consistent with module system"
     ]
   }
 }
