@@ -639,7 +639,7 @@ export async function executeAgent(
   let modelIndex = 0;
   let lastErrorMessage = "";
 
-  while (attempt < maxRetries && modelIndex < allModels.length) {
+  while (modelIndex < allModels.length) {
     const currentModel = allModels[modelIndex];
     attempt++;
 
