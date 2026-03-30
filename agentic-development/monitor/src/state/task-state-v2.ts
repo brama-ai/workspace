@@ -20,7 +20,7 @@ export type TaskStatus =
   | "suspended"
   | "stopped";
 
-export type AgentStatus = "pending" | "running" | "done" | "failed" | "waiting_answer";
+export type AgentStatus = "pending" | "running" | "done" | "failed" | "skipped" | "waiting_answer";
 
 export interface AgentTelemetry {
   status: AgentStatus;

@@ -379,28 +379,40 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
 
         debug("integrity check failed for", agent, billingDetected ? "(billing error)" : "(zero output)");
 
-        // Treat as failure — do not mark as done
-        failedAgent = agent;
+        // Non-critical agents (tester, auditor, documenter) log the failure and continue.
+        // Critical agents (coder, validator) still block the pipeline.
+        const SOFT_FAIL_AGENTS = new Set(["u-tester", "u-agent-auditor", "u-auditor", "u-documenter"]);
+        const isSoftFail = SOFT_FAIL_AGENTS.has(agent);
+        const reason = billingDetected ? "Billing error detected" : "Zero output — all models failed to produce output";
+
         emitEvent("AGENT_END", {
           agent,
-          status: "failed",
+          status: isSoftFail ? "skipped" : "failed",
           duration: result.duration,
           exitCode: 0,
         });
 
         if (taskDir) {
           try {
-            upsertAgent(taskDir, agent, "failed", result.modelUsed, result.duration,
+            upsertAgent(taskDir, agent, isSoftFail ? "skipped" : "failed", result.modelUsed, result.duration,
               result.tokensUsed.input, result.tokensUsed.output, result.tokensUsed.cost);
-            setStateStatus(taskDir, "failed", agent);
             const handoffFile = `${taskDir}/handoff.md`;
             appendHandoff(handoffFile, agent,
-              `Status: FAILED (integrity check) | ${billingDetected ? "Billing error detected" : "Zero output — agent produced no tokens"} | Duration: ${result.duration}s | Model: ${result.modelUsed}`);
-            appendModelAlert(taskDir, billingDetected
-              ? `Model error: ${agent} hit a billing/quota issue on ${result.modelUsed}.`
-              : `Model error: ${agent} produced zero output on ${result.modelUsed}.`);
+              `Status: ${isSoftFail ? "SKIPPED" : "FAILED"} (integrity check) | ${reason} | Duration: ${result.duration}s | Model: ${result.modelUsed}${isSoftFail ? " | Continuing to next agent" : ""}`);
+            appendModelAlert(taskDir, `${agent}: ${reason} on ${result.modelUsed}.${isSoftFail ? " Agent skipped, pipeline continues." : ""}`);
+            if (!isSoftFail) {
+              setStateStatus(taskDir, "failed", agent);
+            }
           } catch { /* ignore */ }
         }
+
+        if (isSoftFail) {
+          rlog("agent_soft_fail", { agent, reason, duration: result.duration, model: result.modelUsed }, "WARN");
+          debug("soft-fail agent", agent, "— skipping, continuing pipeline");
+          continue;
+        }
+
+        failedAgent = agent;
         break;
       }
 
@@ -505,35 +517,40 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
       continue;
     }
 
-    failedAgent = agent;
+    // Non-critical agents can soft-fail and let the pipeline continue
+    const SOFT_FAIL_AGENTS_EXIT = new Set(["u-tester", "u-agent-auditor", "u-auditor", "u-documenter"]);
+    const canSoftFail = SOFT_FAIL_AGENTS_EXIT.has(agent);
+
     emitEvent("AGENT_END", {
       agent,
-      status: "failed",
+      status: canSoftFail ? "skipped" : "failed",
       exitCode: result.exitCode,
       duration: result.duration,
     });
-    rlog("agent_end", { agent, status: "failed", exitCode: result.exitCode, duration: result.duration }, "ERROR");
+    rlog("agent_end", { agent, status: canSoftFail ? "skipped" : "failed", exitCode: result.exitCode, duration: result.duration }, canSoftFail ? "WARN" : "ERROR");
 
-    // Update state.json with failure
     if (taskDir) {
       try {
-        upsertAgent(taskDir, agent, "failed", result.modelUsed, result.duration,
+        upsertAgent(taskDir, agent, canSoftFail ? "skipped" : "failed", result.modelUsed, result.duration,
           result.tokensUsed.input, result.tokensUsed.output, result.tokensUsed.cost);
-        setStateStatus(taskDir, "failed", agent);
-      } catch { /* ignore */ }
-    }
-
-    // Record failure in handoff
-    if (taskDir) {
-      try {
         const handoffFile = `${taskDir}/handoff.md`;
-        appendHandoff(handoffFile, agent, `Status: FAILED | Exit: ${result.exitCode} | Duration: ${result.duration}s | Model: ${result.modelUsed}`);
-        appendModelAlert(taskDir, result.errorMessage || `Model error: ${agent} failed on ${result.modelUsed} with exit code ${result.exitCode}.`);
+        appendHandoff(handoffFile, agent,
+          `Status: ${canSoftFail ? "SKIPPED" : "FAILED"} | Exit: ${result.exitCode} | Duration: ${result.duration}s | Model: ${result.modelUsed}${canSoftFail ? " | Agent failed but pipeline continues" : ""}`);
+        appendModelAlert(taskDir, result.errorMessage || `${agent} failed on ${result.modelUsed} with exit code ${result.exitCode}.${canSoftFail ? " Skipped, pipeline continues." : ""}`);
+        if (!canSoftFail) {
+          setStateStatus(taskDir, "failed", agent);
+        }
       } catch (err) {
         rlog("artifact_write_error", { agent, taskDir, error: String(err) }, "WARN");
       }
     }
 
+    if (canSoftFail) {
+      debug("soft-fail agent", agent, "exitCode", result.exitCode, "— continuing pipeline");
+      continue;
+    }
+
+    failedAgent = agent;
     debug("agent failed", agent, "exitCode", result.exitCode);
     break;
   }
