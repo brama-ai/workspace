@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: brama-config
+  namespace: brama
+  labels:
+    app.kubernetes.io/part-of: brama
+    app.kubernetes.io/component: config
+data:
+  # ── Database (non-secret) ──────────────────────────────────────────────────
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "ai_community_platform"
+  DATABASE_URL: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/ai_community_platform?serverVersion=16&charset=utf8"
+  POSTGRES_PROVISIONER_URL: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/postgres?serverVersion=16&charset=utf8"
+
+  # ── Redis ──────────────────────────────────────────────────────────────────
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  REDIS_URL: "redis://redis:6379"
+
+  # ── OpenSearch ─────────────────────────────────────────────────────────────
+  OPENSEARCH_HOST: "opensearch"
+  OPENSEARCH_PORT: "9200"
+  OPENSEARCH_URL: "http://opensearch:9200"
+
+  # ── RabbitMQ (non-secret) ──────────────────────────────────────────────────
+  RABBITMQ_HOST: "rabbitmq"
+  RABBITMQ_PORT: "5672"
+
+  # ── Core Platform ──────────────────────────────────────────────────────────
+  CORE_PLATFORM_HOST: "core"
+  CORE_PLATFORM_PORT: "80"
+  CORE_PLATFORM_URL: "http://core"
+
+  # ── LiteLLM ───────────────────────────────────────────────────────────────
+  LITELLM_HOST: "litellm"
+  LITELLM_PORT: "4000"
+  LITELLM_BASE_URL: "http://litellm:4000"
+
+  # ── Langfuse ──────────────────────────────────────────────────────────────
+  LANGFUSE_HOST: "langfuse-web"
+  LANGFUSE_PORT: "3000"
+  LANGFUSE_BASE_URL: "http://langfuse-web:3000"
+  LANGFUSE_ENV: "local"
+  LANGFUSE_ENABLED: "true"
+
+  # ── Edge Auth (non-secret) ─────────────────────────────────────────────────
+  EDGE_AUTH_COOKIE_NAME: "ACP_EDGE_TOKEN"
+  EDGE_AUTH_TOKEN_TTL: "43200"
+  EDGE_AUTH_LOGIN_BASE_URL: "http://localhost"
+  EDGE_AUTH_COOKIE_DOMAIN: "localhost"
+
+  # ── Cloudflare Turnstile ───────────────────────────────────────────────────
+  TURNSTILE_ENABLED: "false"
+  TURNSTILE_SITE_KEY: "1x00000000000000000000AA"
+
+  # ── Public Domain ─────────────────────────────────────────────────────────
+  PUBLIC_DOMAIN: "localhost"

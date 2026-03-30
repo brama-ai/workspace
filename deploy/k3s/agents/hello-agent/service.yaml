@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hello-agent
+  namespace: brama
+  labels:
+    app.kubernetes.io/part-of: brama
+    app.kubernetes.io/component: agent
+    app.kubernetes.io/name: hello-agent
+    ai.platform.agent: "true"
+spec:
+  selector:
+    app.kubernetes.io/name: hello-agent
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+  type: ClusterIP

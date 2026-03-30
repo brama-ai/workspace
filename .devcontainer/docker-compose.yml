@@ -45,8 +45,7 @@ services:
       - >
         mkdir -p /commandhistory /home/vscode/.antigravity-server /home/vscode/.vscode-server /home/vscode/.local /home/vscode/.local/state /home/vscode/.local/share /home/vscode/.config /home/vscode/.claude /home/vscode/.codex /home/vscode/.cursor /home/vscode/.gemini /home/vscode/.npm /home/vscode/.bun /home/vscode/.config/Cursor /home/vscode/.config/opencode
         && touch /commandhistory/.bash_history /commandhistory/.zsh_history
-        && chown -R vscode:vscode /commandhistory /home/vscode/.antigravity-server /home/vscode/.vscode-server
-        && chown vscode:vscode /home/vscode/.local /home/vscode/.local/state /home/vscode/.local/share /home/vscode/.config /home/vscode/.claude /home/vscode/.codex /home/vscode/.cursor /home/vscode/.gemini /home/vscode/.npm /home/vscode/.bun /home/vscode/.config/Cursor /home/vscode/.config/opencode || true
+        && chown vscode:vscode /commandhistory /commandhistory/.bash_history /commandhistory/.zsh_history /home/vscode/.antigravity-server /home/vscode/.vscode-server /home/vscode/.local /home/vscode/.local/state /home/vscode/.local/share /home/vscode/.config /home/vscode/.claude /home/vscode/.codex /home/vscode/.cursor /home/vscode/.gemini /home/vscode/.npm /home/vscode/.bun /home/vscode/.config/Cursor /home/vscode/.config/opencode || true
         && exec sleep infinity
     depends_on:
       postgres:

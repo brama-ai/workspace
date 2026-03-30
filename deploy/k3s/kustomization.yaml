@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Apply all resources in dependency order:
+#   1. namespace
+#   2. shared config/secrets
+#   3. infrastructure services
+#   4. core runtime
+#   5. reference agent
+#   6. ingress (optional)
+resources:
+  - namespace/namespace.yaml
+  - config/configmap.yaml
+  - config/secret.yaml
+  - infra/postgres/pvc.yaml
+  - infra/postgres/deployment.yaml
+  - infra/postgres/service.yaml
+  - infra/redis/pvc.yaml
+  - infra/redis/deployment.yaml
+  - infra/redis/service.yaml
+  - infra/rabbitmq/pvc.yaml
+  - infra/rabbitmq/deployment.yaml
+  - infra/rabbitmq/service.yaml
+  - infra/opensearch/pvc.yaml
+  - infra/opensearch/deployment.yaml
+  - infra/opensearch/service.yaml
+  - core/deployment.yaml
+  - core/service.yaml
+  - agents/hello-agent/deployment.yaml
+  - agents/hello-agent/service.yaml
+  - ingress/ingress.yaml

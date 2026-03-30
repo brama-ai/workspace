@@ -4,9 +4,10 @@ import { executeAgent, AgentConfig, AgentResult, getTimeout, isBillingError } fr
 import { checkAndCompact, getSessionContextStatus } from "../agents/context-guard.js";
 import { emitEvent, initEventsLog, EventType } from "../state/events.js";
 import { rlog } from "../lib/runtime-logger.js";
+import { resolveAgentRouting } from "../lib/model-routing.js";
 import { initHandoff, appendHandoff } from "./handoff.js";
 import { checkEnvStatus } from "../lib/env-status.js";
-import { createBranchInAll, clearSubProjectCache } from "../lib/sub-projects.js";
+import { createBranchInAll, clearSubProjectCache, getCurrentBranch, isGitClean } from "../lib/sub-projects.js";
 import {
   writeTaskState,
   setStateStatus,
@@ -17,6 +18,7 @@ import {
 } from "../state/task-state-v2.js";
 
 const DEBUG = env.FOUNDRY_DEBUG === "true";
+const MODEL_ALERT_FILE = "model-alerts.md";
 
 function debug(...args: unknown[]): void {
   if (!DEBUG) return;
@@ -58,6 +60,36 @@ export interface AgentCheckpoint {
     output: number;
     cost: number;
   };
+}
+
+function appendModelAlert(taskDir: string, message: string): void {
+  if (!message.trim()) return;
+  const alertPath = `${taskDir}/${MODEL_ALERT_FILE}`;
+  const bullet = `- ${message.trim()}`;
+  try {
+    const existing = existsSync(alertPath) ? readFileSync(alertPath, "utf8") : "# Model Alert\n\n";
+    if (existing.includes(bullet)) return;
+    const next = existing.trimEnd() + `\n${bullet}\n`;
+    writeFileSync(alertPath, next, "utf8");
+  } catch {
+    // Ignore alert write failures
+  }
+}
+
+function prependModelAlertsToSummary(taskDir: string): void {
+  const alertPath = `${taskDir}/${MODEL_ALERT_FILE}`;
+  const summaryPath = `${taskDir}/summary.md`;
+  if (!existsSync(alertPath) || !existsSync(summaryPath)) return;
+
+  try {
+    const alert = readFileSync(alertPath, "utf8").trim();
+    const summary = readFileSync(summaryPath, "utf8");
+    if (!alert) return;
+    if (summary.startsWith("# Model Alert\n")) return;
+    writeFileSync(summaryPath, `${alert}\n\n${summary}`, "utf8");
+  } catch {
+    // Ignore summary patch failures
+  }
 }
 
 const MAX_RETRIES = parseInt(env.PIPELINE_MAX_RETRIES || "2", 10);
@@ -121,6 +153,46 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
     } catch (err) {
       rlog("branch_create_error", { branch, error: String(err) }, "WARN");
       debug("branch creation failed", err);
+    }
+
+    // Guard: if the root repo is dirty, branch creation was silently skipped.
+    // Continuing would cause the agent to run on the wrong branch and hang/crash.
+    const currentRootBranch = getCurrentBranch(repoRoot);
+    if (currentRootBranch !== branch) {
+      const dirty = !isGitClean(repoRoot);
+      const reason = dirty
+        ? `Root repo has dirty working tree — cannot switch to branch '${branch}' (current: '${currentRootBranch}'). Commit or stash changes first.`
+        : `Root repo is on '${currentRootBranch}' instead of '${branch}' after branch creation.`;
+
+      rlog("branch_root_mismatch", { branch, currentRootBranch, dirty }, "WARN");
+      debug("root branch mismatch — pausing pipeline", { branch, currentRootBranch, dirty });
+
+      emitEvent("PIPELINE_END", {
+        success: false,
+        duration: 0,
+        completedAgents: 0,
+        failedAgent: "branch-create",
+        totalCost: 0,
+      });
+
+      if (taskDir) {
+        try {
+          setStateStatus(taskDir, "suspended", "branch-create");
+          upsertAgent(taskDir, agents[0] || "branch-create", "pending");
+          appendHandoff(`${taskDir}/handoff.md`, "Branch Creation",
+            `Status: PAUSED\n${reason}\n\nClean the working tree and re-run the pipeline.`);
+        } catch { /* ignore */ }
+      }
+
+      return {
+        success: false,
+        completedAgents: [],
+        failedAgent: "branch-create",
+        duration: Math.floor((Date.now() - startTime) / 1000),
+        totalCost: 0,
+        hitlWaiting: false,
+        waitingAgent: null,
+      };
     }
   }
 
@@ -191,13 +263,28 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
       } catch { /* ignore */ }
     }
 
-    const agentConfig: AgentConfig = {
-      name: agent,
-      timeout: getTimeout(agent),
-      maxRetries: MAX_RETRIES,
-      retryDelay: RETRY_DELAY,
-      fallbackChain: getFallbackChain(agent),
-    };
+      const agentConfig: AgentConfig = {
+        name: agent,
+        primaryModel: "",
+        timeout: getTimeout(agent),
+        maxRetries: MAX_RETRIES,
+        retryDelay: RETRY_DELAY,
+        fallbackChain: [],
+      };
+
+      const routing = resolveAgentRouting(repoRoot, agent);
+      agentConfig.primaryModel = routing.primaryModel;
+      agentConfig.fallbackChain = routing.fallbackChain;
+
+      if (routing.warning && taskDir) {
+        try {
+          appendModelAlert(taskDir, routing.warning);
+          appendHandoff(`${taskDir}/handoff.md`, `${agent} Model Routing`, routing.warning);
+        } catch {
+          // Ignore warning persistence failures
+        }
+        rlog("model_routing_warning", { agent, warning: routing.warning, source: routing.source }, "WARN");
+      }
 
     const prompt = buildPrompt(agent, config);
 
@@ -248,6 +335,9 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
             const handoffFile = `${taskDir}/handoff.md`;
             appendHandoff(handoffFile, agent,
               `Status: FAILED (integrity check) | ${billingDetected ? "Billing error detected" : "Zero output — agent produced no tokens"} | Duration: ${result.duration}s | Model: ${result.modelUsed}`);
+            appendModelAlert(taskDir, billingDetected
+              ? `Model error: ${agent} hit a billing/quota issue on ${result.modelUsed}.`
+              : `Model error: ${agent} produced zero output on ${result.modelUsed}.`);
           } catch { /* ignore */ }
         }
         break;
@@ -276,10 +366,11 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
           const handoffFile = `${taskDir}/handoff.md`;
           appendHandoff(handoffFile, agent, `Status: done | Duration: ${result.duration}s | Model: ${result.modelUsed} | Cost: $${result.tokensUsed.cost.toFixed(4)}`);
 
-          // Save per-agent result artifact
+          // Save per-agent result artifact (merge with agent's self-assessment if present)
           const artifactDir = `${taskDir}/artifacts/${agent}`;
           mkdirSync(artifactDir, { recursive: true });
-          writeFileSync(`${artifactDir}/result.json`, JSON.stringify({
+          const resultPath = `${artifactDir}/result.json`;
+          const runtimeData = {
             agent,
             status: "done",
             duration: result.duration,
@@ -288,7 +379,16 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
             pid: result.pid,
             logFile: result.logFile,
             tokens: result.tokensUsed,
-          }, null, 2), "utf8");
+          };
+          let merged = runtimeData as Record<string, unknown>;
+          try {
+            const existing = JSON.parse(readFileSync(resultPath, "utf8"));
+            if (existing && typeof existing === "object" && existing.assessment) {
+              // Agent wrote self-assessment — preserve it, overlay runtime data
+              merged = { ...existing, ...runtimeData };
+            }
+          } catch { /* no existing file or invalid JSON — use runtime data only */ }
+          writeFileSync(resultPath, JSON.stringify(merged, null, 2), "utf8");
 
           // Save telemetry record for render-summary.ts
           const telemetryDir = `${taskDir}/artifacts/telemetry`;
@@ -367,6 +467,7 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
       try {
         const handoffFile = `${taskDir}/handoff.md`;
         appendHandoff(handoffFile, agent, `Status: FAILED | Exit: ${result.exitCode} | Duration: ${result.duration}s | Model: ${result.modelUsed}`);
+        appendModelAlert(taskDir, result.errorMessage || `Model error: ${agent} failed on ${result.modelUsed} with exit code ${result.exitCode}.`);
       } catch (err) {
         rlog("artifact_write_error", { agent, taskDir, error: String(err) }, "WARN");
       }
@@ -420,6 +521,7 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
         failedAgent ? `Failed at: ${failedAgent}` : "",
         `Total cost: $${totalCost.toFixed(4)}`,
       ].filter(Boolean).join("\n"));
+      prependModelAlertsToSummary(taskDir);
     } catch (err) {
       rlog("artifact_write_error", { stage: "pipeline_end", taskDir, error: String(err) }, "WARN");
     }
@@ -436,27 +538,6 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
     hitlWaiting,
     waitingAgent,
   };
-}
-
-const DEFAULT_FALLBACKS: Record<string, string[]> = {
-  "u-investigator": ["google/gemini-2.5-flash", "minimax-coding-plan/MiniMax-M2.7", "opencode-go/glm-5", "openai/gpt-5.4", "anthropic/claude-sonnet-4-6", "opencode/big-pickle"],
-  "u-architect":    ["google/gemini-2.5-flash", "minimax-coding-plan/MiniMax-M2.7", "opencode-go/glm-5", "openai/gpt-5.4", "anthropic/claude-sonnet-4-6", "opencode/big-pickle"],
-  "u-coder":        ["minimax-coding-plan/MiniMax-M2.7", "opencode-go/glm-5", "google/gemini-2.5-flash", "openai/gpt-5.3-codex", "anthropic/claude-sonnet-4-6", "opencode/big-pickle"],
-  "u-validator":    ["opencode-go/kimi-k2.5", "google/gemini-2.5-flash", "anthropic/claude-sonnet-4-6", "openai/gpt-5.2", "opencode/big-pickle"],
-  "u-tester":       ["minimax-coding-plan/MiniMax-M2.7", "anthropic/claude-sonnet-4-6", "opencode-go/glm-5", "openai/gpt-5.3-codex", "google/gemini-2.5-flash", "opencode/big-pickle"],
-  "u-documenter":   ["anthropic/claude-sonnet-4-6", "minimax-coding-plan/MiniMax-M2.7", "google/gemini-2.5-flash", "openai/gpt-5.4", "opencode-go/kimi-k2.5", "opencode/big-pickle"],
-  "u-auditor":      ["minimax-coding-plan/MiniMax-M2.7", "anthropic/claude-sonnet-4-6", "opencode-go/glm-5", "openai/gpt-5.4", "google/gemini-2.5-flash", "opencode/big-pickle"],
-  "u-merger":       ["minimax-coding-plan/MiniMax-M2.7", "anthropic/claude-sonnet-4-6", "opencode-go/glm-5", "openai/gpt-5.4", "google/gemini-2.5-flash", "opencode/big-pickle"],
-  "u-summarizer":   ["anthropic/claude-opus-4-6", "minimax-coding-plan/MiniMax-M2.7", "google/gemini-2.5-flash", "openai/gpt-5.4", "opencode-go/glm-5", "opencode/big-pickle"],
-};
-
-function getFallbackChain(agent: string): string[] {
-  const key = `PIPELINE_FALLBACK_${agent.replace(/^u-/, "").toUpperCase()}`;
-  const envValue = env[key];
-  if (envValue) {
-    return envValue.split(",").filter(Boolean);
-  }
-  return DEFAULT_FALLBACKS[agent] ?? [];
 }
 
 function getContinueOnWait(taskDir: string): boolean {
@@ -484,7 +565,7 @@ function buildPrompt(agent: string, config: PipelineConfig): string {
     "u-tester": `Run tests and fix any failures`,
     "u-auditor": `Audit the changes for quality and compliance`,
     "u-documenter": `Write documentation for the changes`,
-    "u-summarizer": `Create the final task summary for this pipeline run. Write the markdown summary to \`${taskDir}/summary.md\`. Read \`${taskDir}/handoff.md\` for cross-agent context. Report in Ukrainian. Include: status (PASS/FAIL), what was done, difficulties, recommendations. To generate telemetry, run: \`./agentic-development/foundry render-summary foundry ${taskDir.split("/").pop()?.replace(/--foundry$/, "")}\` (do NOT use npx tsx — use the foundry CLI).`,
+    "u-summarizer": `Create the final task summary for this pipeline run. Write the markdown summary to \`${taskDir}/summary.md\`. Read \`${taskDir}/handoff.md\` for cross-agent context. If \`${taskDir}/${MODEL_ALERT_FILE}\` exists and is non-empty, prepend its contents at the very top of \`${taskDir}/summary.md\` before all normal sections. Report in Ukrainian. Include: status (PASS/FAIL), what was done, difficulties, recommendations. To generate telemetry, run: \`./agentic-development/foundry render-summary foundry ${taskDir.split("/").pop()?.replace(/--foundry$/, "")}\` (do NOT use npx tsx — use the foundry CLI).`,
     "u-investigator": `Investigate the issue: ${taskMessage}`,
     "u-merger": `Merge the branch ${branch} and resolve conflicts`,
   };

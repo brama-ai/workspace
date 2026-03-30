@@ -18,6 +18,7 @@ function debug(...args: unknown[]): void {
 
 export interface AgentConfig {
   name: string;
+  primaryModel: string;
   timeout: number;
   maxRetries: number;
   retryDelay: number;
@@ -47,6 +48,7 @@ export interface AgentResult {
   loopDetected: boolean;
   stallDetected: boolean;
   hitlWaiting: boolean;
+  errorMessage?: string;
 }
 
 export interface BlacklistEntry {
@@ -476,18 +478,66 @@ export async function executeAgent(
     taskDir?: string;
   }
 ): Promise<AgentResult> {
-  const { name, timeout, maxRetries, retryDelay, fallbackChain } = config;
+  const { name, primaryModel, timeout, maxRetries, retryDelay, fallbackChain } = config;
   const { repoRoot, logDir, timestamp, taskDir } = options;
 
   const logFile = join(logDir, `${timestamp}_${name}.log`);
   const eventsFile = join(logDir, `${timestamp}_${name}_events.jsonl`);
   const startTime = Date.now();
 
-  const rawModels = [env[`PIPELINE_MODEL_${name.toUpperCase()}`] || "", ...fallbackChain].filter(Boolean);
+  const rawModels = [primaryModel, ...fallbackChain].filter(Boolean);
   const allModels = filterBlacklisted(rawModels);
   const filteredOut = rawModels.filter((m) => !allModels.includes(m));
   if (filteredOut.length > 0) {
     rlog("blacklist_filtered", { agent: name, filtered: filteredOut, count: filteredOut.length }, "WARN");
+  }
+
+  if (rawModels.length === 0) {
+    const errorMessage = `No configured models resolved for ${name}.`;
+    rlog("model_resolution_error", { agent: name, error: errorMessage }, "ERROR");
+    return {
+      success: false,
+      exitCode: 2,
+      duration: 0,
+      modelUsed: "unconfigured",
+      pid: 0,
+      tokensUsed: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+      messageCount: 0,
+      toolCalls: [],
+      toolStats: [],
+      filesRead: [],
+      fileStats: [],
+      burnSnapshots: [],
+      logFile,
+      loopDetected: false,
+      stallDetected: false,
+      hitlWaiting: false,
+      errorMessage,
+    };
+  }
+
+  if (allModels.length === 0) {
+    const errorMessage = `All configured models for ${name} are currently blacklisted: ${rawModels.join(", ")}`;
+    rlog("model_resolution_error", { agent: name, error: errorMessage }, "ERROR");
+    return {
+      success: false,
+      exitCode: 3,
+      duration: 0,
+      modelUsed: rawModels[0],
+      pid: 0,
+      tokensUsed: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+      messageCount: 0,
+      toolCalls: [],
+      toolStats: [],
+      filesRead: [],
+      fileStats: [],
+      burnSnapshots: [],
+      logFile,
+      loopDetected: false,
+      stallDetected: false,
+      hitlWaiting: false,
+      errorMessage,
+    };
   }
 
   emitEvent("AGENT_START", {
@@ -500,6 +550,7 @@ export async function executeAgent(
 
   let attempt = 0;
   let modelIndex = 0;
+  let lastErrorMessage = "";
 
   while (attempt < maxRetries && modelIndex < allModels.length) {
     const currentModel = allModels[modelIndex];
@@ -598,6 +649,7 @@ export async function executeAgent(
     // ── Billing/quota error: blacklist model for longer (1h) and try fallback ──
     if (result.billingError) {
       const blReason = "billing_error";
+      lastErrorMessage = `Billing or quota error for ${currentModel}. Model blacklisted and fallback attempted.`;
       rlogModelResult(name, currentModel, result.exitCode, callDuration, true, blReason);
       rlogBlacklist(currentModel, 3600, blReason, result.exitCode, callDuration);
 
@@ -621,6 +673,7 @@ export async function executeAgent(
 
     if (isHardTimeout || isNearTimeout) {
       const blReason = isHardTimeout ? "hard_timeout" : "near_timeout";
+      lastErrorMessage = `Timeout while running ${name} on ${currentModel}. Model blacklisted and fallback attempted.`;
       rlogModelResult(name, currentModel, result.exitCode, callDuration, true, blReason);
       rlogBlacklist(currentModel, 1800, blReason, result.exitCode, callDuration);
 
@@ -631,6 +684,7 @@ export async function executeAgent(
       continue;
     }
 
+    lastErrorMessage = `Model ${currentModel} failed for ${name} with exit code ${result.exitCode}.`;
     rlogModelResult(name, currentModel, result.exitCode, callDuration, false, "failed");
 
     emitEvent("AGENT_END", {
@@ -670,6 +724,7 @@ export async function executeAgent(
     loopDetected: false,
     stallDetected: false,
     hitlWaiting: false,
+    errorMessage: lastErrorMessage || `All model attempts failed for ${name}.`,
   };
 }
 

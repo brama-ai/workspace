@@ -114,6 +114,16 @@ Rules:
 - Run `make sync-skills` from the workspace root after updating skill source files
 - Treat local agent directories as runtime/tooling state unless explicitly versioned for workspace automation
 
+## Agent Contract Reference
+
+When creating or modifying agents, refer to the platform agent conventions:
+
+- **Agent contract** (required endpoints, manifest schema, Docker labels): [`brama-core/docs/agent-requirements/conventions.md`](brama-core/docs/agent-requirements/conventions.md)
+- **Convention test cases** (TC-01 through TC-05): [`brama-core/docs/agent-requirements/test-cases.md`](brama-core/docs/agent-requirements/test-cases.md)
+- **Agent state model** (admin UI states): [`brama-core/docs/agent-requirements/agent-state-model.md`](brama-core/docs/agent-requirements/agent-state-model.md)
+
+Run `make conventions-test` to verify agent compliance against the platform conventions.
+
 ## Working Expectation
 
 When working in this workspace:

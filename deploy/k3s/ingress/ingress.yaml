@@ -1,0 +1,42 @@
+# Optional Traefik Ingress for hostname-based routing in Rancher Desktop.
+# Prerequisites:
+#   1. Add entries to /etc/hosts:
+#        127.0.0.1  brama.localhost
+#        127.0.0.1  hello.brama.localhost
+#   2. Rancher Desktop must have Traefik enabled (default).
+#
+# Primary access method is kubectl port-forward (see docs/guides/deployment/en/k3s-local-setup.md).
+# This Ingress is optional and provided for convenience.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: brama-ingress
+  namespace: brama
+  labels:
+    app.kubernetes.io/part-of: brama
+    app.kubernetes.io/component: ingress
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: brama.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: core
+                port:
+                  number: 80
+    - host: hello.brama.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: hello-agent
+                port:
+                  number: 80

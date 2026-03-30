@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensearch
+  namespace: brama
+  labels:
+    app.kubernetes.io/part-of: brama
+    app.kubernetes.io/component: infra
+    app.kubernetes.io/name: opensearch
+spec:
+  selector:
+    app.kubernetes.io/name: opensearch
+  ports:
+    - name: http
+      port: 9200
+      targetPort: 9200
+    - name: transport
+      port: 9300
+      targetPort: 9300
+  type: ClusterIP

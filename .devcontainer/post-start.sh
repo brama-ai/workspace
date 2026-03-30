@@ -2,10 +2,20 @@
 set -euo pipefail
 
 # Ensure mounted tool state remains writable by the vscode user after container recreate/restart.
+# Keep runtime fixes shallow so reconnects do not traverse large host-mounted caches.
 fix_dir() {
   local dir="$1"
   if [ -e "$dir" ]; then
-    sudo chown -R vscode:vscode "$dir" 2>/dev/null || true
+    sudo chown vscode:vscode "$dir" 2>/dev/null || true
+  fi
+}
+
+# fix_dir_shallow: non-recursive — fix only the directory itself (not contents).
+# Use for dirs that may contain root-owned subdirs (e.g. opencode snapshot git objects).
+fix_dir_shallow() {
+  local dir="$1"
+  if [ -e "$dir" ]; then
+    sudo chown vscode:vscode "$dir" 2>/dev/null || true
   fi
 }
 
@@ -13,7 +23,7 @@ fix_dir() {
 ensure_dir() {
   local dir="$1"
   sudo mkdir -p "$dir" 2>/dev/null || true
-  fix_dir "$dir"
+  fix_dir_shallow "$dir"
 }
 
 ensure_dir /home/vscode/.cache
@@ -32,7 +42,6 @@ ensure_dir /commandhistory
 
 fix_dir /home/vscode/.antigravity-server
 fix_dir /home/vscode/.vscode-server
-fix_dir /home/vscode/.local
 fix_dir /home/vscode/.claude
 fix_dir /home/vscode/.codex
 fix_dir /home/vscode/.cursor
@@ -42,11 +51,16 @@ fix_dir /home/vscode/.bun
 fix_dir /home/vscode/.kube
 fix_dir /home/vscode/.config/Cursor
 fix_dir /home/vscode/.config/opencode
-fix_dir /home/vscode/.local/share/opencode
+# .local/share/opencode contains snapshot/ with root-owned git objects —
+# recursive chown fails on those and can leave parent dirs root-owned.
+# Fix only the top-level dirs that CLI tools need to mkdir into.
+fix_dir_shallow /home/vscode/.local/share/opencode
 fix_dir /commandhistory
 
 touch /commandhistory/.bash_history /commandhistory/.zsh_history 2>/dev/null || true
 fix_dir /commandhistory
+fix_dir /commandhistory/.bash_history
+fix_dir /commandhistory/.zsh_history
 
 history_snippet='[ -f /workspaces/brama/.devcontainer/shell-history.sh ] && . /workspaces/brama/.devcontainer/shell-history.sh'
 
@@ -60,12 +74,23 @@ append_history_hook() {
 append_history_hook /home/vscode/.bashrc
 append_history_hook /home/vscode/.zshrc
 
-# Install a devcontainer-only OpenCode override that runs in full-trust mode.
-# This keeps host sessions safer while making the container workflow non-interrupting.
+# Install a devcontainer-only OpenCode baseline without clobbering user plugins or auth state.
 sudo install -d -m 755 -o vscode -g vscode /home/vscode/.config/opencode 2>/dev/null || true
-sudo install -m 644 -o vscode -g vscode \
-  /workspaces/brama/.devcontainer/opencode.devcontainer.json \
-  /home/vscode/.config/opencode/opencode.json 2>/dev/null || true
+_opencode_config="/home/vscode/.config/opencode/opencode.json"
+if command -v jq &>/dev/null; then
+  if [ -f "$_opencode_config" ]; then
+    jq -s '.[0] * .[1]' \
+      /workspaces/brama/.devcontainer/opencode.devcontainer.json \
+      "$_opencode_config" > "${_opencode_config}.tmp" \
+      && mv "${_opencode_config}.tmp" "$_opencode_config"
+  else
+    install -m 644 /workspaces/brama/.devcontainer/opencode.devcontainer.json "$_opencode_config"
+  fi
+else
+  [ -f "$_opencode_config" ] || install -m 644 /workspaces/brama/.devcontainer/opencode.devcontainer.json "$_opencode_config"
+fi
+chown vscode:vscode "$_opencode_config" 2>/dev/null || true
+unset _opencode_config
 
 # Docker socket permissions are not stable across recreates on macOS Docker Desktop.
 if [ -S /var/run/docker.sock ]; then
@@ -295,7 +320,28 @@ command -v helm &>/dev/null && source <(helm completion $(basename "$SHELL" 2>/d
 # This replaces --dangerously-skip-permissions so the VSCode extension shows full UI.
 _claude_project_dir="/home/vscode/.claude/projects/-workspaces-brama"
 ensure_dir "$_claude_project_dir"
-cat > "${_claude_project_dir}/settings.json" <<'CLAUDE_EOF'
+_claude_settings="${_claude_project_dir}/settings.json"
+if command -v jq &>/dev/null; then
+  if [ -f "$_claude_settings" ]; then
+    jq '
+      .permissions = (.permissions // {}) |
+      .permissions.allow = (
+        (.permissions.allow // []) + [
+          "Bash(*)",
+          "Read(*)",
+          "Write(*)",
+          "Edit(*)",
+          "Glob(*)",
+          "Grep(*)",
+          "WebFetch(*)",
+          "WebSearch(*)",
+          "Agent(*)",
+          "NotebookEdit(*)"
+        ] | unique
+      )
+    ' "$_claude_settings" > "${_claude_settings}.tmp" && mv "${_claude_settings}.tmp" "$_claude_settings"
+  else
+    cat > "$_claude_settings" <<'CLAUDE_EOF'
 {
   "permissions": {
     "allow": [
@@ -313,7 +359,29 @@ cat > "${_claude_project_dir}/settings.json" <<'CLAUDE_EOF'
   }
 }
 CLAUDE_EOF
-chown vscode:vscode "${_claude_project_dir}/settings.json" 2>/dev/null || true
+  fi
+else
+  [ -f "$_claude_settings" ] || cat > "$_claude_settings" <<'CLAUDE_EOF'
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "Agent(*)",
+      "NotebookEdit(*)"
+    ]
+  }
+}
+CLAUDE_EOF
+fi
+chown vscode:vscode "$_claude_settings" 2>/dev/null || true
+unset _claude_settings
 unset _claude_project_dir
 
 for rc_file in /home/vscode/.bashrc /home/vscode/.zshrc; do

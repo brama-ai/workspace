@@ -4,9 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# Normalize permissions for mounted tool state on first container creation.
-bash /workspaces/brama/.devcontainer/post-start.sh
-
 echo "==> Waiting for infrastructure services..."
 # Postgres and Redis are guaranteed by depends_on in docker-compose.yml,
 # but wait for DNS resolution inside the container

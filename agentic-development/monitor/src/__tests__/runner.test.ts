@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { runPipeline, PipelineConfig, getTimeout } from "../pipeline/runner.js";
 
 vi.mock("../agents/executor.js", () => ({
@@ -43,6 +45,10 @@ vi.mock("../agents/executor.js", () => ({
       };
     }
 
+    if (config.name === "u-summarizer" && options.taskDir) {
+      writeFileSync(join(options.taskDir, "summary.md"), "## Що зроблено\n\n- Тестовий summary\n", "utf8");
+    }
+
     return {
       success: true,
       exitCode: 0,
@@ -75,6 +81,14 @@ vi.mock("../agents/context-guard.js", () => ({
     sessionId: null, model: null, provider: null,
     totalMessages: 0, lastContextSize: 0, maxCacheRead: 0, avgInput: 0,
     needsCompact: false, threshold: 0, reason: "mocked",
+  })),
+}));
+
+vi.mock("../lib/model-routing.js", () => ({
+  resolveAgentRouting: vi.fn((repoRoot: string, agent: string) => ({
+    primaryModel: `${agent}-primary-model`,
+    fallbackChain: [`${agent}-fallback-model`],
+    source: "config",
   })),
 }));
 
@@ -143,6 +157,25 @@ describe("runner", () => {
       const result = await runPipeline(baseConfig);
 
       expect(result.duration).toBeGreaterThanOrEqual(0);
+    });
+
+    it("should prepend model alerts to summary when routing warning exists", async () => {
+      const { resolveAgentRouting } = await import("../lib/model-routing.js");
+      vi.mocked(resolveAgentRouting).mockImplementation((repoRoot: string, agent: string) => ({
+        primaryModel: `${agent}-random-model`,
+        fallbackChain: [],
+        source: "degraded_random",
+        warning: `Missing model routing for ${agent}.`,
+      }));
+
+      await runPipeline(baseConfig);
+
+      const summaryPath = join(baseConfig.taskDir, "summary.md");
+      expect(existsSync(summaryPath)).toBe(true);
+      const summary = readFileSync(summaryPath, "utf8");
+      expect(summary.startsWith("# Model Alert")).toBe(true);
+      expect(summary).toContain("Missing model routing for u-coder.");
+      expect(summary).toContain("## Що зроблено");
     });
   });
 
