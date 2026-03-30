@@ -81,19 +81,32 @@ function acquireLock(): boolean {
   if (existsSync(LOCKFILE)) {
     const oldPid = readFileSync(LOCKFILE, "utf8").trim();
     if (oldPid) {
+      // Check if PID is alive via /proc (Linux) or signal 0 (cross-platform)
+      let alive = false;
       const statusPath = `/proc/${oldPid}/status`;
       if (existsSync(statusPath)) {
         const statusContent = readFileSync(statusPath, "utf8");
         const stateMatch = statusContent.match(/^State:\s+(\S)/m);
         const pidState = stateMatch ? stateMatch[1] : "";
         if (pidState && pidState !== "Z") {
-          console.error(`Another Foundry batch is already running (PID ${oldPid}).`);
-          return false;
-        }
-        if (pidState === "Z") {
+          alive = true;
+        } else if (pidState === "Z") {
           logBatch(`${c.yellow}[cleanup]${c.reset} Removed stale lock from zombie PID ${oldPid}`);
         }
+      } else {
+        // /proc not available or PID reaped — try signal 0
+        try {
+          process.kill(parseInt(oldPid, 10), 0);
+          alive = true;
+        } catch {
+          // Process dead — stale lock
+        }
       }
+      if (alive) {
+        console.error(`Foundry headless already running (PID ${oldPid})`);
+        return false;
+      }
+      logBatch(`Removing stale lock (PID ${oldPid} no longer active)`);
     }
     unlinkSync(LOCKFILE);
   }
