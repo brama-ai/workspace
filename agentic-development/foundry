@@ -13,4 +13,11 @@ REPO_ROOT="${REPO_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 export REPO_ROOT
 export PIPELINE_TASKS_ROOT="${PIPELINE_TASKS_ROOT:-$REPO_ROOT/tasks}"
 
-exec npx tsx "$SCRIPT_DIR/monitor/src/cli/foundry.ts" "$@"
+# Prefer compiled JS (faster, no tsx/esbuild dependency).
+# Fall back to tsx for development when dist is stale.
+DIST="$SCRIPT_DIR/monitor/dist/cli/foundry.js"
+if [[ -f "$DIST" ]]; then
+  exec node "$DIST" "$@"
+else
+  exec npx tsx "$SCRIPT_DIR/monitor/src/cli/foundry.ts" "$@"
+fi

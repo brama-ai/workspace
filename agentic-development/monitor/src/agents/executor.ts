@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { env, platform } from "node:process";
 import { emitEvent, EventType } from "../state/events.js";
 import { rlog, rlogModelCall, rlogModelResult, rlogBlacklist, rlogProcess } from "../lib/runtime-logger.js";
+import { calculateCost } from "../state/telemetry.js";
 
 const BLACKLIST_FILE = join(env.FOUNDRY_ROOT || process.cwd(), ".foundry-blacklist.json");
 
@@ -36,6 +37,12 @@ export interface AgentResult {
     cacheWrite: number;
     cost: number;
   };
+  messageCount: number;
+  toolCalls: string[];
+  toolStats: ToolStat[];
+  filesRead: string[];
+  fileStats: FileReadStat[];
+  burnSnapshots: BurnSnapshot[];
   logFile: string;
   loopDetected: boolean;
   stallDetected: boolean;
@@ -109,6 +116,194 @@ export function filterBlacklisted(models: string[]): string[] {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export interface ToolStat {
+  name: string;
+  calls: number;
+  outputChars: number;
+}
+
+export interface FileReadStat {
+  path: string;
+  reads: number;
+  chars: number;
+}
+
+export interface BurnSnapshot {
+  // Per-step (factual for this step)
+  stepInput: number;
+  stepOutput: number;
+  stepCacheRead: number;
+  /** Context window = stepInput + stepCacheRead + stepCacheWrite (everything model sees) */
+  context: number;
+  // Cumulative (real totals across ALL steps, not just snapshots)
+  cumInput: number;
+  cumOutput: number;
+  msgs: number;
+  tools: number;
+  files: number;
+}
+
+interface EventsTelemetry {
+  input: number;
+  output: number;
+  /** Last step's cache_read — tokens served from cache */
+  cacheRead: number;
+  /** Sum of all cache reads across steps — used for cost calculation */
+  totalCacheRead: number;
+  cacheWrite: number;
+  cost: number;
+  messageCount: number;
+  toolCalls: string[];
+  filesRead: string[];
+  toolStats: ToolStat[];
+  fileStats: FileReadStat[];
+  burnSnapshots: BurnSnapshot[];
+}
+
+/**
+ * Parse opencode events JSONL and extract cumulative token usage,
+ * message count, tool calls, and files read.
+ *
+ * Events format (step_finish):
+ *   { type: "step_finish", part: { tokens: { input, output, cache: { read, write } }, cost } }
+ * Events format (tool_use):
+ *   { type: "tool_use", part: { tool, state: { input: { file_path? } } } }
+ */
+export function extractTelemetryFromEvents(eventsFile: string, model: string): EventsTelemetry {
+  const result: EventsTelemetry = {
+    input: 0, output: 0, cacheRead: 0, totalCacheRead: 0, cacheWrite: 0, cost: 0,
+    messageCount: 0, toolCalls: [], filesRead: [],
+    toolStats: [], fileStats: [], burnSnapshots: [],
+  };
+
+  if (!existsSync(eventsFile)) return result;
+
+  let content: string;
+  try {
+    content = readFileSync(eventsFile, "utf8");
+  } catch {
+    return result;
+  }
+
+  const toolSet = new Set<string>();
+  const fileSet = new Set<string>();
+  const toolMap = new Map<string, { calls: number; outputChars: number }>();
+  const fileMap = new Map<string, { reads: number; chars: number }>();
+  let stepCount = 0;
+  let toolCount = 0;
+  let fileCount = 0;
+
+  // Burn snapshots — record state every ~20K cumulative tokens
+  const BURN_INTERVAL = 20_000;
+  let lastBurnMark = 0;
+  const burnSnapshots: BurnSnapshot[] = [];
+
+  for (const line of content.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const event = JSON.parse(line);
+      const part = event.part;
+      if (!part) continue;
+
+      if (event.type === "step_finish" && part.tokens) {
+        const t = part.tokens;
+        const stepInput = t.input || 0;
+        const stepOutput = t.output || 0;
+        const stepCacheRead = t.cache?.read || 0;
+        const stepCacheWrite = t.cache?.write || 0;
+
+        result.input += stepInput;
+        result.output += stepOutput;
+        result.cacheRead = stepCacheRead;           // last step = context window size
+        result.totalCacheRead += stepCacheRead;     // cumulative = for cost calculation
+        result.cacheWrite += stepCacheWrite;
+        stepCount++;
+
+        // Record burn snapshot — per-step values + cumulative counters
+        // Context = everything the model sees: new input + cached + newly cached
+        const context = stepInput + stepCacheRead + stepCacheWrite;
+        const cacheReset = stepCount > 1 && stepCacheRead === 0 && lastBurnMark > 0;
+        if (context - lastBurnMark >= BURN_INTERVAL || stepCount === 1 || cacheReset) {
+          burnSnapshots.push({
+            stepInput,
+            stepOutput,
+            stepCacheRead,
+            context,
+            cumInput: result.input,
+            cumOutput: result.output,
+            msgs: result.messageCount,
+            tools: toolCount,
+            files: fileCount,
+          });
+          lastBurnMark = context;
+        }
+      }
+
+      if (event.type === "tool_use" && part.tool) {
+        const toolName = part.tool as string;
+        toolSet.add(toolName);
+        toolCount++;
+
+        const outLen = typeof part.state?.output === "string" ? part.state.output.length : 0;
+        const ts = toolMap.get(toolName) || { calls: 0, outputChars: 0 };
+        ts.calls++;
+        ts.outputChars += outLen;
+        toolMap.set(toolName, ts);
+
+        // Track file reads with sizes
+        const input = part.state?.input;
+        const filePath = input?.file_path ?? input?.filePath;
+        if (filePath && typeof filePath === "string") {
+          fileSet.add(filePath);
+          fileCount++;
+          const fs = fileMap.get(filePath) || { reads: 0, chars: 0 };
+          fs.reads++;
+          fs.chars += outLen;
+          fileMap.set(filePath, fs);
+        }
+        if (input?.path && typeof input.path === "string") {
+          fileSet.add(input.path);
+        }
+      }
+
+      if (event.type === "step_start") {
+        result.messageCount++;
+      }
+    } catch {
+      // Skip unparseable lines
+    }
+  }
+
+  // Always include final snapshot if different from last recorded
+  if (burnSnapshots.length > 0 && burnSnapshots[burnSnapshots.length - 1].msgs !== result.messageCount) {
+    burnSnapshots.push({ ...burnSnapshots[burnSnapshots.length - 1], cumInput: result.input, cumOutput: result.output, msgs: result.messageCount, tools: toolCount, files: fileCount });
+  }
+
+  result.toolCalls = Array.from(toolSet);
+  result.filesRead = Array.from(fileSet);
+  result.toolStats = Array.from(toolMap.entries())
+    .map(([name, s]) => ({ name, calls: s.calls, outputChars: s.outputChars }))
+    .sort((a, b) => b.outputChars - a.outputChars);
+  result.fileStats = Array.from(fileMap.entries())
+    .map(([path, s]) => ({ path, reads: s.reads, chars: s.chars }))
+    .sort((a, b) => b.chars - a.chars);
+  result.burnSnapshots = burnSnapshots;
+  result.cost = calculateCost(model, result.input, result.output, result.totalCacheRead);
+
+  debug("extracted telemetry from events:", {
+    steps: stepCount,
+    messages: result.messageCount,
+    input: result.input,
+    output: result.output,
+    cacheRead: result.cacheRead,
+    tools: result.toolCalls.length,
+    files: result.filesRead.length,
+    cost: result.cost,
+  });
+
+  return result;
 }
 
 async function runWithTimeout(
@@ -305,6 +500,8 @@ export async function executeAgent(
     if (result.exitCode === 0) {
       rlogModelResult(name, currentModel, 0, callDuration, false, "success");
 
+      const telemetry = extractTelemetryFromEvents(eventsFile, currentModel);
+
       emitEvent("AGENT_END", {
         agent: name,
         model: currentModel,
@@ -318,7 +515,19 @@ export async function executeAgent(
         duration,
         modelUsed: currentModel,
         pid: result.pid,
-        tokensUsed: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+        tokensUsed: {
+          input: telemetry.input,
+          output: telemetry.output,
+          cacheRead: telemetry.cacheRead,
+          cacheWrite: telemetry.cacheWrite,
+          cost: telemetry.cost,
+        },
+        messageCount: telemetry.messageCount,
+        toolCalls: telemetry.toolCalls,
+        toolStats: telemetry.toolStats,
+        filesRead: telemetry.filesRead,
+        fileStats: telemetry.fileStats,
+        burnSnapshots: telemetry.burnSnapshots,
         logFile,
         loopDetected: false,
         stallDetected: false,
@@ -329,6 +538,8 @@ export async function executeAgent(
     if (result.exitCode === 75) {
       rlogModelResult(name, currentModel, 75, callDuration, false, "hitl_waiting");
 
+      const telemetry = extractTelemetryFromEvents(eventsFile, currentModel);
+
       emitEvent("TASK_WAITING", { agent: name, duration });
       return {
         success: false,
@@ -336,7 +547,19 @@ export async function executeAgent(
         duration,
         modelUsed: currentModel,
         pid: result.pid,
-        tokensUsed: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+        tokensUsed: {
+          input: telemetry.input,
+          output: telemetry.output,
+          cacheRead: telemetry.cacheRead,
+          cacheWrite: telemetry.cacheWrite,
+          cost: telemetry.cost,
+        },
+        messageCount: telemetry.messageCount,
+        toolCalls: telemetry.toolCalls,
+        toolStats: telemetry.toolStats,
+        filesRead: telemetry.filesRead,
+        fileStats: telemetry.fileStats,
+        burnSnapshots: telemetry.burnSnapshots,
         logFile,
         loopDetected: false,
         stallDetected: false,
@@ -378,6 +601,7 @@ export async function executeAgent(
   }
 
   const duration = Math.floor((Date.now() - startTime) / 1000);
+  const telemetry = extractTelemetryFromEvents(eventsFile, allModels[0] || "unknown");
 
   return {
     success: false,
@@ -385,7 +609,19 @@ export async function executeAgent(
     duration,
     modelUsed: allModels[0] || "unknown",
     pid: 0,
-    tokensUsed: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+    tokensUsed: {
+      input: telemetry.input,
+      output: telemetry.output,
+      cacheRead: telemetry.cacheRead,
+      cacheWrite: telemetry.cacheWrite,
+      cost: telemetry.cost,
+    },
+    messageCount: telemetry.messageCount,
+    toolCalls: telemetry.toolCalls,
+    toolStats: telemetry.toolStats,
+    filesRead: telemetry.filesRead,
+    fileStats: telemetry.fileStats,
+    burnSnapshots: telemetry.burnSnapshots,
     logFile,
     loopDetected: false,
     stallDetected: false,

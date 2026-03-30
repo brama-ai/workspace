@@ -5,6 +5,7 @@ import { checkAndCompact, getSessionContextStatus } from "../agents/context-guar
 import { emitEvent, initEventsLog, EventType } from "../state/events.js";
 import { rlog } from "../lib/runtime-logger.js";
 import { initHandoff, appendHandoff } from "./handoff.js";
+import { checkEnvStatus } from "../lib/env-status.js";
 import {
   writeTaskState,
   setStateStatus,
@@ -105,6 +106,38 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
       rlog("handoff_init_error", { taskDir, error: String(err) }, "ERROR");
       debug("handoff init failed", err);
     }
+  }
+
+  // ── Pre-task environment gate ────────────────────────────────────
+  if (!config.skipEnvCheck) {
+    const envResult = checkEnvStatus(repoRoot);
+    if (!envResult.ready) {
+      const reasons = envResult.errors.join("; ");
+      const errMsg = `Environment not ready: ${reasons}`;
+      rlog("env_check_failed", { errors: envResult.errors, services: envResult.services.length }, "ERROR");
+      emitEvent("PIPELINE_END", { success: false, duration: 0, completedAgents: 0, failedAgent: "env-check", totalCost: 0 });
+
+      if (taskDir) {
+        try {
+          setStateStatus(taskDir, "failed", "env-check");
+          appendHandoff(`${taskDir}/handoff.md`, "Environment Check",
+            `Status: FAILED\n${envResult.errors.map(e => `- ${e}`).join("\n")}\n\nRun \`docker compose up -d\` or press [e] in Foundry Monitor to start services.`);
+        } catch { /* ignore */ }
+      }
+
+      debug("env check failed", envResult.errors);
+      return {
+        success: false,
+        completedAgents: [],
+        failedAgent: "env-check",
+        duration: Math.floor((Date.now() - startTime) / 1000),
+        totalCost: 0,
+        hitlWaiting: false,
+        waitingAgent: null,
+      };
+    }
+    debug("env check passed", { services: envResult.services.length });
+    rlog("env_check_passed", { services: envResult.services.length });
   }
 
   const completedAgents: string[] = [];
@@ -211,9 +244,14 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
               cache_read: result.tokensUsed.cacheRead ?? 0,
               cache_write: result.tokensUsed.cacheWrite ?? 0,
             },
-            tools: [],
-            files_read: [],
-            context: {},
+            tools: result.toolCalls ?? [],
+            tool_stats: result.toolStats ?? [],
+            files_read: result.filesRead ?? [],
+            file_stats: result.fileStats ?? [],
+            burn: result.burnSnapshots ?? [],
+            context: {
+              message_count: result.messageCount ?? 0,
+            },
             cost: result.tokensUsed.cost,
             duration_seconds: result.duration,
             session_id: "",

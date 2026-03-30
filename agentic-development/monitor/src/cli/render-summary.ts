@@ -11,8 +11,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync, unlink
 import { join, dirname } from "node:path";
 import { env, argv, exit } from "node:process";
 import { tmpdir } from "node:os";
-import { calculateCost, getModelPricing, estimateUsage, PROVIDER_LIMITS, type UsageEstimate } from "../state/telemetry.js";
-import { getCacheStats, exportSession as dbExportSession, type CacheStats } from "../lib/db-info.js";
+import { calculateCost, getModelPricing } from "../state/telemetry.js";
 
 const REPO_ROOT = env.REPO_ROOT || process.cwd();
 
@@ -21,8 +20,11 @@ interface AgentRow {
   model: string;
   tokens: { input_tokens: number; output_tokens: number; cache_read: number; cache_write: number };
   tools: Array<{ name: string; count: number }>;
+  tool_stats: Array<{ name: string; calls: number; outputChars: number }>;
   files_read: string[];
-  context: { skills?: string[]; mcp_tools?: Array<{ name: string; count: number }>; claude_commands?: string[] };
+  file_stats: Array<{ path: string; reads: number; chars: number }>;
+  burn: Array<{ stepInput: number; stepOutput: number; stepCacheRead: number; context: number; cumInput: number; cumOutput: number; msgs: number; tools: number; files: number }>;
+  context: { skills?: string[]; mcp_tools?: Array<{ name: string; count: number }>; claude_commands?: string[]; message_count?: number };
   cost: number;
   duration_seconds: number;
   session_id?: string;
@@ -150,14 +152,14 @@ function extractContext(data: SessionExport): AgentRow["context"] {
   };
 }
 
-// CacheStats type imported from db-info
-
-/** Delegate to db-info for cache statistics */
-function queryCacheStats(sessionId?: string): CacheStats[] {
-  return getCacheStats(sessionId);
-}
 
 function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return `${n}`;
+}
+
+function formatChars(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return `${n}`;
@@ -190,219 +192,115 @@ function renderTable(rows: AgentRow[], workflow: string): string {
   lines.push("");
   lines.push("## Telemetry");
   lines.push("");
-  lines.push("| Agent | Model | Input | Output | Price | Time |");
-  lines.push("|-------|-------|------:|-------:|------:|-----:|");
+  lines.push("| Agent | Model | Msgs | Cum Input | Cum Output | Context | Price | Time |");
+  lines.push("|-------|-------|-----:|----------:|-----------:|--------:|------:|-----:|");
 
   for (const row of rows) {
-    lines.push(`| ${row.agent} | ${row.model} | ${row.tokens.input_tokens} | ${row.tokens.output_tokens} | ${money(row.cost)} | ${dur(row.duration_seconds)} |`);
+    const msgs = row.context?.message_count ?? 0;
+    // Context from last burn snapshot (input + cache_read + cache_write = full window)
+    const lastBurn = row.burn?.length > 0 ? row.burn[row.burn.length - 1] : null;
+    const contextSize = lastBurn ? lastBurn.context : row.tokens.cache_read + row.tokens.cache_write + row.tokens.input_tokens;
+    lines.push(`| ${row.agent} | ${row.model} | ${msgs} | ${formatTokens(row.tokens.input_tokens)} | ${formatTokens(row.tokens.output_tokens)} | ${formatTokens(contextSize)} | ${money(row.cost)} | ${dur(row.duration_seconds)} |`);
   }
 
-  // Model totals
-  const byModel = new Map<string, { agents: string[]; input: number; output: number; price: number }>();
-  for (const row of rows) {
-    const m = byModel.get(row.model) || { agents: [], input: 0, output: 0, price: 0 };
-    m.agents.push(row.agent);
-    m.input += row.tokens.input_tokens;
-    m.output += row.tokens.output_tokens;
-    m.price += row.cost;
-    byModel.set(row.model, m);
-  }
-
-  lines.push("");
-  lines.push("## Models");
-  lines.push("");
-  lines.push("| Model | Agents | Input | Output | Price |");
-  lines.push("|-------|--------|------:|-------:|------:|");
-  for (const [model, item] of Array.from(byModel.entries()).sort()) {
-    lines.push(`| ${model} | ${item.agents.join(", ")} | ${item.input} | ${item.output} | ${money(item.price)} |`);
-  }
-
-  // Provider usage / limits
-  const byProvider = new Map<string, { totalTokens: number; totalCost: number; models: string[] }>();
-  for (const row of rows) {
-    const pricing = getModelPricing(row.model);
-    const p = byProvider.get(pricing.provider) || { totalTokens: 0, totalCost: 0, models: [] };
-    const rowTokens = row.tokens.input_tokens + row.tokens.output_tokens + row.tokens.cache_read;
-    p.totalTokens += rowTokens;
-    p.totalCost += row.cost;
-    if (!p.models.includes(row.model)) p.models.push(row.model);
-    byProvider.set(pricing.provider, p);
-  }
-
-  lines.push("");
-  lines.push("## Provider Usage");
-  lines.push("");
-  lines.push("| Provider | Billing | Tokens Used | Cost | Window % | Monthly % | Status |");
-  lines.push("|----------|---------|------------:|-----:|---------:|---------:|--------|");
-
-  for (const [provider, data] of Array.from(byProvider.entries()).sort()) {
-    const sample = getModelPricing(data.models[0]);
-    const usage = estimateUsage(data.models[0], data.totalTokens, data.totalCost);
-    const tokensStr = data.totalTokens > 1_000_000
-      ? `${(data.totalTokens / 1_000_000).toFixed(1)}M`
-      : data.totalTokens > 1_000
-        ? `${(data.totalTokens / 1_000).toFixed(1)}K`
-        : `${data.totalTokens}`;
-
-    let windowStr = "-";
-    if (usage.windowUsagePercent !== null) {
-      windowStr = `${usage.windowUsagePercent.toFixed(1)}%`;
-    }
-
-    let monthlyStr = "-";
-    if (usage.monthlyUsagePercent !== null) {
-      monthlyStr = `${usage.monthlyUsagePercent.toFixed(1)}%`;
-    }
-
-    let status = "OK";
-    if (usage.windowUsagePercent !== null && usage.windowUsagePercent > 80) {
-      status = "WARN: near window limit";
-    } else if (usage.windowUsagePercent !== null && usage.windowUsagePercent > 95) {
-      status = "CRITICAL: window exhausted";
-    } else if (usage.monthlyUsagePercent !== null && usage.monthlyUsagePercent > 80) {
-      status = "WARN: near budget limit";
-    } else if (usage.monthlyUsagePercent !== null && usage.monthlyUsagePercent > 95) {
-      status = "CRITICAL: budget exhausted";
-    }
-
-    lines.push(`| ${provider} | ${sample.billing} | ${tokensStr} | ${money(data.totalCost)} | ${windowStr} | ${monthlyStr} | ${status} |`);
-  }
-
-  // Total row
+  // Totals
   const totalTokens = rows.reduce((s, r) => s + r.tokens.input_tokens + r.tokens.output_tokens + r.tokens.cache_read, 0);
   const totalCost = rows.reduce((s, r) => s + r.cost, 0);
   const totalDuration = rows.reduce((s, r) => s + r.duration_seconds, 0);
+  const totalMsgs = rows.reduce((s, r) => s + (r.context?.message_count ?? 0), 0);
   const totalTokensStr = totalTokens > 1_000_000
     ? `${(totalTokens / 1_000_000).toFixed(1)}M`
     : `${(totalTokens / 1_000).toFixed(1)}K`;
 
   lines.push("");
-  lines.push(`**Totals:** ${totalTokensStr} tokens | ${money(totalCost)} cost | ${dur(totalDuration)} duration`);
+  lines.push(`**Totals:** ${totalMsgs} msgs | ${totalTokensStr} tokens | ${money(totalCost)} cost | ${dur(totalDuration)} duration`);
 
-  // Token Burn & Cache Efficiency (from opencode DB)
-  const cacheStats = queryCacheStats();
-  if (cacheStats.length > 0) {
+  // Token Burn — per-agent progressive snapshots every ~20K tokens.
+  // Shows how context grows over time and reveals cache resets.
+  const hasBurn = rows.some(r => r.burn?.length > 0);
+  if (hasBurn) {
     lines.push("");
-    lines.push("## Token Burn & Cache Efficiency");
+    lines.push("## Token Burn");
     lines.push("");
-    lines.push("_Per-model breakdown of how tokens are consumed. Higher cache hit % = cheaper._");
+    lines.push("_Per-step: Input, Output, Context, Cache. Cumulative: Msgs, Tools, Files, Cum Input, Cum Output, Price._");
     lines.push("");
-    lines.push("| Model | Msgs | Avg Input | Avg Cache Read | Cache Hit % | Grade | Total Input | Total Cached |");
-    lines.push("|-------|-----:|----------:|---------------:|------------:|:-----:|------------:|-------------:|");
+    lines.push("| Agent | Context | Msgs | Input | Output | Cache | Cum In | Cum Out | Tools | Files | Cum Price |");
+    lines.push("|-------|--------:|-----:|------:|-------:|------:|-------:|--------:|------:|------:|----------:|");
 
-    for (const stat of cacheStats) {
-      const { grade, emoji } = cacheGrade(stat.cache_hit_pct, stat.avg_input);
-      lines.push(
-        `| ${stat.model} | ${stat.messages} | ${formatTokens(stat.avg_input)} | ${formatTokens(stat.avg_cache_read)} ` +
-        `| ${stat.cache_hit_pct}% | ${emoji} ${grade} | ${formatTokens(stat.sum_input)} | ${formatTokens(stat.sum_cache_read)} |`
-      );
-    }
-
-    // Overall stats
-    const totalInput = cacheStats.reduce((s, c) => s + c.sum_input, 0);
-    const totalCached = cacheStats.reduce((s, c) => s + c.sum_cache_read, 0);
-    const totalBilled = totalInput + totalCached;
-    const overallHitPct = totalBilled > 0 ? (totalCached / totalBilled * 100).toFixed(1) : "0";
-
-    lines.push("");
-    lines.push(`**Overall cache hit rate:** ${overallHitPct}% (${formatTokens(totalCached)} cached / ${formatTokens(totalBilled)} total billed)`);
-
-    // Cache efficiency notes
-    lines.push("");
-    lines.push("**Cache pricing impact:**");
-    for (const stat of cacheStats) {
-      const pricing = getModelPricing(stat.model);
-      if (pricing.cache_read > 0 && pricing.cache_read < pricing.input) {
-        const discount = ((1 - pricing.cache_read / pricing.input) * 100).toFixed(0);
-        const savedTokens = stat.sum_cache_read;
-        const savedCost = (savedTokens / 1_000_000) * (pricing.input - pricing.cache_read);
-        lines.push(`- **${stat.model}**: cache is ${discount}% cheaper than input. Saved ~${money(savedCost)} on ${formatTokens(savedTokens)} cached tokens`);
-      } else if (pricing.cache_read === 0 && stat.sum_cache_read > 0) {
-        lines.push(`- **${stat.model}**: cache tokens billed at same rate as input (no discount). ${formatTokens(stat.sum_cache_read)} cached but no cost savings`);
-      }
-    }
-
-    // Warnings for poor cache performance
-    const poorModels = cacheStats.filter(s => s.cache_hit_pct < 85 || s.avg_input > 5000);
-    if (poorModels.length > 0) {
-      lines.push("");
-      lines.push("**Warnings:**");
-      for (const stat of poorModels) {
-        if (stat.avg_input > 5000) {
-          lines.push(`- ${stat.model}: high avg input (${formatTokens(stat.avg_input)}/msg) — possible cache eviction or large tool outputs`);
-        }
-        if (stat.cache_hit_pct < 85) {
-          lines.push(`- ${stat.model}: low cache hit rate (${stat.cache_hit_pct}%) — context may be re-sent as full-price input`);
-        }
-      }
-    }
-  }
-
-  // Tools by agent
-  lines.push("");
-  lines.push("## Tools By Agent");
-  lines.push("");
-  for (const row of rows) {
-    lines.push(`### ${row.agent}`);
-    if (row.tools.length > 0) {
-      for (const tool of row.tools) {
-        lines.push(`- \`${tool.name}\` x ${tool.count}`);
-      }
-    } else {
-      lines.push("- none recorded");
-    }
-    lines.push("");
-  }
-
-  // Context
-  lines.push("## Context Modifiers By Agent");
-  lines.push("");
-  lines.push("_Skills, MCP tools, and commands that influenced LLM behavior._");
-  lines.push("");
-  let hasContext = false;
-  for (const row of rows) {
-    const { skills = [], mcp_tools = [], claude_commands = [] } = row.context;
-    if (skills.length || mcp_tools.length || claude_commands.length) {
-      hasContext = true;
-      lines.push(`### ${row.agent}`);
-      for (const s of skills) lines.push(`- **Skill:** \`${s}\``);
-      for (const m of mcp_tools) lines.push(`- **MCP:** \`${m.name}\` x${m.count}`);
-      for (const c of claude_commands) lines.push(`- **Command:** \`/${c}\``);
-      lines.push("");
-    }
-  }
-  if (!hasContext) {
-    lines.push("_No context modifiers detected._");
-    lines.push("");
-  }
-
-  // Files by agent
-  lines.push("## Files Read By Agent");
-  lines.push("");
-  for (const row of rows) {
-    lines.push(`### ${row.agent}`);
-    if (row.files_read.length > 0) {
-      for (const f of row.files_read) lines.push(`- \`${f}\``);
-    } else {
-      lines.push("- none recorded");
-    }
-    lines.push("");
-  }
-
-  // Session IDs for post-mortem analysis
-  const hasSessionIds = rows.some(r => r.session_id && r.session_id !== "n/d");
-  if (hasSessionIds) {
-    lines.push("## Session IDs");
-    lines.push("");
-    lines.push("_Use `opencode export <session_id>` for detailed token/file analysis._");
-    lines.push("");
-    lines.push("| Agent | Session ID |");
-    lines.push("|-------|------------|");
     for (const row of rows) {
-      const sid = row.session_id && row.session_id !== "n/d" ? `\`${row.session_id}\`` : "—";
-      lines.push(`| ${row.agent} | ${sid} |`);
+      if (!row.burn?.length) continue;
+      const pricing = getModelPricing(row.model);
+
+      // Select which snapshots to show: first, every ~20K context growth, and last
+      const shown = new Set<number>();
+      shown.add(0);
+      shown.add(row.burn.length - 1);
+      let lastCtx = 0;
+      for (let i = 0; i < row.burn.length; i++) {
+        if (row.burn[i].context - lastCtx >= 20_000) {
+          shown.add(i);
+          lastCtx = row.burn[i].context;
+        }
+      }
+
+      const indices = Array.from(shown).sort((a, b) => a - b);
+      for (const i of indices) {
+        const s = row.burn[i];
+        // cumInput/cumOutput stored in snapshot = real totals across ALL steps up to this point
+        const cumPrice = (s.cumInput / 1e6) * pricing.input + (s.cumOutput / 1e6) * pricing.output;
+        lines.push(
+          `| ${row.agent} | ${formatTokens(s.context)} | ${s.msgs} ` +
+          `| ${formatTokens(s.stepInput)} | ${formatTokens(s.stepOutput)} | ${formatTokens(s.stepCacheRead)} ` +
+          `| ${formatTokens(s.cumInput)} | ${formatTokens(s.cumOutput)} ` +
+          `| ${s.tools} | ${s.files} | ${money(cumPrice)} |`
+        );
+      }
     }
+  }
+
+  // Tool usage per agent — shows calls and output size (context cost)
+  const hasToolStats = rows.some(r => r.tool_stats?.length > 0);
+  if (hasToolStats) {
     lines.push("");
+    lines.push("## Tool Usage By Agent");
+    lines.push("");
+    lines.push("_Calls and output size per tool. Large outputs inflate context and cost._");
+    lines.push("");
+    for (const row of rows) {
+      if (!row.tool_stats?.length) continue;
+      lines.push(`### ${row.agent}`);
+      lines.push("");
+      lines.push("| Tool | Calls | Output |");
+      lines.push("|------|------:|-------:|");
+      for (const t of row.tool_stats) {
+        lines.push(`| ${t.name} | ${t.calls} | ${formatChars(t.outputChars)} |`);
+      }
+      lines.push("");
+    }
+  }
+
+  // Files read per agent — top files by size
+  const hasFileStats = rows.some(r => r.file_stats?.length > 0);
+  if (hasFileStats) {
+    lines.push("## Files Read By Agent");
+    lines.push("");
+    lines.push("_Top files by content size. Large files = expensive context._");
+    lines.push("");
+    for (const row of rows) {
+      if (!row.file_stats?.length) continue;
+      lines.push(`### ${row.agent}`);
+      lines.push("");
+      lines.push("| File | Reads | Size |");
+      lines.push("|------|------:|-----:|");
+      // Show top 10 files per agent
+      for (const f of row.file_stats.slice(0, 10)) {
+        lines.push(`| ${f.path} | ${f.reads} | ${formatChars(f.chars)} |`);
+      }
+      if (row.file_stats.length > 10) {
+        lines.push(`| _...and ${row.file_stats.length - 10} more_ | | |`);
+      }
+      lines.push("");
+    }
   }
 
   return lines.join("\n");
@@ -420,7 +318,10 @@ function buildAgentRow(data: SessionExport, agentName: string): AgentRow {
     model,
     tokens,
     tools: extractTools(data),
+    tool_stats: [],
     files_read: extractFilesRead(data),
+    file_stats: [],
+    burn: [],
     context: extractContext(data),
     cost,
     duration_seconds: duration,
@@ -501,8 +402,13 @@ function renderFoundry(slug: string): string {
           cache_read: record.tokens?.cache_read || 0,
           cache_write: record.tokens?.cache_write || 0,
         },
-        tools: record.tools || [],
+        tools: Array.isArray(record.tools)
+          ? record.tools.map((t: unknown) => typeof t === "string" ? { name: t, count: 1 } : t)
+          : [],
+        tool_stats: record.tool_stats || [],
         files_read: record.files_read || [],
+        file_stats: record.file_stats || [],
+        burn: record.burn || [],
         context: record.context || {},
         cost: record.cost || 0,
         duration_seconds: record.duration_seconds || 0,

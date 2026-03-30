@@ -1,5 +1,6 @@
 {
-    "recommendations": [
-        "anthropic.claude-code"
-    ]
+  "recommendations": [
+    "anthropic.claude-code",
+    "tanishqkancharla.opencode-vscode"
+  ]
 }

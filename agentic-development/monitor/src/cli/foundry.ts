@@ -63,6 +63,7 @@ import { cmdSupervisor } from "./supervisor.js";
 import { cmdBatch, cmdHeadless } from "./batch.js";
 import { cmdRetry } from "./retry.js";
 import { cmdCleanup } from "./cleanup.js";
+import { cmdInitEnv } from "./init-env.js";
 
 const SCRIPT_DIR = join(REPO_ROOT, "agentic-development");
 
@@ -92,6 +93,7 @@ Commands:
   stats [args]     Show pipeline statistics
   cleanup [args]   Clean old runtime artifacts
   setup            Initialize directories
+  init-env         Auto-generate env-check.json from project structure
   e2e-autofix      Run E2E tests, create fix tasks
 
 Run Options:
@@ -506,6 +508,9 @@ async function main(): Promise<void> {
       break;
     case "cleanup":
       exitCode = cmdCleanup(args);
+      break;
+    case "init-env":
+      exitCode = cmdInitEnv(args, REPO_ROOT);
       break;
     case "setup": {
       // Inline: ensure tasks/ directory exists (was foundry-setup.sh)
