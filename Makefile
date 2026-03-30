@@ -64,7 +64,7 @@ endef
         dev-agent-install dev-agent-migrate dev-agent-test dev-agent-analyse dev-agent-cs-check dev-agent-cs-fix \
         agent-discover conventions-test \
         external-agent-list external-agent-up external-agent-down external-agent-clone \
-        sync-skills foundry foundry-headless pipeline pipeline-batch monitor-foundry monitor-ultraworks \
+        sync-skills foundry foundry-headless reload-foundry pipeline pipeline-batch monitor-foundry monitor-ultraworks \
         monitor-ultraworks-launch monitor-ultraworks-attach monitor-ultraworks-watch monitor-ultraworks-menu \
         k8s-ctx k8s-ns k8s-deps k8s-deploy k8s-upgrade k8s-status k8s-logs k8s-destroy k8s-diff k8s-shell \
         k8s-build k8s-load k8s-secrets k8s-setup
@@ -138,6 +138,7 @@ help:
 		'make e2e                  Run Codecept.js + Playwright E2E tests (full isolated stack)' \
 		'make e2e-smoke            Run smoke-only E2E tests (API checks, no browser)' \
 		'make monitor-foundry      Monitor Foundry runtime' \
+		'make reload-foundry       Rebuild monitor, restart foundry TUI + headless' \
 		'make monitor-ultraworks   Monitor ultraworks pipeline (OpenCode/Sisyphus)' \
 		'make monitor-ultraworks-launch TASK="desc"  Launch OpenCode in tmux' \
 		'make monitor-ultraworks-attach  Attach to tmux session' \
@@ -394,7 +395,7 @@ hello-analyse:
 	$(call run-in,hello-agent,$(AGENTS_DIR)/hello-agent,./vendor/bin/phpstan analyse)
 
 dev-reporter-analyse:
-	$(call run-in,dev-reporter-agent,$(AGENTS_DIR)/dev-reporter-agent,./vendor/bin/phpstan analyse)
+	$(call run-in,dev-reporter-agent,$(AGENTS_DIR)/dev-reporter-agent,./vendor/bin/phpstan analyse --memory-limit=512M)
 
 dev-agent-analyse:
 	$(call run-in,dev-agent,$(AGENTS_DIR)/dev-agent,./vendor/bin/phpstan analyse)
@@ -542,6 +543,17 @@ foundry:
 
 foundry-headless:
 	@./agentic-development/foundry headless
+
+reload-foundry:
+	@echo "Rebuilding monitor..."
+	@cd agentic-development/monitor && npm run build
+	@echo "Stopping running foundry processes..."
+	@-pkill -f 'node.*foundry.js' 2>/dev/null || true
+	@sleep 1
+	@echo "Starting foundry TUI + headless..."
+	@./agentic-development/foundry headless &
+	@./agentic-development/foundry
+	@echo "Foundry reloaded."
 
 pipeline:
 	@test -n "$(TASK)" || (echo "Usage: make pipeline TASK=\"your task description\"" && exit 1)

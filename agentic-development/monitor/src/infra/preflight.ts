@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { env } from "node:process";
+import { discoverSubProjects, checkSubProjectsDirty, isGitClean } from "../lib/sub-projects.js";
 
 const DEBUG = env.FOUNDRY_DEBUG === "true";
 
@@ -135,6 +136,24 @@ export function runPreflight(repoRoot: string): PreflightResult {
     name: "anthropic-api-key",
     ...checkEnvVar("ANTHROPIC_API_KEY", false),
   });
+
+  const rootClean = isGitClean(repoRoot);
+  checks.push({
+    name: "workspace-clean",
+    passed: rootClean,
+    message: rootClean ? "Root repo is clean" : "Root repo has uncommitted changes",
+  });
+
+  const subProjectDirties = checkSubProjectsDirty(repoRoot);
+  for (const sp of subProjectDirties) {
+    checks.push({
+      name: `subproject-clean:${sp.name}`,
+      passed: sp.clean,
+      message: sp.clean
+        ? `${sp.name} is clean (branch: ${sp.branch})`
+        : `${sp.name} has ${sp.changes.length} uncommitted change(s) on branch ${sp.branch}`,
+    });
+  }
 
   const passed = checks.every(c => c.passed);
 

@@ -6,6 +6,7 @@ import { emitEvent, initEventsLog, EventType } from "../state/events.js";
 import { rlog } from "../lib/runtime-logger.js";
 import { initHandoff, appendHandoff } from "./handoff.js";
 import { checkEnvStatus } from "../lib/env-status.js";
+import { createBranchInAll, clearSubProjectCache } from "../lib/sub-projects.js";
 import {
   writeTaskState,
   setStateStatus,
@@ -105,6 +106,21 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
     } catch (err) {
       rlog("handoff_init_error", { taskDir, error: String(err) }, "ERROR");
       debug("handoff init failed", err);
+    }
+  }
+
+  // Create pipeline branch in root + all sub-project repos
+  if (branch) {
+    try {
+      clearSubProjectCache();
+      const created = createBranchInAll(branch, repoRoot);
+      if (created.length > 0) {
+        rlog("branch_created", { branch, repos: created });
+        debug("created branch in repos:", created);
+      }
+    } catch (err) {
+      rlog("branch_create_error", { branch, error: String(err) }, "WARN");
+      debug("branch creation failed", err);
     }
   }
 

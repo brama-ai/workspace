@@ -106,13 +106,21 @@ Before transitioning a task to `in_progress`, Foundry performs these checks:
 
 ### 3. Workspace Safety
 ```bash
-✓ workspace is clean (no uncommitted changes)
+✓ root workspace is clean (no uncommitted changes)
+✓ sub-project workspaces are clean (brama-core/, brama-website/, etc.)
 ✓ no untracked files in critical paths
 ✓ no dirty state in default branch checkout
 ✓ if using worktree: worktree can be created
 ```
 
-### 4. Concurrency Safety
+### 4. Sub-Project Branch Readiness
+```bash
+✓ all sub-projects with clean working trees can create pipeline branch
+✓ pipeline/<task-slug> branch created in root + clean sub-projects
+✓ sub-projects with dirty state are skipped (logged as warning)
+```
+
+### 5. Concurrency Safety
 ```bash
 ✓ no exclusive lock on required scope by another task
 ✓ initial scope defined or can be inferred
@@ -120,7 +128,7 @@ Before transitioning a task to `in_progress`, Foundry performs these checks:
 ✓ no conflicting file claims
 ```
 
-### 5. Policy Readiness
+### 6. Policy Readiness
 ```bash
 ✓ risk_class defined (low, medium, high, critical)
 ✓ expansion_policy defined (none, bounded, ask, auto)

@@ -331,13 +331,32 @@ Models are configured in `.opencode/agents.yaml`:
 
 Each Foundry run produces:
 
-- Git branch: `pipeline/<task-slug>`
+- Git branch: `pipeline/<task-slug>` — created in root repo **and all sub-project repos** (`brama-core/`, `brama-website/`, etc.)
 - Summary: `tasks/<slug>--foundry/summary.md`
 - Handoff: `tasks/<slug>--foundry/handoff.md`
 - State: `tasks/<slug>--foundry/state.json`
 - Events: `tasks/<slug>--foundry/events.jsonl`
 - Artifacts: `tasks/<slug>--foundry/artifacts/`
 - Reports: `.opencode/pipeline/reports/`
+
+### Sub-Project Branch Management
+
+Foundry automatically detects nested git repositories (sub-projects) under the workspace root and manages pipeline branches across all of them:
+
+| Repo | Branch Created | Purpose |
+|------|---------------|---------|
+| Root (`brama-workspace/`) | `pipeline/<task-slug>` | Workspace-level changes (compose, scripts, config) |
+| `brama-core/` | `pipeline/<task-slug>` | Product code changes |
+| `brama-website/` | `pipeline/<task-slug>` | Website changes |
+
+**Branch creation rules:**
+- Branch is created in all sub-projects that have a clean working tree
+- Sub-projects with uncommitted changes are skipped (branch created only after manual cleanup)
+- The pipeline branch is checked out in each clean sub-project before agents start
+
+**TUI display:**
+- `branchExists` checks all repos (root + sub-projects)
+- Shows branch status per sub-project in task detail view
 
 ## Make Targets
 

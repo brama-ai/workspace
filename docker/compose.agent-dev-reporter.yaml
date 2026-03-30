@@ -22,6 +22,8 @@ services:
       LANGFUSE_PUBLIC_KEY: lf_pk_local_dev
       LANGFUSE_SECRET_KEY: lf_sk_local_dev
       LANGFUSE_ENV: local
+    ports:
+      - "18087:80"
     volumes:
       - ../brama-agents/dev-reporter-agent:/var/www/html
     depends_on:
