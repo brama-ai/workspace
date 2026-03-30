@@ -664,9 +664,31 @@ export async function executeAgent(
     const duration = Math.floor((Date.now() - startTime) / 1000);
 
     if (result.exitCode === 0) {
-      rlogModelResult(name, currentModel, 0, callDuration, false, "success");
-
       const telemetry = extractTelemetryFromEvents(eventsFile, currentModel);
+      const hasOutput = telemetry.input > 0 || telemetry.output > 0 || telemetry.messageCount > 0;
+
+      // Integrity check: exit 0 but zero output means the model silently failed.
+      // Try fallback instead of returning success.
+      if (!hasOutput && name !== "u-summarizer") {
+        let logContent = "";
+        try { logContent = readFileSync(logFile, "utf8"); } catch { /* ignore */ }
+        const billingDetected = isBillingError(logContent);
+        const reason = billingDetected ? "billing_error_in_log" : "zero_output";
+
+        rlogModelResult(name, currentModel, 0, callDuration, billingDetected, `integrity_fail_${reason}`);
+        rlog("agent_integrity_fail", { agent: name, reason, model: currentModel, duration: callDuration }, "WARN");
+        debug("integrity check failed for", name, "on", currentModel, "— trying fallback");
+
+        if (billingDetected) {
+          blacklistModel(currentModel, 3600, { reasonCode: "billing_error", errorMessage: "zero output with billing error" });
+        }
+
+        lastErrorMessage = `${currentModel}: integrity fail (${reason})`;
+        modelIndex++;
+        continue; // try next fallback model
+      }
+
+      rlogModelResult(name, currentModel, 0, callDuration, false, "success");
 
       emitEvent("AGENT_END", {
         agent: name,

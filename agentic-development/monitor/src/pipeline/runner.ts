@@ -360,10 +360,9 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
     totalCost += result.tokensUsed.cost;
 
     if (result.success) {
-      // ── Integrity check: verify agent actually produced output ──────
-      // An agent that exits 0 but used 0 tokens and 0 messages is suspicious.
-      // This catches cases where the provider returned a billing/auth error
-      // that the process wrapper didn't detect, or the agent crashed silently.
+      // ── Last-resort integrity check ──────────────────────────────────
+      // Executor already retries with fallback models on zero output.
+      // This catches the edge case where ALL fallback models returned zero output.
       const hasOutput = result.tokensUsed.input > 0 || result.tokensUsed.output > 0 || result.messageCount > 0;
       if (!hasOutput && agent !== "u-summarizer") {
         // Check log file for billing errors as a last resort
