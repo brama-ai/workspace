@@ -849,11 +849,24 @@ export async function cmdHeadless(args: string[]): Promise<number> {
   if (existsSync(LOCKFILE)) {
     try {
       const lockPid = parseInt(readFileSync(LOCKFILE, "utf8").trim(), 10);
-      if (lockPid > 0 && lockPid !== process.pid && existsSync(`/proc/${lockPid}`)) {
-        console.log(`Foundry headless already running (PID ${lockPid})`);
-        return 0;
+      if (lockPid > 0 && lockPid !== process.pid) {
+        let alive = false;
+        const procStatus = `/proc/${lockPid}/status`;
+        if (existsSync(procStatus)) {
+          const content = readFileSync(procStatus, "utf8");
+          const match = content.match(/^State:\s+(\S)/m);
+          alive = !!(match && match[1] !== "Z");
+        }
+        if (!alive) {
+          try { process.kill(lockPid, 0); alive = true; } catch { /* dead */ }
+        }
+        if (alive) {
+          console.log(`Foundry headless already running (PID ${lockPid})`);
+          return 0;
+        }
       }
       // Stale lock — clean up
+      logBatch(`Removing stale headless lock (PID ${readFileSync(LOCKFILE, "utf8").trim()} no longer active)`);
       unlinkSync(LOCKFILE);
     } catch { /* ignore */ }
   }
