@@ -2,9 +2,25 @@
 
 [🇺🇸 English version](README.md)
 
-`brama-workspace` це локальний workspace-репозиторій для платформи Brama. Він відповідає за devcontainer, Docker Compose топологію, локальні env-шаблони, bootstrap-скрипти та helper-команди для розробника.
+`brama-workspace` це runtime shell для платформи Brama. Він відповідає за deployment та developer runtime: Docker Compose топологію, devcontainer, локальні env-шаблони, bootstrap-скрипти та helper-команди для оператора і розробника.
 
-Код застосунків живе в [`core`](/Users/nmdimas/work/brama-workspace/brama-core), який залишається окремим Git-репозиторієм. Цей repo відповідає не за продуктову логіку, а за те, як уся платформа піднімається і працює на машині розробника.
+Код застосунків живе в [`core`](/Users/nmdimas/work/brama-workspace/brama-core), який залишається окремим Git-репозиторієм. Цей repo відповідає не за продуктову логіку, а за те, як уся платформа збирається і запускається — чи то на одній машині, чи то в кластері.
+
+## Runtime Modes (Режими Запуску)
+
+Workspace підтримує три runtime modes. Кожен режим має своє призначення та аудиторію:
+
+| Режим | Призначення | Аудиторія | Точка входу |
+|-------|-------------|-----------|-------------|
+| **Docker Compose** | Основний single-node deployment | Оператори, розробники | `make up` |
+| **Devcontainer** | Development overlay поверх Compose | Розробники | VS Code → "Reopen in Container" |
+| **k3s / Kubernetes** | Cluster-oriented deployment | Оператори, SRE | `make k8s-setup` або Helm |
+
+**Docker Compose** — це baseline. Найшвидший шлях запустити всю платформу на одній машині. Усі інші режими або будуються поверх нього, або замінюють його для кластерних сценаріїв.
+
+**Devcontainer** — це development overlay, а не незалежна deployment topology. Він використовує ту саму Docker Compose інфраструктуру (Postgres, Redis тощо) і додає поверх неї відтворюваний developer toolchain. Запуск devcontainer не замінює Docker Compose — він розширює його інтерактивним середовищем розробки.
+
+**k3s / Kubernetes** — це cluster-oriented deployment mode. Використовує Helm charts і values-файли замість Docker Compose. Обирайте цей режим, коли потрібен multi-node deployment, production-grade оркестрація або Kubernetes-native інструменти. Workspace надає `make k8s-*` helper-и для локальної k3s розробки з Rancher Desktop.
 
 ## Структура Репозиторію
 
@@ -42,45 +58,9 @@
 
 Після того як цей мінімальний шлях працює, можна переходити до повного Docker Compose стеку або до Helm chart у Kubernetes.
 
-### 1. Local Development через `.devcontainer`
+### 1. Docker Compose (основний single-node deployment)
 
-Рекомендований шлях, якщо потрібен відтворюваний toolchain і ти хочеш розробляти `core` напряму з source code.
-
-```bash
-git clone <workspace-repo>
-cd brama-workspace
-
-cp .env.local.example .env.local
-make bootstrap
-
-# відкрий папку у VS Code і вибери "Reopen in Container"
-```
-
-Всередині devcontainer почни з `core + postgres + redis`:
-
-```bash
-cd brama-core/src
-composer install
-php bin/console doctrine:migrations:migrate --no-interaction
-php bin/console server:start
-```
-
-Нотатки:
-
-- devcontainer сидить у тій самій Docker мережі, що і `postgres` та `redis`
-- `DATABASE_URL` і `REDIS_URL` вже вказують на Docker hostname-и
-- це найзручніший шлях, якщо спочатку хочеш просто підняти storage-backed `core` і редагувати код live
-
-Коли потрібен більший workspace stack:
-
-```bash
-make setup
-make sync-skills
-```
-
-### 2. `.docker compose` Setup
-
-Використовуй це, якщо хочеш запускати платформу контейнерами з хоста без входу в devcontainer.
+Docker Compose — це найшвидший шлях запустити платформу на одній машині. Використовуйте цей режим, якщо хочете запускати платформу контейнерами з хоста.
 
 Мінімальний сценарій `core + postgres + redis`:
 
@@ -117,9 +97,47 @@ make litellm-db-init
 make migrate
 ```
 
-### 3. Kubernetes інсталяція через Chart Values
+### 2. Devcontainer (development overlay поверх Compose)
 
-Використовуй це, якщо хочеш запускати платформу в Kubernetes через Helm chart і values-файли.
+Devcontainer — це development overlay поверх Docker Compose, а не незалежна deployment topology. Він використовує ту саму Compose-інфраструктуру і додає відтворюваний developer toolchain.
+
+Рекомендований шлях, якщо потрібен відтворюваний toolchain і ти хочеш розробляти `core` напряму з source code.
+
+```bash
+git clone <workspace-repo>
+cd brama-workspace
+
+cp .env.local.example .env.local
+make bootstrap
+
+# відкрий папку у VS Code і вибери "Reopen in Container"
+```
+
+Всередині devcontainer почни з `core + postgres + redis`:
+
+```bash
+cd brama-core/src
+composer install
+php bin/console doctrine:migrations:migrate --no-interaction
+php bin/console server:start
+```
+
+Нотатки:
+
+- Devcontainer сидить у тій самій Docker мережі, що і `postgres` та `redis` — це overlay поверх Compose стеку, а не його заміна.
+- `DATABASE_URL` і `REDIS_URL` вже вказують на Docker hostname-и.
+- Це найзручніший шлях, якщо спочатку хочеш просто підняти storage-backed `core` і редагувати код live.
+
+Коли потрібен більший workspace stack:
+
+```bash
+make setup
+make sync-skills
+```
+
+### 3. k3s / Kubernetes (cluster-oriented deployment)
+
+Використовуйте цей режим, якщо хочете запускати платформу в Kubernetes через Helm chart і values-файли. Цей режим замінює Docker Compose на Helm-based оркестрацію.
 
 Повні operator guides:
 
@@ -281,10 +299,10 @@ make e2e
 
 ## Нотатки По Devcontainer
 
-Devcontainer розрахований на workspace-рівень:
+Devcontainer — це development overlay поверх Docker Compose стеку, а не окремий deployment mode:
 
 - монтує весь workspace у `/workspaces/brama`
-- використовує ту саму Compose топологію, що і host workflow
+- використовує ту саму Compose-інфраструктуру (Postgres, Redis тощо)
 - прокидає `.env.local` всередину container runtime
 - містить PHP, Node, Bun, Playwright, Docker CLI, Composer, Go, Claude Code і OpenCode
 

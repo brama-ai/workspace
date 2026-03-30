@@ -2,9 +2,25 @@
 
 [🇺🇦 Ukrainian version](README.ua.md)
 
-`brama-workspace` is the local development workspace for the Brama platform. It owns the developer runtime layer: devcontainer setup, Docker Compose topology, local environment templates, bootstrap scripts, and operator-focused helper commands.
+`brama-workspace` is the runtime shell for the Brama platform. It owns the deployment and developer runtime layer: Docker Compose topology, devcontainer setup, local environment templates, bootstrap scripts, and operator-focused helper commands.
 
-Application source code stays in [`core`](/Users/nmdimas/work/brama-workspace/brama-core), which remains a separate Git repository. The workspace repository is responsible for how the whole platform is assembled and run on a developer machine.
+Application source code stays in [`core`](/Users/nmdimas/work/brama-workspace/brama-core), which remains a separate Git repository. The workspace repository is responsible for how the whole platform is assembled and run — whether on a single machine or in a cluster.
+
+## Runtime Modes
+
+The workspace supports three runtime modes. Each mode serves a different purpose and audience:
+
+| Mode | Purpose | Audience | Entry point |
+|------|---------|----------|-------------|
+| **Docker Compose** | Primary single-node deployment | Operators, developers | `make up` |
+| **Devcontainer** | Development overlay on Compose | Developers | VS Code → "Reopen in Container" |
+| **k3s / Kubernetes** | Cluster-oriented deployment | Operators, SREs | `make k8s-setup` or Helm |
+
+**Docker Compose** is the baseline. It is the fastest path to run the entire platform on a single machine. All other modes either build on top of it or replace it for cluster scenarios.
+
+**Devcontainer** is a development overlay, not an independent deployment topology. It reuses the same Docker Compose stack for infrastructure services (Postgres, Redis, etc.) and adds a reproducible developer toolchain on top. Starting the devcontainer does not replace Docker Compose — it extends it with an interactive development environment.
+
+**k3s / Kubernetes** is the cluster-oriented deployment mode. It uses Helm charts and values files instead of Docker Compose. Choose this mode when you need multi-node deployment, production-grade orchestration, or Kubernetes-native tooling. The workspace provides `make k8s-*` helpers for local k3s development with Rancher Desktop.
 
 ## Repository Layout
 
@@ -42,45 +58,9 @@ The recommended open-source first step is to run `core` with only the storage-le
 
 After that baseline works, move to the full Docker Compose stack or the Helm chart install.
 
-### 1. Local Development via `.devcontainer`
+### 1. Docker Compose (primary single-node deployment)
 
-Recommended when you want the most reproducible toolchain and you primarily develop `core` from source.
-
-```bash
-git clone <workspace-repo>
-cd brama-workspace
-
-cp .env.local.example .env.local
-make bootstrap
-
-# open the folder in VS Code and choose "Reopen in Container"
-```
-
-Inside the devcontainer, start with `core + postgres + redis`:
-
-```bash
-cd brama-core/src
-composer install
-php bin/console doctrine:migrations:migrate --no-interaction
-php bin/console server:start
-```
-
-Notes:
-
-- The devcontainer shares the same Docker network as `postgres` and `redis`.
-- `DATABASE_URL` and `REDIS_URL` already point to Docker hostnames.
-- This path is best when you want to edit PHP code live and run only the minimal storage-backed app first.
-
-When you want the larger workspace stack later:
-
-```bash
-make setup
-make sync-skills
-```
-
-### 2. Docker Compose Setup
-
-Use this when you want to run the platform from containers on the host without entering the devcontainer.
+Docker Compose is the fastest path to run the platform on one machine. Use this when you want to run the platform from containers on the host.
 
 Minimal `core + postgres + redis` setup:
 
@@ -117,9 +97,47 @@ make litellm-db-init
 make migrate
 ```
 
-### 3. Kubernetes via Helm Chart Values
+### 2. Devcontainer (development overlay on Compose)
 
-Use this when you want the platform inside Kubernetes and prefer chart-driven configuration.
+The devcontainer is a development overlay on top of Docker Compose, not an independent deployment topology. It reuses the same Compose-managed infrastructure services and adds a reproducible developer toolchain.
+
+Recommended when you want the most reproducible toolchain and you primarily develop `core` from source.
+
+```bash
+git clone <workspace-repo>
+cd brama-workspace
+
+cp .env.local.example .env.local
+make bootstrap
+
+# open the folder in VS Code and choose "Reopen in Container"
+```
+
+Inside the devcontainer, start with `core + postgres + redis`:
+
+```bash
+cd brama-core/src
+composer install
+php bin/console doctrine:migrations:migrate --no-interaction
+php bin/console server:start
+```
+
+Notes:
+
+- The devcontainer shares the same Docker network as `postgres` and `redis` — it is an overlay on the Compose stack, not a replacement.
+- `DATABASE_URL` and `REDIS_URL` already point to Docker hostnames.
+- This path is best when you want to edit PHP code live and run only the minimal storage-backed app first.
+
+When you want the larger workspace stack later:
+
+```bash
+make setup
+make sync-skills
+```
+
+### 3. k3s / Kubernetes (cluster-oriented deployment)
+
+Use this when you want the platform inside Kubernetes and prefer chart-driven configuration. This mode replaces Docker Compose with Helm-based orchestration.
 
 Full operator guides:
 
@@ -281,10 +299,10 @@ The [`Makefile`](/Users/nmdimas/work/brama-workspace/Makefile) assembles the ful
 
 ## Devcontainer Notes
 
-The devcontainer is designed for workspace-level development:
+The devcontainer is a development overlay on the Docker Compose stack, not a standalone deployment mode:
 
 - it mounts the whole workspace at `/workspaces/brama`
-- it shares the same Compose topology as the host workflow
+- it reuses the same Compose-managed infrastructure services (Postgres, Redis, etc.)
 - it forwards `.env.local` into the container runtime
 - it includes PHP, Node, Bun, Playwright, Docker CLI, Composer, Go, Claude Code, and OpenCode
 

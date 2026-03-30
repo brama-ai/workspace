@@ -49,6 +49,7 @@ const PROFILES: Record<string, string[]> = {
   "docs-only": ["u-documenter", "u-summarizer"],
   "tests-only": ["u-coder", "u-tester", "u-summarizer"],
   "quality-gate": ["u-coder", "u-validator", "u-summarizer"],
+  simple: ["u-coder", "u-summarizer"],
 };
 
 async function main(): Promise<void> {
