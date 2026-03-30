@@ -60,3 +60,4 @@ agentic-development/monitor/node_modules/
 # Foundry persistent model blacklist (runtime state, not source)
 .foundry-blacklist.json
 .claude/
+.foundry-runner.lock
