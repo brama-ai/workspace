@@ -7,10 +7,13 @@ import { execSync } from "node:child_process";
 import { readAllTasks } from "../lib/tasks.js";
 import { formatDuration, formatTokens, formatCost } from "../lib/format.js";
 import { startWorkers, stopWorkers, retryFailed, runAutotest, archiveTask, ultraworksLaunch, ultraworksAttach, ultraworksCleanup, findRepoRoot, cleanZombies, runDoctor, runDoctorTask, getProcessStatusAsync, tailLog, getWorkerCount, cycleWorkerCount, isHeadlessRunning, ensureHeadless, } from "../lib/actions.js";
+import { checkEnvStatusAsync, upEnvironment, invalidateEnvCheckConfigCache } from "../lib/env-status.js";
+import { generateEnvCheck } from "../cli/init-env.js";
 import { promoteNextTodoToPending } from "../cli/batch.js";
-const VERSION = "2.4.0";
+const VERSION = "2.5.0";
 const REFRESH_MS = 3000;
 const PROC_REFRESH_MS = 15000; // Process status refresh — less frequent (was 3s, now 15s)
+const ENV_REFRESH_MS = 30000; // Environment status refresh — 30s (docker compose ps is slow)
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const COMMANDS = [
     // Foundry
@@ -19,6 +22,7 @@ const COMMANDS = [
     { key: "f", label: "Retry all failed tasks", section: "foundry", action: (r) => retryFailed(r) },
     { key: "z", label: "Clean zombie processes & stale lock", section: "foundry", action: (r) => cleanZombies(r) },
     { key: "x", label: "Run Doctor diagnostics", section: "foundry", action: (r) => runDoctor(r) },
+    { key: "e", label: "Up environment (docker compose up -d)", section: "foundry", action: (r) => { const res = upEnvironment(r); return { session: "env-up", attachCmd: res.success ? "tmux attach -t env-up" : "", message: res.message }; } },
     // Ultraworks
     { key: "u", label: "Launch Ultraworks (tmux)", section: "ultraworks", action: (r) => ultraworksLaunch(r) },
     { key: "U", label: "Attach to Ultraworks session", section: "ultraworks", action: (r) => ultraworksAttach(r) },
@@ -75,6 +79,10 @@ export function App({ tasksRoot }) {
     const [msg, setMsg] = useState("");
     const [lastAttachCmd, setLastAttachCmd] = useState("");
     const [tick, setTick] = useState(0);
+    // Environment status (docker compose services health)
+    const [envStatus, setEnvStatus] = useState({
+        ready: false, configMissing: false, dockerRunning: false, services: [], errors: ["Checking..."], checkedAt: 0,
+    });
     // Scroll offsets per detail tab (preserved when switching tabs)
     const [detailScrollOffsets, setDetailScrollOffsets] = useState({
         summary: 0,
@@ -135,6 +143,15 @@ export function App({ tasksRoot }) {
         };
         refreshProcs();
         const id = setInterval(refreshProcs, PROC_REFRESH_MS);
+        return () => clearInterval(id);
+    }, [repoRoot]);
+    // Refresh environment status periodically (async, slow — docker compose ps)
+    useEffect(() => {
+        const refreshEnv = () => {
+            checkEnvStatusAsync(repoRoot, (status) => setEnvStatus(status));
+        };
+        refreshEnv();
+        const id = setInterval(refreshEnv, ENV_REFRESH_MS);
         return () => clearInterval(id);
     }, [repoRoot]);
     // Clear message after 5s
@@ -382,6 +399,24 @@ export function App({ tasksRoot }) {
             handleCmd(runAutotest(repoRoot, true));
             return;
         }
+        // Up environment
+        if (input === "e" || input === "E") {
+            const res = upEnvironment(repoRoot);
+            handleCmd({ session: "env-up", attachCmd: res.success ? "tmux attach -t env-up" : "", message: res.message });
+            // Refresh env status after a delay to pick up new state
+            setTimeout(() => checkEnvStatusAsync(repoRoot, (s) => setEnvStatus(s)), 5000);
+            return;
+        }
+        // Init env-check.json (generate from project structure)
+        if (input === "i" || input === "I") {
+            const result = generateEnvCheck(repoRoot, false);
+            handleCmd({ session: "", attachCmd: "", message: result.skipped ? result.message : `Generated env-check.json (${result.config.required_services.length} required, ${result.config.optional_services?.length ?? 0} optional services)` });
+            if (result.written) {
+                invalidateEnvCheckConfigCache();
+                setTimeout(() => checkEnvStatusAsync(repoRoot, (s) => setEnvStatus(s)), 1000);
+            }
+            return;
+        }
         // Doctor diagnostics
         if (input === "x" || input === "X") {
             if (selected) {
@@ -402,7 +437,7 @@ export function App({ tasksRoot }) {
     // Footer hint per tab/view
     let footerHint = "";
     if (tab === 1 && view === "list")
-        footerHint = "  ↑/↓ select  Enter detail/qa  [a] agents  [l] logs  [d] archive  [x] doctor  [s] start  [k] stop  [q] quit";
+        footerHint = "  ↑/↓ select  Enter detail/qa  [a] agents  [l] logs  [d] archive  [x] doctor  [s] start  [k] stop  [e] env  [q] quit";
     if (tab === 1 && view === "detail")
         footerHint = "  ←/→ tabs  ↑/↓ scroll  PgUp/PgDn  [g] top  [G] end  [y] copy  [Esc] back  [q] quit";
     if (tab === 1 && view === "qa")
@@ -413,7 +448,28 @@ export function App({ tasksRoot }) {
         footerHint = "  ↑/↓ select  Enter run/toggle  ←/→ tabs  [q] quit";
     if (tab === 3)
         footerHint = "  ↑/↓ select process  [z] clean zombies  ←/→ tabs  [q] quit";
-    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time] })] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 }), _jsx(TabLabel, { n: 3, label: "Processes", active: tab === 3, hasAlert: procStatus.zombies.length > 0 || procStatus.lock?.zombie === true })] }), _jsx(Text, { children: " " }), tab === 1 && (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: cols, rows: rows, tick: tick, detailTab: detailTab, detailScrollOffsets: detailScrollOffsets, setDetailScrollOffsets: setDetailScrollOffsets, setMsg: setMsg, setView: setView })), tab === 2 && _jsx(CommandsTab, { cols: cols, selectedIdx: cmdIdx, repoRoot: repoRoot }), tab === 3 && (_jsx(ProcessesTab, { procStatus: procStatus, selectedIdx: procIdx, logLines: procLogLines, cols: cols, rows: rows, tick: tick })), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsx(Text, { dimColor: true, children: footerHint })] }));
+    // ENV indicator
+    const envLoading = envStatus.checkedAt === 0;
+    const envColor = envLoading
+        ? "yellow"
+        : envStatus.configMissing
+            ? "yellow"
+            : envStatus.ready
+                ? "green"
+                : "red";
+    const envIcon = envLoading
+        ? "○"
+        : envStatus.configMissing
+            ? "?"
+            : envStatus.ready
+                ? "●"
+                : "✗";
+    const envHint = envStatus.configMissing
+        ? "env-check.json missing — see docs/pipeline/en/env-check.md"
+        : !envStatus.ready && envStatus.errors.length > 0 && !envLoading
+            ? envStatus.errors.slice(0, 3).join(" | ")
+            : "";
+    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time, "  "] }), _jsxs(Text, { bold: true, color: envColor, children: [envIcon, " ENV"] }), envHint ? _jsxs(Text, { color: envStatus.configMissing ? "yellow" : "red", dimColor: true, children: [" ", envHint] }) : null, envStatus.ready && _jsxs(Text, { dimColor: true, children: [" (", envStatus.services.length, " services)"] }), envStatus.configMissing && _jsx(Text, { color: "yellow", children: "  [i] generate" }), !envStatus.ready && !envStatus.configMissing && !envLoading && _jsx(Text, { dimColor: true, children: "  [e] up env" })] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 }), _jsx(TabLabel, { n: 3, label: "Processes", active: tab === 3, hasAlert: procStatus.zombies.length > 0 || procStatus.lock?.zombie === true })] }), _jsx(Text, { children: " " }), tab === 1 && (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: cols, rows: rows, tick: tick, detailTab: detailTab, detailScrollOffsets: detailScrollOffsets, setDetailScrollOffsets: setDetailScrollOffsets, setMsg: setMsg, setView: setView })), tab === 2 && _jsx(CommandsTab, { cols: cols, selectedIdx: cmdIdx, repoRoot: repoRoot }), tab === 3 && (_jsx(ProcessesTab, { procStatus: procStatus, selectedIdx: procIdx, logLines: procLogLines, cols: cols, rows: rows, tick: tick })), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsx(Text, { dimColor: true, children: footerHint })] }));
 }
 // ── Tab label ─────────────────────────────────────────────────────
 function TabLabel({ n, label, active, hasAlert }) {

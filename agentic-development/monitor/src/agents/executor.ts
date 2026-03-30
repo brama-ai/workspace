@@ -306,6 +306,23 @@ export function extractTelemetryFromEvents(eventsFile: string, model: string): E
   return result;
 }
 
+// Patterns that indicate a billing/quota/rate-limit failure from the provider.
+// These are NOT model quality issues — retrying the same model won't help.
+const BILLING_ERROR_PATTERNS = [
+  /insufficient balance/i,
+  /insufficient.?credits/i,
+  /quota exceeded/i,
+  /rate limit exceeded/i,
+  /billing.*error/i,
+  /payment required/i,
+  /account.*suspended/i,
+  /credit.*exhausted/i,
+];
+
+export function isBillingError(output: string): boolean {
+  return BILLING_ERROR_PATTERNS.some((pattern) => pattern.test(output));
+}
+
 async function runWithTimeout(
   command: string,
   args: string[],
@@ -317,7 +334,7 @@ async function runWithTimeout(
     agentName?: string;
     taskDir?: string;
   }
-): Promise<{ exitCode: number; pid: number }> {
+): Promise<{ exitCode: number; pid: number; billingError: boolean }> {
   const { cwd, timeout, logFile, eventsFile, agentName = "unknown", taskDir } = options;
 
   // Ensure log directory exists
@@ -346,6 +363,7 @@ async function runWithTimeout(
 
     let timeoutId: NodeJS.Timeout | null = null;
     let resolved = false;
+    let detectedBillingError = false;
 
     const cleanup = () => {
       if (timeoutId) {
@@ -358,7 +376,7 @@ async function runWithTimeout(
       if (resolved) return;
       resolved = true;
       cleanup();
-      resolve({ exitCode, pid });
+      resolve({ exitCode, pid, billingError: detectedBillingError });
     };
 
     timeoutId = setTimeout(() => {
@@ -392,6 +410,11 @@ async function runWithTimeout(
         // Not JSON — goes to regular log buffer
         logBuffer += line + "\n";
         process.stdout.write(line + "\n");
+        // Detect billing/quota errors in non-JSON stdout
+        if (!detectedBillingError && isBillingError(line)) {
+          detectedBillingError = true;
+          debug("billing error detected in stdout for", agentName);
+        }
       }
     };
 
@@ -409,6 +432,11 @@ async function runWithTimeout(
       const chunk = data.toString();
       logBuffer += chunk;
       process.stderr.write(chunk);
+      // Detect billing/quota errors from provider
+      if (!detectedBillingError && isBillingError(chunk)) {
+        detectedBillingError = true;
+        debug("billing error detected in stderr for", agentName);
+      }
     });
 
     proc.on("close", (code) => {
@@ -565,6 +593,22 @@ export async function executeAgent(
         stallDetected: false,
         hitlWaiting: true,
       };
+    }
+
+    // ── Billing/quota error: blacklist model for longer (1h) and try fallback ──
+    if (result.billingError) {
+      const blReason = "billing_error";
+      rlogModelResult(name, currentModel, result.exitCode, callDuration, true, blReason);
+      rlogBlacklist(currentModel, 3600, blReason, result.exitCode, callDuration);
+
+      emitEvent("AGENT_END", { agent: name, model: currentModel, exitCode: result.exitCode, duration: callDuration, status: "billing_error" });
+      // Blacklist for 1 hour — billing issues don't resolve quickly
+      blacklistModel(currentModel, 3600);
+      modelIndex++;
+      // Don't count billing failures as retry attempts
+      attempt = Math.max(0, attempt - 1);
+      debug("billing error, blacklisted", currentModel, "trying next fallback");
+      continue;
     }
 
     // exit code 124 = killed by foundry timeout (SIGTERM)

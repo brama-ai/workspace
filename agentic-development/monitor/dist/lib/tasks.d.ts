@@ -43,10 +43,11 @@ export interface TaskInfo {
     sessionName?: string;
     worktreePath?: string;
     branchName?: string;
+    branchExists?: boolean;
+    branchSubProjects?: Record<string, boolean>;
     hasStaleLock?: boolean;
     lastEventTime?: string;
     lastEventAge?: number;
-    branchExists?: boolean;
     attempt?: number;
     profile?: string;
     qaData?: QAData;

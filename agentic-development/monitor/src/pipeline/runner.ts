@@ -1,6 +1,6 @@
 import { env } from "node:process";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { executeAgent, AgentConfig, AgentResult, getTimeout } from "../agents/executor.js";
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import { executeAgent, AgentConfig, AgentResult, getTimeout, isBillingError } from "../agents/executor.js";
 import { checkAndCompact, getSessionContextStatus } from "../agents/context-guard.js";
 import { emitEvent, initEventsLog, EventType } from "../state/events.js";
 import { rlog } from "../lib/runtime-logger.js";
@@ -211,6 +211,48 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
     totalCost += result.tokensUsed.cost;
 
     if (result.success) {
+      // ── Integrity check: verify agent actually produced output ──────
+      // An agent that exits 0 but used 0 tokens and 0 messages is suspicious.
+      // This catches cases where the provider returned a billing/auth error
+      // that the process wrapper didn't detect, or the agent crashed silently.
+      const hasOutput = result.tokensUsed.input > 0 || result.tokensUsed.output > 0 || result.messageCount > 0;
+      if (!hasOutput && agent !== "u-summarizer") {
+        // Check log file for billing errors as a last resort
+        let logContent = "";
+        try { logContent = readFileSync(result.logFile, "utf8"); } catch { /* ignore */ }
+        const billingDetected = isBillingError(logContent);
+
+        rlog("agent_integrity_fail", {
+          agent,
+          reason: billingDetected ? "billing_error_in_log" : "zero_output",
+          duration: result.duration,
+          model: result.modelUsed,
+        }, "WARN");
+
+        debug("integrity check failed for", agent, billingDetected ? "(billing error)" : "(zero output)");
+
+        // Treat as failure — do not mark as done
+        failedAgent = agent;
+        emitEvent("AGENT_END", {
+          agent,
+          status: "failed",
+          duration: result.duration,
+          exitCode: 0,
+        });
+
+        if (taskDir) {
+          try {
+            upsertAgent(taskDir, agent, "failed", result.modelUsed, result.duration,
+              result.tokensUsed.input, result.tokensUsed.output, result.tokensUsed.cost);
+            setStateStatus(taskDir, "failed", agent);
+            const handoffFile = `${taskDir}/handoff.md`;
+            appendHandoff(handoffFile, agent,
+              `Status: FAILED (integrity check) | ${billingDetected ? "Billing error detected" : "Zero output — agent produced no tokens"} | Duration: ${result.duration}s | Model: ${result.modelUsed}`);
+          } catch { /* ignore */ }
+        }
+        break;
+      }
+
       completedAgents.push(agent);
       emitEvent("AGENT_END", {
         agent,
@@ -442,7 +484,7 @@ function buildPrompt(agent: string, config: PipelineConfig): string {
     "u-tester": `Run tests and fix any failures`,
     "u-auditor": `Audit the changes for quality and compliance`,
     "u-documenter": `Write documentation for the changes`,
-    "u-summarizer": `Create the final task summary for this pipeline run. Write the markdown summary to \`${taskDir}/summary.md\`. Read \`${taskDir}/handoff.md\` for cross-agent context. Report in Ukrainian. Include: status (PASS/FAIL), what was done, difficulties, recommendations.`,
+    "u-summarizer": `Create the final task summary for this pipeline run. Write the markdown summary to \`${taskDir}/summary.md\`. Read \`${taskDir}/handoff.md\` for cross-agent context. Report in Ukrainian. Include: status (PASS/FAIL), what was done, difficulties, recommendations. To generate telemetry, run: \`./agentic-development/foundry render-summary foundry ${taskDir.split("/").pop()?.replace(/--foundry$/, "")}\` (do NOT use npx tsx — use the foundry CLI).`,
     "u-investigator": `Investigate the issue: ${taskMessage}`,
     "u-merger": `Merge the branch ${branch} and resolve conflicts`,
   };

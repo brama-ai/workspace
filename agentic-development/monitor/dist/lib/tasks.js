@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
+import { discoverSubProjects, checkBranchInAll as checkBranchInAllRepos } from "./sub-projects.js";
 const STATUS_ORDER = {
     in_progress: 0,
     waiting_answer: 1,
@@ -99,18 +100,31 @@ function getLastEvent(taskDir) {
 }
 // Batch check which git branches exist (single git call instead of per-task)
 let _branchCache = { branches: new Set(), ts: 0 };
-const BRANCH_CACHE_TTL = 30_000; // 30s
+const BRANCH_CACHE_TTL = 30_000;
 function refreshBranchCache() {
     const now = Date.now();
     if (now - _branchCache.ts < BRANCH_CACHE_TTL)
         return _branchCache.branches;
     try {
-        const out = execSync("git branch -a --no-color 2>/dev/null", { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+        const root = typeof process !== "undefined" && process.env.REPO_ROOT
+            ? process.env.REPO_ROOT
+            : process.cwd();
         const branches = new Set();
-        for (const line of out.split("\n")) {
-            const name = line.replace(/^\*?\s+/, "").replace(/^remotes\/origin\//, "").trim();
-            if (name && !name.startsWith("HEAD"))
-                branches.add(name);
+        const repos = [root, ...discoverSubProjects(root).map(p => p.path)];
+        for (const repoPath of repos) {
+            try {
+                const out = execSync("git branch -a --no-color 2>/dev/null", {
+                    encoding: "utf8",
+                    stdio: ["pipe", "pipe", "pipe"],
+                    cwd: repoPath,
+                });
+                for (const line of out.split("\n")) {
+                    const name = line.replace(/^\*?\s+/, "").replace(/^remotes\/origin\//, "").trim();
+                    if (name && !name.startsWith("HEAD"))
+                        branches.add(name);
+                }
+            }
+            catch { /* ignore per-repo errors */ }
         }
         _branchCache = { branches, ts: now };
         return branches;
@@ -206,6 +220,7 @@ export function readAllTasks(root) {
         if (status === "waiting_answer") {
             qaData = readQAData(taskDir);
         }
+        const branchStatus = branchName ? checkBranchInAllRepos(branchName, root) : null;
         tasks.push({
             dir: taskDir,
             workflow,
@@ -222,11 +237,11 @@ export function readAllTasks(root) {
             branchName,
             attempt: state?.attempt,
             profile: state?.profile,
-            // Diagnostic fields
             hasStaleLock: checkStaleLock(taskDir, status),
             lastEventTime: lastEvent?.time,
             lastEventAge: lastEvent?.age,
-            branchExists: checkBranchExists(branchName),
+            branchExists: branchStatus ? branchStatus.anyExists : checkBranchExists(branchName),
+            branchSubProjects: branchStatus ? branchStatus.subprojects : undefined,
             // HITL fields
             qaData,
             waitingAgent: state?.waiting_agent,

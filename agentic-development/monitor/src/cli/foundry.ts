@@ -92,6 +92,7 @@ Commands:
   retry [args]     Retry failed tasks
   stats [args]     Show pipeline statistics
   cleanup [args]   Clean old runtime artifacts
+  render-summary   Render telemetry summary (foundry <slug> | ultraworks [id])
   setup            Initialize directories
   init-env         Auto-generate env-check.json from project structure
   e2e-autofix      Run E2E tests, create fix tasks
@@ -526,6 +527,32 @@ async function main(): Promise<void> {
       exitCode = 0;
       break;
     }
+    case "render-summary":
+    case "summary": {
+      // Render telemetry summary — uses compiled JS, no tsx/esbuild dependency.
+      // Replaces: npx tsx render-summary.ts foundry <slug>
+      const [summaryMode, summaryArg] = args;
+      const renderScript = join(SCRIPT_DIR, "monitor", "dist", "cli", "render-summary.js");
+      const renderSrc = join(SCRIPT_DIR, "monitor", "src", "cli", "render-summary.ts");
+      try {
+        if (existsSync(renderScript)) {
+          execFileSync("node", [renderScript, summaryMode || "foundry", summaryArg || ""].filter(Boolean), {
+            stdio: "inherit",
+            env: { ...process.env, REPO_ROOT, PIPELINE_TASKS_ROOT: TASKS_ROOT },
+          });
+        } else {
+          // Fallback to tsx only if dist not built
+          execSync(`npx tsx "${renderSrc}" ${summaryMode || "foundry"} ${summaryArg || ""}`, {
+            stdio: "inherit",
+            env: { ...process.env, REPO_ROOT, PIPELINE_TASKS_ROOT: TASKS_ROOT },
+          });
+        }
+      } catch (e: any) {
+        exitCode = e.status ?? 1;
+      }
+      break;
+    }
+
     case "e2e-autofix":
     case "autotest": {
       const e2eScript = join(SCRIPT_DIR, "lib", "foundry-e2e.sh");

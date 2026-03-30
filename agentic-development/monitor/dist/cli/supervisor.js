@@ -24,6 +24,7 @@ const PROFILES = {
     complex: ["u-architect", "u-coder", "u-auditor", "u-validator", "u-tester", "u-summarizer"],
     bugfix: ["u-investigator", "u-coder", "u-validator", "u-tester", "u-summarizer"],
     "docs-only": ["u-documenter", "u-summarizer"],
+    simple: ["u-coder", "u-summarizer"],
 };
 /** Per-agent stall thresholds (seconds since last activity) */
 const AGENT_STALL_THRESHOLD = {
