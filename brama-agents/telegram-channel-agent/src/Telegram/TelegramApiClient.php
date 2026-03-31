@@ -10,7 +10,7 @@ use Psr\Log\LoggerInterface;
  * Low-level Telegram Bot API HTTP client.
  * Moved from brama-core App\Telegram\Api\TelegramApiClient.
  */
-final class TelegramApiClient
+final class TelegramApiClient implements TelegramApiClientInterface
 {
     private const API_BASE = 'https://api.telegram.org/bot';
 

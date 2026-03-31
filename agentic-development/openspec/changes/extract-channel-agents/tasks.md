@@ -153,34 +153,35 @@ New services that route through A2A to channel agents.
 
 ## Phase 5: Traffic Switch + Cleanup
 
-- [ ] **5.1** Switch inbound traffic
+- [x] **5.1** Switch inbound traffic
   - `ChannelWebhookController` becomes primary (already has legacy alias)
   - Remove `TelegramWebhookController` (old dedicated controller)
   - **Verify:** webhook still works, events still dispatch, platform commands still respond
 
-- [ ] **5.2** Switch outbound traffic
+- [x] **5.2** Switch outbound traffic
   - `PlatformCommandRouter` uses `ChannelManager.send()` for responses
   - All business agents use `ChannelManager` instead of direct `TelegramSender`
   - **Verify:** outbound messages delivered correctly for all content types
 
-- [ ] **5.3** Remove deprecated Telegram namespace
-  - Delete `src/Telegram/` entirely
+- [x] **5.3** Remove deprecated Telegram namespace
+  - Delete `src/Telegram/Api/`, `src/Telegram/Service/` entirely
+  - Keep `TelegramBotRepository` and `TelegramChatRepository` (reference channel_instances/channel_conversations)
   - Remove deprecated aliases from Phase 1
   - **Verify:** no imports reference old namespace, PHPStan clean, all tests green
 
-- [ ] **5.4** Remove standalone telegram-qa
+- [x] **5.4** Remove standalone telegram-qa
   - Delete `agentic-development/telegram-qa/`
   - Update Foundry pipeline to use agent A2A for HITL instead of spawning telegram-qa process
   - **Verify:** HITL works through agent, no references to old telegram-qa
 
-- [ ] **5.5** Update admin UI
-  - `TelegramBotsController` → `ChannelInstancesController`
-  - `TelegramChatsAdminController` → `ChannelConversationsController`
+- [x] **5.5** Update admin UI
+  - `TelegramBotsController` → `ChannelInstancesController` (already existed, old controller removed)
+  - `TelegramChatsAdminController` → `ChannelConversationsController` (already existed, old controller removed)
   - Channel-specific form fields loaded dynamically based on `channel_type`
   - Admin actions (test-connection, set-webhook) go through `ChannelManager` → agent A2A
   - **Verify:** admin pages render, CRUD operations work, channel-specific actions delegated
 
-- [ ] **5.6** Update console commands
+- [x] **5.6** Update console commands
   - `app:telegram:set-webhook` → `app:channel:set-webhook --type telegram`
   - `app:telegram:poll` → `app:channel:poll --type telegram`
   - `app:telegram:webhook-info` → `app:channel:webhook-info --type telegram`
