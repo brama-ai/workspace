@@ -1,0 +1,24 @@
+monolog:
+    handlers:
+        stderr:
+            type: stream
+            path: 'php://stderr'
+            level: error
+            process_psr_3_messages:
+                enabled: true
+        stdout:
+            type: stream
+            path: 'php://stdout'
+            level: info
+            process_psr_3_messages:
+                enabled: true
+
+when@test:
+    monolog:
+        handlers:
+            stderr:
+                type: stream
+                path: 'php://stderr'
+                level: error
+            stdout:
+                type: 'null'

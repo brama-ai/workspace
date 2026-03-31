@@ -110,45 +110,46 @@ New services that route through A2A to channel agents.
 
 ## Phase 4: Telegram Channel Agent
 
-- [ ] **4.1** Create agent project structure
+- [x] **4.1** Create agent project structure
   - Agent manifest (A2A skills: normalizeInbound, sendOutbound, validateWebhook, getCapabilities, adminAction)
   - Decide runtime: PHP (reuse existing code directly) or TypeScript (merge with telegram-qa)
   - Project scaffolding: src/, tests/, config/, Dockerfile
   - **Verify:** agent starts and responds to health check
-  - **Impl:** `agents/telegram-channel-agent/` or as a Symfony bundle extracted from core
+  - **Impl:** `agents/telegram-channel-agent/` — PHP/Symfony, mirrors hello-agent structure
 
-- [ ] **4.2** Move Telegram API client + sender
+- [x] **4.2** Move Telegram API client + sender
   - Move `TelegramApiClient` and `TelegramSender` to agent
   - Implement `channel.sendOutbound` skill: receives DeliveryPayload + token → calls Telegram API → returns DeliveryResult
   - Handle: message splitting (4096 limit), parse mode fallback (MarkdownV2 → HTML), media groups, thread routing
   - **Verify:** send text/photo/media messages via A2A skill call, existing delivery tests ported
-  - **Impl:** agent `src/TelegramApiClient.php`, `src/TelegramSender.php`
+  - **Impl:** agent `src/Telegram/TelegramApiClient.php`, `src/Telegram/TelegramSender.php`
 
-- [ ] **4.3** Move webhook normalization
+- [x] **4.3** Move webhook normalization
   - Move `TelegramUpdateNormalizer` to agent
   - Implement `channel.normalizeInbound` skill: receives raw Telegram update → returns NormalizedEvent
   - Implement `channel.validateWebhook` skill: verifies X-Telegram-Bot-Api-Secret-Token header
   - **Verify:** all Telegram event types normalize correctly (message, command, callback, member join/leave)
-  - **Impl:** agent `src/TelegramNormalizer.php`
+  - **Impl:** agent `src/Telegram/TelegramNormalizer.php`
 
-- [ ] **4.4** Implement capabilities + admin actions
+- [x] **4.4** Implement capabilities + admin actions
   - `channel.getCapabilities`: threads=true, reactions=false, editing=true, media=true, mediaGroups=true, callbackQueries=true, maxMessage=4096, maxCaption=1024
   - `channel.adminAction`: test-connection (getMe), set-webhook, delete-webhook, webhook-info
   - **Verify:** admin UI test-connection and set-webhook work through A2A
-  - **Impl:** agent `src/TelegramCapabilities.php`, `src/TelegramAdminActions.php`
+  - **Impl:** agent `src/A2A/TelegramChannelA2AHandler.php` (capabilities + admin actions inline)
 
-- [ ] **4.5** Merge telegram-qa HITL functionality
+- [x] **4.5** Merge telegram-qa HITL functionality
   - Port `agentic-development/telegram-qa/` logic into agent
   - Add skill: `channel.hitl.pollQuestions` — monitors tasks/ for waiting_answer, sends via Telegram
   - Add skill: `channel.hitl.handleAnswer` — receives callback, writes qa.json, triggers foundry resume-qa
   - Pipeline calls agent via A2A instead of spawning standalone telegram-qa process
   - **Verify:** HITL flow works end-to-end: pipeline question → Telegram → user answer → pipeline resume
-  - **Impl:** agent `src/TelegramQABridge.php`
+  - **Impl:** agent `src/A2A/TelegramChannelA2AHandler.php` (HITL skills inline)
 
-- [ ] **4.6** Register agent in AgentRegistry
-  - Auto-discovery via existing `AgentDiscoveryProviderInterface` (Kubernetes/Traefik)
-  - Or manual registration in DB + `ChannelRegistry` mapping: telegram → telegram-channel-agent
-  - **Verify:** `ChannelRegistry.resolveAgent("telegram")` returns correct agent
+- [x] **4.6** Register agent in AgentRegistry
+  - Migration `Version20260331000003.php`: sets agent_name='telegram-channel-agent' on channel_instances where channel_type='telegram'
+  - Auto-discovery via existing `AgentDiscoveryProviderInterface` (Kubernetes/Traefik) will pick up the agent via Docker label `ai.platform.agent=true`
+  - **Verify:** `ChannelRegistry.resolveAgent("telegram")` returns correct agent after migration
+  - **Impl:** `brama-core/src/migrations/Version20260331000003.php`
 
 ## Phase 5: Traffic Switch + Cleanup
 

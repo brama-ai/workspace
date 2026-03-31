@@ -1,0 +1,28 @@
+parameters:
+    app.telegram_bot_token: '%env(TELEGRAM_BOT_TOKEN)%'
+    app.telegram_webhook_secret: '%env(TELEGRAM_WEBHOOK_SECRET)%'
+    app.tasks_root: '%env(PIPELINE_TASKS_ROOT)%'
+    app.foundry_sh: '%env(FOUNDRY_SH)%'
+    app.pipeline_telegram_chat_id: '%env(PIPELINE_TELEGRAM_CHAT_ID)%'
+    app.pipeline_telegram_allowed_users: '%env(PIPELINE_TELEGRAM_ALLOWED_USERS)%'
+
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+
+    App\:
+        resource: '../src/'
+        exclude:
+            - '../src/DependencyInjection/'
+            - '../src/Kernel.php'
+
+    App\Telegram\TelegramApiClient:
+        arguments: []
+
+    App\A2A\TelegramChannelA2AHandler:
+        arguments:
+            $tasksRoot: '%app.tasks_root%'
+            $foundrySh: '%app.foundry_sh%'
+            $pipelineChatId: '%app.pipeline_telegram_chat_id%'
+            $allowedUsers: '%app.pipeline_telegram_allowed_users%'

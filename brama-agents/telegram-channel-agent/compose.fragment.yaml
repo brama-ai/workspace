@@ -1,0 +1,19 @@
+services:
+  telegram-channel-agent:
+    build:
+      context: ./agents/telegram-channel-agent
+    container_name: telegram-channel-agent
+    labels:
+      - "ai.platform.agent=true"
+      - "ai.platform.agent.name=telegram-channel-agent"
+      - "ai.platform.agent.channel_type=telegram"
+    networks:
+      - a2a-network
+    env_file:
+      - ./agents/telegram-channel-agent/.env.local
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped

@@ -1,0 +1,85 @@
+{
+    "name": "codeception/module-symfony",
+    "description": "Codeception module for Symfony framework",
+    "type": "library",
+    "license": "MIT",
+    "keywords": [
+        "codeception",
+        "functional testing",
+        "symfony"
+    ],
+    "homepage": "https://codeception.com/",
+    "support": {
+        "docs": "https://codeception.com/docs/modules/Symfony"
+    },
+    "authors": [
+        {
+            "name": "Michael Bodnarchuk"
+        },
+        {
+            "name": "Gustavo Nieves",
+            "homepage": "https://medium.com/@ganieves"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "ext-json": "*",
+        "codeception/codeception": "^5.3",
+        "codeception/lib-innerbrowser": "^3.1 | ^4.0"
+    },
+    "require-dev": {
+        "codeception/module-asserts": "^3.0",
+        "codeception/module-doctrine": "^3.1",
+        "doctrine/orm": "^3.5",
+        "friendsofphp/php-cs-fixer": "^3.85",
+        "phpstan/phpstan": "^2.1",
+        "phpunit/phpunit": "^10.0",
+        "symfony/browser-kit": "^5.4 | ^6.4 | ^7.3",
+        "symfony/cache": "^5.4 | ^6.4 | ^7.3",
+        "symfony/config": "^5.4 | ^6.4 | ^7.3",
+        "symfony/dependency-injection": "^5.4 | ^6.4 | ^7.3",
+        "symfony/dom-crawler": "^5.4 | ^6.4 | ^7.3",
+        "symfony/dotenv": "^5.4 | ^6.4 | ^7.3",
+        "symfony/error-handler": "^5.4 | ^6.4 | ^7.3",
+        "symfony/filesystem": "^5.4 | ^6.4 | ^7.3",
+        "symfony/form": "^5.4 | ^6.4 | ^7.3",
+        "symfony/framework-bundle": "^5.4 | ^6.4 | ^7.3",
+        "symfony/http-client": "^5.4 | ^6.4 | ^7.3",
+        "symfony/http-foundation": "^5.4 | ^6.4 | ^7.3",
+        "symfony/http-kernel": "^5.4 | ^6.4 | ^7.3",
+        "symfony/mailer": "^5.4 | ^6.4 | ^7.3",
+        "symfony/mime": "^5.4 | ^6.4 | ^7.3",
+        "symfony/notifier": "^5.4 | ^6.4 | ^7.3",
+        "symfony/options-resolver": "^5.4 | ^6.4 | ^7.3",
+        "symfony/property-access": "^5.4 | ^6.4 | ^7.3",
+        "symfony/property-info": "^5.4 | ^6.4 | ^7.3",
+        "symfony/routing": "^5.4 | ^6.4 | ^7.3",
+        "symfony/security-bundle": "^5.4 | ^6.4 | ^7.3",
+        "symfony/security-core": "^5.4 | ^6.4 | ^7.3",
+        "symfony/security-csrf": "^5.4 | ^6.4 | ^7.3",
+        "symfony/security-http": "^5.4 | ^6.4 | ^7.3",
+        "symfony/translation": "^5.4 | ^6.4 | ^7.3",
+        "symfony/twig-bundle": "^5.4 | ^6.4 | ^7.3",
+        "symfony/validator": "^5.4 | ^6.4 | ^7.3",
+        "symfony/var-exporter": "^5.4 | ^6.4 | ^7.3",
+        "vlucas/phpdotenv": "^4.2 | ^5.4"
+    },
+    "suggest": {
+        "codeception/module-asserts": "Include traditional PHPUnit assertions in your tests",
+        "symfony/web-profiler-bundle": "Tool that gives information about the execution of requests"
+    },
+    "autoload": {
+        "psr-4": {
+            "Codeception\\": "src/Codeception/"
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "RC",
+    "scripts": {
+        "phpstan": "phpstan analyse src --level=max --memory-limit=1G",
+        "cs-check": "php-cs-fixer fix src --dry-run --diff --using-cache=no",
+        "cs-fix": "php-cs-fixer fix src --using-cache=no"
+    }
+}
