@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\A2A;
 
-use App\Telegram\TelegramApiClient;
+use App\Telegram\TelegramApiClientInterface;
 use App\Telegram\TelegramNormalizer;
-use App\Telegram\TelegramSender;
+use App\Telegram\TelegramSenderInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -16,8 +16,8 @@ use Psr\Log\LoggerInterface;
 final class TelegramChannelA2AHandler
 {
     public function __construct(
-        private readonly TelegramApiClient $apiClient,
-        private readonly TelegramSender $sender,
+        private readonly TelegramApiClientInterface $apiClient,
+        private readonly TelegramSenderInterface $sender,
         private readonly TelegramNormalizer $normalizer,
         private readonly LoggerInterface $logger,
         private readonly string $tasksRoot,

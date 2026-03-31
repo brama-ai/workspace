@@ -11,10 +11,10 @@ use Psr\Log\LoggerInterface;
  * Moved from brama-core App\Telegram\Service\TelegramSender.
  * Adapted for agent: receives token directly (no bot registry lookup).
  */
-final class TelegramSender
+final class TelegramSender implements TelegramSenderInterface
 {
     public function __construct(
-        private readonly TelegramApiClient $apiClient,
+        private readonly TelegramApiClientInterface $apiClient,
         private readonly LoggerInterface $logger,
     ) {
     }

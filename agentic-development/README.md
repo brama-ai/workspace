@@ -28,7 +28,6 @@ agentic-development/
 │   └── ...               ← env-check, preflight, e2e, stats
 │
 ├── runtime/logs/         ← Wrapper-level logs
-├── telegram-qa/          ← Telegram HITL bot
 ├── doctor/               ← Root cause analysis reports
 └── tests/                ← Bash integration tests
 ```
