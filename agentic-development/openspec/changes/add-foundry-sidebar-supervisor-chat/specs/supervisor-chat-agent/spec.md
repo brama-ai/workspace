@@ -44,3 +44,32 @@ The command SHALL remain as a compatibility path during a deprecation window ins
 - **WHEN** the operator runs `foundry supervisor`
 - **THEN** Foundry shows a deprecation notice that points to the sidebar chat workflow
 - **AND** the command remains non-breaking during the deprecation window
+- **AND** the existing supervisor functionality continues to work for the duration of the deprecation period
+
+#### Scenario: Deprecated supervisor help text
+- **WHEN** the operator runs `foundry supervisor --help` or `foundry --help`
+- **THEN** the help output marks `supervisor` as deprecated
+- **AND** suggests using `foundry monitor` sidebar chat instead
+
+### Requirement: Supervision watch jobs persist across restarts
+Active supervision watch jobs SHALL be stored in the sidebar session state and restored when the TUI restarts.
+
+#### Scenario: Watch job survives restart
+- **GIVEN** the operator has asked the sidebar chat to watch tasks every 5 minutes
+- **WHEN** the operator closes and reopens the TUI
+- **THEN** the watch job resumes from the persisted session state
+- **AND** the next supervision check runs at the scheduled interval
+
+#### Scenario: Watch job cancellation
+- **WHEN** the operator asks the sidebar chat to stop watching
+- **THEN** Foundry cancels the active watch job
+- **AND** the session state is updated to remove the cancelled job
+
+### Requirement: Supervision checks use fresh context
+Each scheduled supervision check SHALL use a freshly assembled monitor context snapshot, not stale data from the previous check.
+
+#### Scenario: Supervision check uses current state
+- **GIVEN** a watch job is active with a 5-minute interval
+- **WHEN** the next supervision check fires
+- **THEN** the chat agent receives a fresh monitor context snapshot assembled at check time
+- **AND** the response reflects the current state of tasks, processes, and models

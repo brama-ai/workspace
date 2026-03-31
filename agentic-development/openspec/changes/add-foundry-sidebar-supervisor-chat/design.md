@@ -53,7 +53,7 @@ This creates one authoritative chat context layer and keeps future additions pre
 
 ### 4. Persist the latest active chat session locally
 
-The monitor will store sidebar chat state in a dedicated local session file under Foundry runtime state. The persisted session includes:
+The monitor will store sidebar chat state in a dedicated local session file under `agentic-development/runtime/chat/`. Each session is a JSON file named by its chat id. The persisted session includes:
 
 - chat id
 - message history or compacted history reference
@@ -61,6 +61,8 @@ The monitor will store sidebar chat state in a dedicated local session file unde
 - latest context summary / compact memory
 - active supervision jobs and intervals
 - last-opened timestamp
+
+A pointer file (`agentic-development/runtime/chat/latest.json`) tracks which session id is the current active session.
 
 When the monitor restarts, it reopens this latest session by default. A new session is created only when the operator uses `/new`.
 
@@ -129,11 +131,21 @@ The existing `foundry supervisor` command remains temporarily as a compatibility
 - Deprecating rather than removing `foundry supervisor` keeps compatibility, but means temporary duplicate surfaces
 - Using only healthy models for `/model` improves safety, but hides broken models from direct experimentation in chat
 
+## New Module Map
+
+| Module | Path | Responsibility |
+|--------|------|----------------|
+| Chat session state | `monitor/src/state/chat-session.ts` | Session CRUD, persistence, restore |
+| Context assembler | `monitor/src/lib/context-assembler.ts` | Build structured monitor snapshot for chat agent |
+| Slash commands | `monitor/src/lib/slash-commands.ts` | Command registry, filtering, suggestion UX logic |
+| Chat agent | `monitor/src/agents/chat-agent.ts` | Agent execution, supervision scheduling, watch jobs |
+| Supervisor contract | `agentic-development/supervisor.md` | Behavioral rules for supervision passes |
+| Session storage | `agentic-development/runtime/chat/` | Persisted session files and latest pointer |
+
 ## Verification Plan
 
-- Unit tests for session persistence, command parsing, and compact-threshold behavior
-- Unit tests for context assembler coverage and shape
-- Unit tests for model picker filtering from healthy model inventory
-- Integration tests for `/new`, `/compact`, and restored latest-session behavior
-- Integration tests for scheduled supervision defaulting to 5 minutes
-- Manual TUI verification for sidebar layout, popup keyboard handling, and slash suggestions
+- **Unit tests (Tier 2):** slash-command filtering, context assembler shape, auto-compact threshold logic, model picker filtering
+- **Integration tests (Tier 3):** session persistence round-trip (real tmpdir), `/new` and `/compact` state transitions, watch job scheduling with default interval, session restore after simulated restart
+- **Manual TUI verification:** sidebar layout on wide/narrow terminals, popup keyboard handling, slash suggestion UX
+- Framework: Vitest (existing `monitor/vitest.config.ts`)
+- All test files in `monitor/src/__tests__/` following `<module>.test.ts` naming convention
