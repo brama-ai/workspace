@@ -6,6 +6,7 @@ import {
   blacklistModel,
   isModelBlacklisted,
   filterBlacklisted,
+  clearBlacklist,
   getTimeout,
   TIMEOUTS,
   extractTelemetryFromEvents,
@@ -14,6 +15,7 @@ import {
 describe("executor", () => {
   beforeEach(() => {
     vi.useRealTimers();
+    clearBlacklist();
   });
 
   describe("blacklistModel / isModelBlacklisted", () => {

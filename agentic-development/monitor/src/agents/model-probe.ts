@@ -221,6 +221,32 @@ export async function recheckModel(repoRoot: string, modelId: string): Promise<P
 /**
  * Get a short operator-readable label for a reason code.
  */
+export interface RecheckAllProgress {
+  current: number;
+  total: number;
+  modelId: string;
+  result?: ProbeResult;
+}
+
+export async function recheckAllModels(
+  repoRoot: string,
+  modelIds: string[],
+  onProgress?: (progress: RecheckAllProgress) => void,
+): Promise<ProbeResult[]> {
+  const results: ProbeResult[] = [];
+  const total = modelIds.length;
+
+  for (let i = 0; i < total; i++) {
+    const modelId = modelIds[i];
+    onProgress?.({ current: i + 1, total, modelId });
+    const result = await recheckModel(repoRoot, modelId);
+    results.push(result);
+    onProgress?.({ current: i + 1, total, modelId, result });
+  }
+
+  return results;
+}
+
 export function formatReasonCode(reasonCode: ProbeReasonCode | undefined): string {
   switch (reasonCode) {
     case "quota_or_tokens": return "quota/tokens";

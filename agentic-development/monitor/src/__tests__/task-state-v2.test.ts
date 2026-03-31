@@ -149,7 +149,7 @@ describe("task-state-v2", () => {
       const state = createDefaultState(taskDir);
       expect(state.task_id).toBe("test-task");
       expect(state.workflow).toBe("foundry");
-      expect(state.status).toBe("pending");
+      expect(state.status).toBe("todo");
       expect(state.created_at).toBeDefined();
     });
   });

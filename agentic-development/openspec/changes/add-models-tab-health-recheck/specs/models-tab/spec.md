@@ -83,3 +83,15 @@ The Models tab SHALL handle the case where no models are configured in `.opencod
 - **WHEN** `.opencode/oh-my-opencode.jsonc` contains no agent or category entries with model fields
 - **THEN** the Models tab shows an informational message instead of an empty table
 - **AND** the monitor remains fully functional
+
+### Requirement: Check-all command footer
+The Models tab footer SHALL show a `[c] check all` shortcut when no recheck or check-all operation is in progress. The check-all command probes every model in the inventory sequentially and updates the blacklist accordingly.
+
+#### Scenario: Footer shows check-all shortcut when idle
+- **WHEN** no recheck or check-all is in progress and models exist in the inventory
+- **THEN** the footer hint includes `[c] check all`
+
+#### Scenario: Footer shows progress during check-all
+- **WHEN** a check-all is in progress
+- **THEN** the footer shows the current progress (e.g. "Checking 3/10: model-id…")
+- **AND** the `[r]` and `[c]` shortcuts are disabled

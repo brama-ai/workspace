@@ -53,6 +53,23 @@ vi.mock("../agents/context-guard.js", () => ({
   })),
 }));
 
+vi.mock("../lib/model-routing.js", () => ({
+  resolveAgentRouting: vi.fn((repoRoot: string, agent: string) => ({
+    primaryModel: `${agent}-primary-model`,
+    fallbackChain: [`${agent}-fallback-model`],
+    source: "config",
+  })),
+}));
+
+vi.mock("../lib/sub-projects.js", () => ({
+  createBranchInAll: vi.fn(() => []),
+  clearSubProjectCache: vi.fn(),
+  getCurrentBranch: vi.fn((_repoRoot: string) => "pipeline/test-task"),
+  isGitClean: vi.fn(() => true),
+  discoverSubProjects: vi.fn(() => []),
+  checkBranchInAll: vi.fn(() => ({})),
+}));
+
 // ── Helpers ───────────────────────────────────────────────────────────
 
 function makeConfig(taskDir: string, agents: string[], overrides: Partial<PipelineConfig> = {}): PipelineConfig {
@@ -64,7 +81,7 @@ function makeConfig(taskDir: string, agents: string[], overrides: Partial<Pipeli
     profile: "quick-fix",
     agents,
     skipPlanner: false,
-    skipEnvCheck: false,
+    skipEnvCheck: true,
     audit: false,
     noCommit: false,
     telegram: false,

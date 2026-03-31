@@ -295,6 +295,20 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Cloudflare Tunnel: expose services via named tunnel
+# ---------------------------------------------------------------------------
+if command -v cloudflared &>/dev/null && [ -n "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]; then
+  pkill -f "cloudflared.*tunnel" 2>/dev/null || true
+  sleep 1
+  (nohup cloudflared tunnel --no-autoupdate run --token "$CLOUDFLARE_TUNNEL_TOKEN" >> /tmp/cloudflared.log 2>&1 &)
+  echo "  [OK]   Cloudflare tunnel started (log: /tmp/cloudflared.log)"
+elif command -v cloudflared &>/dev/null; then
+  echo "  [SKIP] Cloudflare tunnel: CLOUDFLARE_TUNNEL_TOKEN not set in .env.local"
+else
+  echo "  [SKIP] cloudflared not installed"
+fi
+
+# ---------------------------------------------------------------------------
 # TelegramCoder: start the Telegram terminal bot in the background
 # ---------------------------------------------------------------------------
 _tc_dir="/home/vscode/.local/share/telegramcoder"

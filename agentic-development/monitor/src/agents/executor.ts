@@ -199,6 +199,14 @@ export function filterBlacklisted(models: string[]): string[] {
   return models.filter((m) => !isModelBlacklisted(m));
 }
 
+/**
+ * Clear all entries from the in-memory blacklist.
+ * Intended for use in tests to ensure isolation between test cases.
+ */
+export function clearBlacklist(): void {
+  modelBlacklist.clear();
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -487,12 +495,22 @@ async function runWithTimeout(
     const handleStdoutLine = (line: string) => {
       // Try to parse as JSON — if valid, write to events log; otherwise write to regular log
       try {
-        JSON.parse(line);
+        const parsed = JSON.parse(line);
         if (eventsFile) {
           try {
             appendFileSync(eventsFile, line + "\n", "utf8");
           } catch {
             // Ignore write errors
+          }
+        }
+        // Detect billing errors inside JSON events (e.g. opencode emits
+        // {"type":"error","error":{"data":{"message":"Insufficient balance..."}}}
+        // which bypasses the non-JSON billing detection below).
+        if (!detectedBillingError && parsed?.type === "error") {
+          const msg = parsed.error?.data?.message || parsed.error?.message || "";
+          if (isBillingError(msg)) {
+            detectedBillingError = true;
+            debug("billing error detected in JSON event for", agentName);
           }
         }
       } catch {
@@ -672,7 +690,11 @@ export async function executeAgent(
       if (!hasOutput && name !== "u-summarizer") {
         let logContent = "";
         try { logContent = readFileSync(logFile, "utf8"); } catch { /* ignore */ }
-        const billingDetected = isBillingError(logContent);
+        // Also check events file — opencode emits billing errors as JSON events
+        // which go to eventsFile (not logFile), so logFile alone misses them.
+        let eventsContent = "";
+        try { eventsContent = readFileSync(eventsFile, "utf8"); } catch { /* ignore */ }
+        const billingDetected = isBillingError(logContent) || isBillingError(eventsContent);
         const reason = billingDetected ? "billing_error_in_log" : "zero_output";
 
         rlogModelResult(name, currentModel, 0, callDuration, billingDetected, `integrity_fail_${reason}`);

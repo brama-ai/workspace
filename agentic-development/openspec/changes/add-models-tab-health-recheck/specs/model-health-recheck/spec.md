@@ -93,3 +93,36 @@ The monitor SHALL provide visible feedback while a recheck is in progress so the
 - **WHEN** the probe completes (success or failure)
 - **THEN** the monitor shows a brief result message with the model ID and outcome
 - **AND** the Models tab refreshes to reflect the updated blacklist state
+
+### Requirement: Check-all command for sequential model verification
+The Foundry monitor SHALL provide a check-all command in the Models tab that sequentially probes every model in the inventory.
+
+Each probe SHALL follow the same rules as the single-model recheck: test the exact model with fallback disabled, use a lightweight prompt and bounded timeout, and update the blacklist on failure.
+
+Failed models SHALL be added to the blacklist with categorized error metadata. Successful models SHALL be removed from the blacklist.
+
+#### Scenario: Operator triggers check-all
+- **WHEN** the operator presses the check-all key (e.g. `c`) in the Models tab
+- **THEN** Foundry probes every model in the inventory one at a time, sequentially
+- **AND** the operator sees progress feedback showing the current model being checked (e.g. "checking 3/10: model-id")
+
+#### Scenario: Check-all finds all models healthy
+- **WHEN** all models respond successfully during a check-all run
+- **THEN** the monitor shows a summary: "N healthy, 0 failed"
+- **AND** no models are blacklisted
+
+#### Scenario: Check-all finds some models unhealthy
+- **WHEN** one or more models fail during a check-all run
+- **THEN** each failed model is blacklisted with its categorized error metadata
+- **AND** the monitor shows a summary: "X healthy, Y failed"
+- **AND** the Models tab updates to show red crosses for failed models
+
+#### Scenario: Check-all is disabled while a single recheck is in progress
+- **WHEN** a single-model recheck is already running
+- **THEN** the check-all command is disabled
+- **AND** the operator must wait for the single recheck to complete
+
+#### Scenario: Check-all progress feedback in footer
+- **WHEN** a check-all is in progress
+- **THEN** the footer hint shows the current progress (e.g. "Checking 3/10: model-name…")
+- **AND** both `r` and `c` shortcuts are disabled until check-all completes

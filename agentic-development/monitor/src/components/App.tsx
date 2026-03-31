@@ -33,7 +33,7 @@ import { generateEnvCheck } from "../cli/init-env.js";
 import { promoteNextTodoToPending } from "../cli/batch.js";
 import { loadModelInventory, formatModelUsage, type ModelInventoryEntry } from "../lib/model-inventory.js";
 import { getBlacklistEntry, getAllBlacklistEntries, type BlacklistEntry } from "../agents/executor.js";
-import { recheckModel, formatReasonCode } from "../agents/model-probe.js";
+import { recheckModel, recheckAllModels, formatReasonCode, type ProbeResult } from "../agents/model-probe.js";
 
 const VERSION = "2.5.0";
 const REFRESH_MS = 3000;
@@ -151,6 +151,8 @@ export function App({ tasksRoot }: Props) {
   const [modelIdx, setModelIdx] = useState(0);
   const [modelRecheckInProgress, setModelRecheckInProgress] = useState(false);
   const [modelBlacklistEntries, setModelBlacklistEntries] = useState<BlacklistEntry[]>([]);
+  const [modelCheckAllInProgress, setModelCheckAllInProgress] = useState(false);
+  const [modelCheckAllProgress, setModelCheckAllProgress] = useState({ current: 0, total: 0, modelId: "" });
 
   // Auto-watcher tick counter (triggers every ~5 refreshes = 15s)
   const autoWatchCounter = React.useRef(0);
@@ -320,7 +322,7 @@ export function App({ tasksRoot }: Props) {
       if (key.upArrow   || input === "k") { setModelIdx((i) => Math.max(0, i - 1)); return; }
       if (key.downArrow || input === "j") { setModelIdx((i) => Math.min(Math.max(0, modelInventory.length - 1), i + 1)); return; }
       // r — recheck selected model
-      if ((input === "r" || input === "R") && !modelRecheckInProgress) {
+      if ((input === "r" || input === "R") && !modelRecheckInProgress && !modelCheckAllInProgress) {
         const selected = modelInventory[modelIdx];
         if (selected) {
           setModelRecheckInProgress(true);
@@ -338,6 +340,26 @@ export function App({ tasksRoot }: Props) {
             setMsg(`Recheck error: ${err.message}`);
           });
         }
+        return;
+      }
+      // c — check all models sequentially
+      if ((input === "c" || input === "C") && !modelRecheckInProgress && !modelCheckAllInProgress && modelInventory.length > 0) {
+        setModelCheckAllInProgress(true);
+        const allModelIds = modelInventory.map((m) => m.modelId);
+        setModelCheckAllProgress({ current: 0, total: allModelIds.length, modelId: "" });
+        setMsg(`Checking all ${allModelIds.length} models…`);
+        recheckAllModels(repoRoot, allModelIds, (progress) => {
+          setModelCheckAllProgress({ current: progress.current, total: progress.total, modelId: progress.modelId });
+        }).then((results) => {
+          setModelCheckAllInProgress(false);
+          setModelBlacklistEntries(getAllBlacklistEntries());
+          const healthy = results.filter((r) => r.success).length;
+          const failed = results.filter((r) => !r.success).length;
+          setMsg(`Check all done: ${healthy} healthy, ${failed} failed`);
+        }).catch((err: Error) => {
+          setModelCheckAllInProgress(false);
+          setMsg(`Check all error: ${err.message}`);
+        });
         return;
       }
       return;
@@ -469,9 +491,11 @@ export function App({ tasksRoot }: Props) {
   if (tab === 1 && view !== "list" && view !== "detail" && view !== "qa") footerHint = "  [y] copy slug  [Esc] back  [q] quit";
   if (tab === 2) footerHint = "  ↑/↓ select  Enter run/toggle  ←/→ tabs  [q] quit";
   if (tab === 3) footerHint = "  ↑/↓ select process  [z] clean zombies  ←/→ tabs  [q] quit";
-  if (tab === 4) footerHint = modelRecheckInProgress
-    ? "  Recheck in progress…"
-    : "  ↑/↓ select model  [r] recheck selected  ←/→ tabs  [q] quit";
+  if (tab === 4) footerHint = modelCheckAllInProgress
+    ? `  Checking ${modelCheckAllProgress.current}/${modelCheckAllProgress.total}: ${modelCheckAllProgress.modelId}…`
+    : modelRecheckInProgress
+      ? "  Recheck in progress…"
+      : "  ↑/↓ select model  [r] recheck  [c] check all  ←/→ tabs  [q] quit";
 
   // ENV indicator
   const envLoading = envStatus.checkedAt === 0;
@@ -553,6 +577,8 @@ export function App({ tasksRoot }: Props) {
           blacklistEntries={modelBlacklistEntries}
           selectedIdx={modelIdx}
           recheckInProgress={modelRecheckInProgress}
+          checkAllInProgress={modelCheckAllInProgress}
+          checkAllProgress={modelCheckAllProgress}
           cols={cols}
           rows={rows}
         />
@@ -772,6 +798,8 @@ function ModelsTab({
   blacklistEntries,
   selectedIdx,
   recheckInProgress,
+  checkAllInProgress,
+  checkAllProgress,
   cols,
   rows,
 }: {
@@ -779,6 +807,8 @@ function ModelsTab({
   blacklistEntries: BlacklistEntry[];
   selectedIdx: number;
   recheckInProgress: boolean;
+  checkAllInProgress: boolean;
+  checkAllProgress: { current: number; total: number; modelId: string };
   cols: number;
   rows: number;
 }) {
@@ -800,6 +830,9 @@ function ModelsTab({
         )}
         {recheckInProgress && (
           <Text color="yellow" bold>  ⟳ recheck in progress…</Text>
+        )}
+        {checkAllInProgress && (
+          <Text color="yellow" bold>  ⟳ checking {checkAllProgress.current}/{checkAllProgress.total}: {checkAllProgress.modelId}</Text>
         )}
       </Box>
       <Text dimColor>{"  " + "─".repeat(cols - 4)}</Text>

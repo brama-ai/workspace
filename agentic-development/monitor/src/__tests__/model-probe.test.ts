@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { classifyProbeError, formatReasonCode } from "../agents/model-probe.js";
+import { classifyProbeError, formatReasonCode, recheckAllModels, type RecheckAllProgress } from "../agents/model-probe.js";
 import {
   blacklistModel,
   isModelBlacklisted,
@@ -163,5 +163,59 @@ describe("blacklist metadata (executor)", () => {
     const entry = getBlacklistEntry(model);
     expect(entry?.reasonCode).toBe("timeout");
     expect(entry?.errorMessage).toBe("second error");
+  });
+});
+
+describe("recheckAllModels", () => {
+  it("iterates all models and reports progress for each", async () => {
+    const beforeModels = ["recheck-all-a", "recheck-all-b", "recheck-all-c"];
+    const progressBefore: Array<{ current: number; total: number; modelId: string }> = [];
+
+    const results = await recheckAllModels("/tmp/fake-recheck-root", beforeModels, (p) => {
+      if (!p.result) progressBefore.push({ current: p.current, total: p.total, modelId: p.modelId });
+    });
+
+    expect(results).toHaveLength(3);
+    expect(progressBefore).toHaveLength(3);
+    expect(progressBefore[0]).toEqual({ current: 1, total: 3, modelId: "recheck-all-a" });
+    expect(progressBefore[1]).toEqual({ current: 2, total: 3, modelId: "recheck-all-b" });
+    expect(progressBefore[2]).toEqual({ current: 3, total: 3, modelId: "recheck-all-c" });
+
+    for (const m of beforeModels) unblockModel(m);
+  });
+
+  it("blacklists models that fail the probe", async () => {
+    const models = [`probe-fail-${Date.now()}-a`, `probe-fail-${Date.now()}-b`];
+
+    await recheckAllModels("/tmp/fake-recheck-root", models);
+
+    expect(isModelBlacklisted(models[0])).toBe(true);
+    expect(isModelBlacklisted(models[1])).toBe(true);
+
+    const entry = getBlacklistEntry(models[0]);
+    expect(entry?.reasonCode).toBe("provider_error");
+
+    for (const m of models) unblockModel(m);
+  });
+
+  it("works with empty model list", async () => {
+    const results = await recheckAllModels("/tmp/fake-recheck-root", []);
+    expect(results).toHaveLength(0);
+  });
+
+  it("calls onProgress with result after each probe completes", async () => {
+    const model = `progress-result-${Date.now()}`;
+    const progressWithResult: RecheckAllProgress[] = [];
+
+    await recheckAllModels("/tmp/fake-recheck-root", [model], (p) => {
+      progressWithResult.push({ ...p });
+    });
+
+    expect(progressWithResult).toHaveLength(2);
+    expect(progressWithResult[0].result).toBeUndefined();
+    expect(progressWithResult[1].result).toBeDefined();
+    expect(progressWithResult[1].result?.modelId).toBe(model);
+
+    unblockModel(model);
   });
 });
