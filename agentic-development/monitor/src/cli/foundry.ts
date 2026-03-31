@@ -84,7 +84,7 @@ Commands:
   resume <slug>    Resume a paused task
   answer <slug>    Answer pending questions
   checkpoint       Show checkpoint summary
-  supervisor       Autonomous runner (monitor + auto-fix + retry)
+  supervisor       [DEPRECATED] Autonomous runner — use sidebar chat in monitor instead
   monitor          Open interactive TUI monitor
   headless         Start background queue processing
   stop             Stop running batch workers
@@ -123,14 +123,52 @@ Examples:
   foundry run --only validator "Run PHPStan"
   foundry status my-task
   foundry resume my-task
-  foundry supervisor "Add feature" --poll 120 --retries 5
+  foundry supervisor "Add feature" --poll 120 --retries 5  # DEPRECATED: use monitor sidebar chat
   foundry monitor
   foundry headless
 `);
 }
 
+/**
+ * Detect if the task message references an existing OpenSpec change.
+ * If a spec with proposal.md + tasks.md exists, the architect is redundant.
+ */
+function detectOpenSpec(taskMessage: string, repoRoot: string): boolean {
+  // Check if message mentions "OpenSpec" or "openspec"
+  if (!/openspec/i.test(taskMessage)) return false;
+
+  // Try to find the change ID in the message
+  // Pattern: "openspec change <id>" or "openspec/<id>" or spec path
+  const openspecDir = join(repoRoot, "agentic-development/openspec/changes");
+  if (!existsSync(openspecDir)) return false;
+
+  // Look for any change ID mentioned in the task message
+  try {
+    const changes = execSync(`ls "${openspecDir}"`, { encoding: "utf8" }).trim().split("\n");
+    for (const change of changes) {
+      if (!change) continue;
+      // Check if change name appears in task message (fuzzy match on slug parts)
+      const slugParts = change.split("-");
+      const matchCount = slugParts.filter(p => p.length > 3 && taskMessage.toLowerCase().includes(p)).length;
+      if (matchCount >= 2) {
+        // Verify it has both proposal.md and tasks.md
+        const hasProposal = existsSync(join(openspecDir, change, "proposal.md"));
+        const hasTasks = existsSync(join(openspecDir, change, "tasks.md"));
+        if (hasProposal && hasTasks) {
+          console.log(`   [auto] Found OpenSpec: ${change}`);
+          return true;
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
 const PROFILES: Record<string, string[]> = {
   "quick-fix": ["u-coder", "u-validator", "u-summarizer"],
+  "openspec": ["u-coder", "u-validator", "u-tester", "u-summarizer"],
   standard: ["u-architect", "u-coder", "u-validator", "u-tester", "u-summarizer"],
   complex: ["u-architect", "u-coder", "u-auditor", "u-validator", "u-tester", "u-summarizer"],
   bugfix: ["u-investigator", "u-coder", "u-validator", "u-tester", "u-summarizer"],
@@ -180,7 +218,18 @@ async function cmdRun(args: string[], options: Record<string, unknown>): Promise
     return 1;
   }
 
-  const profile = (values.profile as string) || "standard";
+  let profile = (values.profile as string) || "standard";
+
+  // Auto-detect OpenSpec: if task references an existing openspec change,
+  // skip architect — the spec already contains the design and task plan.
+  if (profile === "standard" && !values.only) {
+    const hasOpenSpec = detectOpenSpec(taskMessage, REPO_ROOT);
+    if (hasOpenSpec) {
+      console.log(`   [auto] OpenSpec detected — switching to openspec profile (skipping architect)`);
+      profile = "openspec";
+    }
+  }
+
   let agents = [...(PROFILES[profile] || PROFILES.standard)];
 
   if (values.only) {
