@@ -107,11 +107,11 @@
       ],
     },
     "u-tester": {
-      "model": "opencode-go/kimi-k2.5",
+      "model": "openai/gpt-5.3-codex",
       "fallback_models": [
         "google/gemini-2.5-flash",
-        "minimax-coding-plan/MiniMax-M2.7", // 7s
         "zai-coding-plan/glm-5.1",
+        "minimax-coding-plan/MiniMax-M2.7", // 7s
         "anthropic/claude-sonnet-4-6", // 6s
         "openai/gpt-5.3-codex", // may stall
         "opencode/big-pickle", // 12s
@@ -153,10 +153,9 @@
       ],
     },
     "u-translater": {
-      "model": "google/gemini-2.5-flash",
+      "model": "openai/gpt-4o-mini",
       "fallback_models": [
         "minimax-coding-plan/MiniMax-M2.5", // 7s
-        "opencode-go/kimi-k2.5", // 8s
         "anthropic/claude-sonnet-4-6", // 6s
         "opencode/big-pickle", // 12s
         "openrouter/free",
@@ -177,6 +176,7 @@
         "openai/gpt-5.4",
         "zai-coding-plan/glm-5.1",
         "google/gemini-2.5-flash",
+        "openai/gpt-5.4", // may stall
         "opencode/big-pickle",
         "openrouter/free",
       ],

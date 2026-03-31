@@ -10,6 +10,14 @@
   "postCreateCommand": "bash /workspaces/brama/.devcontainer/post-create.sh",
   "postStartCommand": "bash /workspaces/brama/.devcontainer/post-start.sh",
 
+  "forwardPorts": [4096],
+  "portsAttributes": {
+    "4096": {
+      "label": "OpenCode Web UI",
+      "onAutoForward": "silent"
+    }
+  },
+
   "features": {
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
   },

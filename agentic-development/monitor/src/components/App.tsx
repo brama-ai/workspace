@@ -33,7 +33,7 @@ import { generateEnvCheck } from "../cli/init-env.js";
 import { promoteNextTodoToPending } from "../cli/batch.js";
 import { loadModelInventory, formatModelUsage, type ModelInventoryEntry } from "../lib/model-inventory.js";
 import { getBlacklistEntry, getAllBlacklistEntries, type BlacklistEntry } from "../agents/executor.js";
-import { recheckModel, formatReasonCode } from "../agents/model-probe.js";
+import { recheckModel, recheckAllModels, formatReasonCode, type ProbeResult } from "../agents/model-probe.js";
 
 const VERSION = "2.5.0";
 const REFRESH_MS = 3000;
@@ -151,6 +151,8 @@ export function App({ tasksRoot }: Props) {
   const [modelIdx, setModelIdx] = useState(0);
   const [modelRecheckInProgress, setModelRecheckInProgress] = useState(false);
   const [modelBlacklistEntries, setModelBlacklistEntries] = useState<BlacklistEntry[]>([]);
+  const [modelCheckAllInProgress, setModelCheckAllInProgress] = useState(false);
+  const [modelCheckAllProgress, setModelCheckAllProgress] = useState({ current: 0, total: 0, modelId: "" });
 
   // Auto-watcher tick counter (triggers every ~5 refreshes = 15s)
   const autoWatchCounter = React.useRef(0);
