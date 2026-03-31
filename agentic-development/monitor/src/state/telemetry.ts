@@ -41,6 +41,7 @@ export interface TelemetryRecord {
   tokens: TokenUsage;
   tools?: string[];
   files_read?: string[];
+  files_changed?: string[];
   context?: Record<string, unknown>;
 }
 
@@ -322,7 +323,8 @@ export function writeTelemetryRecord(
   tokens: TokenUsage,
   tools: string[],
   filesRead: string[],
-  context: Record<string, unknown>
+  context: Record<string, unknown>,
+  filesChanged?: string[]
 ): void {
   const dir = dirname(outFile);
   if (!existsSync(dir)) {
@@ -343,6 +345,7 @@ export function writeTelemetryRecord(
     },
     tools,
     files_read: filesRead,
+    files_changed: filesChanged,
     context,
   };
 

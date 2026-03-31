@@ -22,6 +22,7 @@ interface AgentRow {
   tools: Array<{ name: string; count: number }>;
   tool_stats: Array<{ name: string; calls: number; outputChars: number }>;
   files_read: string[];
+  files_changed: string[];
   file_stats: Array<{ path: string; reads: number; chars: number }>;
   burn: Array<{ stepInput: number; stepOutput: number; stepCacheRead: number; context: number; cumInput: number; cumOutput: number; msgs: number; tools: number; files: number }>;
   context: { skills?: string[]; mcp_tools?: Array<{ name: string; count: number }>; claude_commands?: string[]; message_count?: number };
@@ -118,6 +119,20 @@ function extractFilesRead(data: SessionExport): string[] {
   for (const msg of data.messages || []) {
     for (const part of (msg as any).parts || []) {
       if (part.type === "tool" && ["read", "grep", "glob", "edit"].includes(part.tool || "")) {
+        const input = part.state?.input || {};
+        const fp = (input as any).filePath || (input as any).path;
+        if (typeof fp === "string") files.add(fp);
+      }
+    }
+  }
+  return Array.from(files).sort();
+}
+
+function extractFilesChanged(data: SessionExport): string[] {
+  const files = new Set<string>();
+  for (const msg of data.messages || []) {
+    for (const part of (msg as any).parts || []) {
+      if (part.type === "tool" && ["write", "edit"].includes(part.tool || "")) {
         const input = part.state?.input || {};
         const fp = (input as any).filePath || (input as any).path;
         if (typeof fp === "string") files.add(fp);
@@ -279,6 +294,23 @@ function renderTable(rows: AgentRow[], workflow: string): string {
     }
   }
 
+  // Files changed per agent — files created or modified
+  const nonSummarizerRows = rows.filter(r => r.agent !== "u-summarizer");
+  lines.push("## Files Changed By Agent");
+  lines.push("");
+  for (const row of nonSummarizerRows) {
+    lines.push(`### ${row.agent}`);
+    lines.push("");
+    if (row.files_changed?.length > 0) {
+      for (const f of row.files_changed) {
+        lines.push(`- \`${f}\``);
+      }
+    } else {
+      lines.push("- none recorded");
+    }
+    lines.push("");
+  }
+
   // Files read per agent — top files by size
   const hasFileStats = rows.some(r => r.file_stats?.length > 0);
   if (hasFileStats) {
@@ -320,6 +352,7 @@ function buildAgentRow(data: SessionExport, agentName: string): AgentRow {
     tools: extractTools(data),
     tool_stats: [],
     files_read: extractFilesRead(data),
+    files_changed: extractFilesChanged(data),
     file_stats: [],
     burn: [],
     context: extractContext(data),
@@ -407,6 +440,7 @@ function renderFoundry(slug: string): string {
           : [],
         tool_stats: record.tool_stats || [],
         files_read: record.files_read || [],
+        files_changed: record.files_changed || [],
         file_stats: record.file_stats || [],
         burn: record.burn || [],
         context: record.context || {},

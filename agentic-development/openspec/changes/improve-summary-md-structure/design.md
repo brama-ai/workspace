@@ -78,16 +78,18 @@ The normalizer already uses regex-based section extraction. It will:
 
 The summarizer agent reads `SKILL.md` to know the section order. Updating `SKILL.md` is sufficient to change the output format — no prompt changes needed in `u-summarizer.md` beyond what SKILL.md already provides.
 
-### 5. cost-tracker.sh summary-block changes
+### 5. render-summary.ts changes (replaces cost-tracker.sh)
 
-The `summary-block` command currently emits: Telemetry → Моделі → Token Burn → Tools By Agent → Files Read By Agent.
+The legacy `cost-tracker.sh` was deleted during the full TS migration (commit `24cd842`). Its `summary-block` functionality now lives in `render-summary.ts`.
 
-It will be extended to also emit `## Files Changed By Agent` between Tools and Files Read. The data source is the same telemetry JSON it already reads.
+The `renderTable` function currently emits: Telemetry → Token Burn → Tool Usage By Agent → Files Read By Agent.
+
+It will be extended to also emit `## Files Changed By Agent` between Tool Usage and Files Read. A new `extractFilesChanged` function will detect `write` and `edit` tool calls from session exports (analogous to `extractFilesRead`). For Foundry mode, the `files_changed` field from telemetry JSON records will be used directly.
 
 ## Data Flow
 
 1. Pipeline runs agents, each producing telemetry JSON + result.json
-2. `cost-tracker.sh summary-block` (or `render-summary.ts`) reads telemetry, emits all telemetry sections including new `Files Changed By Agent`
+2. `render-summary.ts` reads telemetry, emits all telemetry sections including new `Files Changed By Agent`
 3. `u-summarizer` reads handoff.md + telemetry output, writes `summary.md` with new section order per SKILL.md
 4. `normalize-summary.ts` parses the summary for monitor display — extracts sections by header regardless of order
 

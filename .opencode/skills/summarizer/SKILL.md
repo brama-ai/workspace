@@ -24,6 +24,28 @@ Determine the workflow from handoff.md (`**Workflow:**` field) or from the pipel
 - Файли створені/змінені (кількість)
 - Міграції (якщо є)
 
+## Труднощі
+- Проблеми які виникли та як вирішені
+
+## Незавершене
+- Що лишилось зробити (якщо є)
+
+## Рекомендації по оптимізації
+> Ця секція ОБОВ'ЯЗКОВА якщо виконується будь-яка з умов нижче. Інакше — не додавати.
+
+(див. Anomaly Detection Rules нижче)
+
+## Наступна задача
+Одна конкретна пропозиція що робити далі.
+
+## Рекомендовані задачі
+> Зібрані з `## Recommended follow-up tasks` у handoff.md — пропозиції від агентів
+> які помітили роботу поза їхнім scope. Кожна — окрема задача для pipeline.
+
+- **[Назва]** — [чому потрібно], зачіпає [файли/область]
+
+---
+
 ## Telemetry
 | Agent | Model | Input | Output | Price | Time |
 |-------|-------|------:|-------:|------:|-----:|
@@ -39,30 +61,17 @@ Determine the workflow from handoff.md (`**Workflow:**` field) or from the pipel
 - `read` x 8
 - `grep` x 3
 
+## Files Changed By Agent
+### coder
+- `agentic-development/lib/foundry-run.sh` (modified)
+- `src/new-feature.ts` (created)
+
 ## Files Read By Agent
 ### coder
 - `agentic-development/lib/foundry-run.sh`
 - `.opencode/skills/summarizer/SKILL.md`
 
-## Труднощі
-- Проблеми які виникли та як вирішені
-
-## Незавершене
-- Що лишилось зробити (якщо є)
-
-## Рекомендації по оптимізації
-> Ця секція ОБОВ'ЯЗКОВА якщо виконується будь-яка з умов нижче. Інакше — не додавати.
-
-(див. Anomaly Detection Rules нижче)
-
-## Рекомендовані задачі
-> Зібрані з `## Recommended follow-up tasks` у handoff.md — пропозиції від агентів
-> які помітили роботу поза їхнім scope. Кожна — окрема задача для pipeline.
-
-- **[Назва]** — [чому потрібно], зачіпає [файли/область]
-
-## Наступна задача
-Одна конкретна пропозиція що робити далі.
+PIPELINE COMPLETE
 ```
 
 ## Data Sources
@@ -72,7 +81,7 @@ Determine the workflow from handoff.md (`**Workflow:**` field) or from the pipel
 | Handoff | `.opencode/pipeline/handoff.md` | What each agent did, verdicts |
 | Checkpoint | `tasks/<slug>--foundry/artifacts/checkpoint.json` | **Actual model used** (may differ from primary due to fallback), status, duration, tokens |
 | Meta files | `.opencode/pipeline/logs/*_*.meta.json` | Tokens, cost, duration, **actual model** |
-| Telemetry | `tasks/<slug>--foundry/artifacts/telemetry/*.json` | Tools, files read, actual cost per agent |
+| Telemetry | `tasks/<slug>--foundry/artifacts/telemetry/*.json` | Tools, files read, files changed, actual cost per agent |
 | Plan | `pipeline-plan.json` | Profile, reasoning, apps |
 | Audit reports | `.opencode/pipeline/reports/*_audit.md` | Verdict, findings |
 
@@ -83,13 +92,13 @@ Prefer generating the telemetry block via the helper script instead of hand-buil
 ### Foundry
 
 ```bash
-agentic-development/lib/cost-tracker.sh summary-block --workflow builder --task-slug "<slug>"
+npx tsx agentic-development/monitor/src/cli/render-summary.ts foundry "<slug>"
 ```
 
 ### Ultraworks
 
 ```bash
-agentic-development/lib/cost-tracker.sh summary-block --workflow ultraworks
+npx tsx agentic-development/monitor/src/cli/render-summary.ts ultraworks
 ```
 
 If the helper finds no telemetry for a section, preserve the section header and print `- none recorded`.
@@ -104,15 +113,19 @@ Required section order:
 1. Title
 2. Status / Workflow / Profile / Duration
 3. `## Що зроблено`
-4. `## Telemetry`
-5. `## Моделі`
-6. `## Tools By Agent`
-7. `## Files Read By Agent`
-8. `## Труднощі`
-9. `## Незавершене`
-10. `## Рекомендації по оптимізації` (**only if anomaly detected** — see rules below)
-11. `## Рекомендовані задачі` (collect from `## Recommended follow-up tasks` in handoff.md — omit if none)
-12. `## Наступна задача`
+4. `## Труднощі`
+5. `## Незавершене`
+6. `## Рекомендації по оптимізації` (**only if anomaly detected** — see rules below)
+7. `## Наступна задача`
+8. `## Рекомендовані задачі` (collect from `## Recommended follow-up tasks` in handoff.md — omit if none)
+9. `---` (optional visual separator between narrative and telemetry)
+10. `## Telemetry`
+11. `## Моделі`
+12. `## Token Burn & Cache Efficiency`
+13. `## Tools By Agent`
+14. `## Files Changed By Agent`
+15. `## Files Read By Agent`
+16. `PIPELINE COMPLETE` or `PIPELINE INCOMPLETE`
 
 For the telemetry sections, prefer pasting the helper output verbatim and only adjust surrounding narrative text.
 

@@ -382,6 +382,9 @@ function render(args: Args, summaryPath: string): string {
   const taskSlug = args.taskSlug || summaryPath.split("/").pop()?.replace(".md", "") || "unknown";
   const telemetry = telemetryBlock(args.workflow, taskSlug, sessionId);
   
+  // Extract Files Changed By Agent section from original summary (pass-through from telemetry block)
+  const filesChangedSection = extractSection(original, "Files Changed By Agent");
+
   const lines: string[] = [
     `# ${title}`,
     "",
@@ -394,11 +397,16 @@ function render(args: Args, summaryPath: string): string {
   ];
   
   lines.push(...doneItems.map(i => `- ${i}`));
-  lines.push("", telemetry, "", "## Труднощі");
+  lines.push("", "## Труднощі");
   lines.push(...difficulties.map(d => `- ${d}`));
   lines.push("", "## Незавершене");
   lines.push(...unfinished.map(u => `- ${u}`));
   lines.push("", "## Наступна задача", nextTask.trim());
+  lines.push("", "---", "", telemetry);
+
+  if (filesChangedSection) {
+    lines.push("", "## Files Changed By Agent", "", filesChangedSection);
+  }
   
   return lines.join("\n").trim() + "\n";
 }

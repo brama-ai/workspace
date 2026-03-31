@@ -1,7 +1,7 @@
 # Improve summary.md Section Order and Add Files Changed
 
 **Change ID:** `improve-summary-md-structure`
-**Status:** draft
+**Status:** proposed
 **Created:** 2026-03-31
 **Author:** Human
 
@@ -31,7 +31,7 @@ Additionally, the current `## Files Read By Agent` only shows which files an age
 - Add `## Files Changed By Agent` section (files created/modified per agent)
 - Update SKILL.md (summarizer skill) with new section order
 - Update `normalize-summary.ts` to parse the new structure
-- Update `render-summary.ts` / `cost-tracker.sh` to emit `Files Changed By Agent` block
+- Update `render-summary.ts` to emit `Files Changed By Agent` block (legacy `cost-tracker.sh` was deleted in TS migration)
 
 ### Out of Scope
 
