@@ -27,5 +27,6 @@ export interface StallResult {
 }
 /** @internal exported for testing */
 export declare function checkStall(taskDir: string, status: string, step: string | null): StallResult;
+/** @deprecated Use `foundry monitor` sidebar chat instead. Will be removed in a future release. */
 export declare function cmdSupervisor(args: string[]): Promise<number>;
 export {};

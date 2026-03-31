@@ -4,48 +4,40 @@
   "confidence": 0.95,
   "assessment": {
     "what_went_well": [
-      "Comprehensive proposal already existed with all 5 files: proposal.md, design.md, tasks.md, and 2 spec deltas (models-tab, model-health-recheck)",
-      "Implementation is substantially complete — all Phase 1-3 tasks verified against source code",
-      "All 37 unit tests pass across model-inventory, model-routing, and model-probe test suites",
-      "Spec deltas cover 2 capabilities with clear Given/When/Then scenarios",
-      "Design decisions are well-reasoned: single config source, backwards-compatible blacklist metadata, exact-model probe, shallow error classification",
-      "TUI Models tab is fully implemented with tab navigation, status icons, inline error details, recheck command, and alert badge",
-      "Runner model resolution already uses .opencode/oh-my-opencode.jsonc as single source of truth — no DEFAULT_FALLBACKS found",
-      "Summary generation correctly prepends model alerts via appendModelAlert() + prependModelAlertsToSummary()"
+      "Thorough codebase exploration identified all 22 files in src/Telegram/, all consumers, and exact dependency chains",
+      "Spec covers all 6 subtasks with 38 scenarios, detailed file lists, and verification criteria",
+      "Dependency-driven execution order (5.1 -> 5.2 -> 5.5 -> 5.6 -> 5.3 -> 5.4) prevents broken intermediate states",
+      "Identified the need for ChannelManager.adminAction() method and RoleResolverInterface extraction — not in original task description",
+      "Phase 5 spec passes openspec validate with zero errors"
     ],
-    "what_went_wrong": [],
+    "what_went_wrong": [
+      "Initial spec format used ### Task X.Y headers instead of ### Requirement: format required by openspec validator",
+      "Required multiple iterations to satisfy validator requirements (Requirement: prefix, requirement text, SHALL/MUST keywords)"
+    ],
     "improvement_suggestions": [
-      "Specs were missing scenarios for: tab alert badge, empty inventory graceful state, recheck progress feedback, and recheck result message — added during this review",
-      "Tasks.md lacked implementation references (file paths) — added during this review to help downstream agents locate code",
-      "Task 4.1 (operator documentation) is the only remaining uncompleted task — docs should cover the Models tab, recheck workflow, and degraded fallback behavior",
-      "Consider adding a component-level render test for ModelsTab using ink-testing-library to cover the TUI rendering scenarios in the spec"
+      "Pre-existing Phase 3 and Phase 4 specs also fail validation (different format) — consider fixing them for consistency",
+      "The TelegramRoleResolver concrete class stays in src/Telegram/Service/ but implements the new RoleResolverInterface — consider moving it to src/Channel/ in a future cleanup",
+      "TelegramBotRepository and TelegramChatRepository remain in src/Telegram/Repository/ — a future task could rename them to ChannelInstanceRepository and ChannelConversationRepository"
     ],
     "blocked_by": [],
-    "deviations_from_spec": []
+    "deviations_from_spec": [
+      "Spec notes TelegramRoleResolver stays as concrete implementation rather than being deleted — deliberate decision to avoid breaking role resolution while keeping the interface channel-agnostic",
+      "Spec keeps 2 repository files in src/Telegram/ rather than deleting the entire directory — admin UI still depends on them"
+    ]
   },
   "metrics": {
-    "proposal_change_id": "add-models-tab-health-recheck",
+    "proposal_change_id": "extract-channel-agents",
     "target_project": "agentic-development",
-    "affected_specs": ["models-tab", "model-health-recheck"],
-    "delta_operations": ["ADDED"],
-    "capabilities_affected": 2,
-    "requirements_added": 12,
-    "requirements_modified": 0,
-    "total_scenarios": 22,
-    "tasks_in_checklist": 14,
-    "tasks_completed": 13,
-    "tasks_remaining": 1,
-    "task_groups": 4,
-    "validation_result": "pass",
-    "tests_passing": 37,
-    "test_files": ["model-inventory.test.ts", "model-probe.test.ts", "model-routing.test.ts"],
-    "implementation_files": [
-      "monitor/src/lib/model-inventory.ts",
-      "monitor/src/lib/model-routing.ts",
-      "monitor/src/agents/model-probe.ts",
-      "monitor/src/agents/executor.ts",
-      "monitor/src/components/App.tsx",
-      "monitor/src/pipeline/runner.ts"
-    ]
+    "phase": "5 — Traffic Switch + Cleanup",
+    "affected_specs": ["phase5-traffic-switch-cleanup"],
+    "delta_operations": ["ADDED", "MODIFIED", "REMOVED"],
+    "added_requirements": 6,
+    "modified_requirements": 2,
+    "removed_requirements": 7,
+    "total_scenarios": 38,
+    "files_to_delete": 35,
+    "files_to_create": 10,
+    "files_to_modify": 7,
+    "validation_result": "pass (phase5 only; phase3/phase4 have pre-existing format issues)"
   }
 }

@@ -315,35 +315,41 @@ Based on agent timeouts — if no new event appears within the threshold, the ag
 agentic-development/
 ├── foundry                  # Main CLI entrypoint (bash → npx tsx foundry.ts)
 ├── CONVENTIONS.md              # This file
+├── supervisor.md               # Supervision behavioral contract for sidebar chat agent
 ├── lib/
 │   ├── foundry-e2e.sh          # E2E autofix runner (pending TS port)
 │   └── ultraworks-postmortem-summary.sh  # Ultraworks postmortem helper
 ├── monitor/
 │   └── src/
 │       ├── cli/
-│       │   ├── foundry.ts      # CLI commands: run, status, list, supervisor
-│       │   └── supervisor.ts   # Autonomous runner (TS)
+│       │   ├── foundry.ts      # CLI commands: run, status, list, supervisor [DEPRECATED]
+│       │   └── supervisor.ts   # Autonomous runner [DEPRECATED — use sidebar chat]
 │       ├── pipeline/
 │       │   ├── runner.ts       # Pipeline orchestrator
 │       │   ├── handoff.ts      # Agent context sharing
 │       │   └── checkpoint.ts   # Resume/checkpoint logic
 │       ├── agents/
 │       │   ├── executor.ts     # Agent execution + model fallbacks
-│       │   └── context-guard.ts # Session context monitoring
+│       │   ├── context-guard.ts # Session context monitoring
+│       │   └── chat-agent.ts   # Sidebar chat agent + supervision scheduler
 │       ├── state/
 │       │   ├── task-state-v2.ts # Task state CRUD
 │       │   ├── events.ts       # Event emission
-│       │   └── telemetry.ts    # Cost/token tracking
+│       │   ├── telemetry.ts    # Cost/token tracking
+│       │   └── chat-session.ts # Sidebar chat session CRUD + persistence
 │       ├── infra/
 │       │   ├── git.ts          # Git operations
 │       │   └── preflight.ts    # Environment validation
 │       ├── lib/
 │       │   ├── runtime-logger.ts # Structured disk logging (rlog)
-│       │   └── format.ts       # Display formatting
+│       │   ├── format.ts       # Display formatting
+│       │   ├── context-assembler.ts # Structured monitor context for chat agent
+│       │   └── slash-commands.ts   # Slash command registry + suggestion filtering
 │       └── components/
-│           └── App.tsx          # TUI monitor (React/Ink)
+│           └── App.tsx          # TUI monitor (React/Ink) with sidebar chat
 └── runtime/
-    └── logs/                    # Runtime log files
+    ├── logs/                    # Runtime log files
+    └── chat/                    # Sidebar chat session files (latest.json + <chatId>.json)
 ```
 
 ---

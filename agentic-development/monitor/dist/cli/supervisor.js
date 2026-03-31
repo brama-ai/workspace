@@ -489,7 +489,23 @@ export function checkStall(taskDir, status, step) {
         dbHealth,
     };
 }
+/** @deprecated Use `foundry monitor` sidebar chat instead. Will be removed in a future release. */
 export async function cmdSupervisor(args) {
+    // ── Deprecation notice ────────────────────────────────────────────
+    console.error(`\n${c.yellow}⚠  DEPRECATED: foundry supervisor${c.reset}\n` +
+        `   This command is deprecated and will be removed in a future release.\n` +
+        `   Use the sidebar chat in the Foundry monitor instead:\n` +
+        `\n` +
+        `     ${c.bold}foundry monitor${c.reset}   → open the TUI\n` +
+        `     ${c.bold}[Tab]${c.reset}             → focus the sidebar chat\n` +
+        `     ${c.bold}Type a message${c.reset}    → ask about task status, request supervision\n` +
+        `\n` +
+        `   The sidebar chat supports:\n` +
+        `     /model   — switch the active chat model\n` +
+        `     /compact — compress chat history\n` +
+        `     /new     — start a fresh chat session\n` +
+        `\n` +
+        `   Continuing with legacy supervisor for compatibility...\n`);
     const { values, positionals } = parseArgs({
         args,
         options: {

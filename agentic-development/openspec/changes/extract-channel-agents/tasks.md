@@ -153,40 +153,73 @@ New services that route through A2A to channel agents.
 
 ## Phase 5: Traffic Switch + Cleanup
 
+**Execution order:** 5.1 → 5.2 → 5.5 → 5.6 → 5.3 → 5.4 (dependency-driven)
+**Spec:** `specs/phase5-traffic-switch-cleanup/spec.md`
+
 - [ ] **5.1** Switch inbound traffic
-  - `ChannelWebhookController` becomes primary (already has legacy alias)
-  - Remove `TelegramWebhookController` (old dedicated controller)
-  - **Verify:** webhook still works, events still dispatch, platform commands still respond
+  - Delete `src/Controller/Api/Webhook/TelegramWebhookController.php` (134 lines)
+  - `ChannelWebhookController` becomes sole webhook entry point (already has legacy alias route)
+  - Legacy URL `/api/v1/webhook/telegram/{channelId}` preserved via `ChannelWebhookController` alias route
+  - Resolve route conflict: both controllers currently register POST on `/api/v1/webhook/telegram/{param}`
+  - **Verify:** POST to `/api/v1/webhook/telegram/{channelId}` works, events dispatch, platform commands respond, PHPStan passes
+  - **Impl:** delete `brama-core/src/src/Controller/Api/Webhook/TelegramWebhookController.php`
 
 - [ ] **5.2** Switch outbound traffic
-  - `PlatformCommandRouter` uses `ChannelManager.send()` for responses
-  - All business agents use `ChannelManager` instead of direct `TelegramSender`
-  - **Verify:** outbound messages delivered correctly for all content types
-
-- [ ] **5.3** Remove deprecated Telegram namespace
-  - Delete `src/Telegram/` entirely
-  - Remove deprecated aliases from Phase 1
-  - **Verify:** no imports reference old namespace, PHPStan clean, all tests green
-
-- [ ] **5.4** Remove standalone telegram-qa
-  - Delete `agentic-development/telegram-qa/`
-  - Update Foundry pipeline to use agent A2A for HITL instead of spawning telegram-qa process
-  - **Verify:** HITL works through agent, no references to old telegram-qa
+  - Create `src/Channel/Contract/RoleResolverInterface.php` (extract from `TelegramRoleResolverInterface`)
+  - Update `PlatformCommandRouter`: replace `ChannelAdapterInterface` → `ChannelManager`, replace `TelegramRoleResolverInterface` → `RoleResolverInterface`
+  - `PlatformCommandRouter.sendReply()` calls `$this->channelManager->send($event->platform, $target, $payload)`
+  - Wire `RoleResolverInterface` → existing `TelegramRoleResolver` in `services.yaml`
+  - Add `adminAction(string $channelType, string $action, array $params): array` method to `ChannelManager`
+  - **Verify:** `/help`, `/agents` commands respond via ChannelManager → A2A, no `TelegramSender` imports outside `src/Telegram/`, PHPStan passes
+  - **Impl:** `brama-core/src/src/Channel/Command/PlatformCommandRouter.php`, `brama-core/src/src/Channel/Contract/RoleResolverInterface.php`, `brama-core/src/src/Channel/ChannelManager.php`, `brama-core/src/config/services.yaml`
 
 - [ ] **5.5** Update admin UI
-  - `TelegramBotsController` → `ChannelInstancesController`
-  - `TelegramChatsAdminController` → `ChannelConversationsController`
+  - Create `src/Controller/Admin/ChannelInstancesController.php` (replaces `TelegramBotsController`)
+    - Routes: `/admin/channels/instances`, `/admin/channels/instances/new`, `/{id}/edit`, `/{id}/delete`, `/{id}/test-connection`, `/{id}/set-webhook`, `/{id}/webhook-info`
+    - Admin actions delegate via `ChannelManager.adminAction()` → agent A2A `channel.adminAction`
+    - No direct `TelegramApiClient` usage
+  - Create `src/Controller/Admin/ChannelConversationsController.php` (replaces `TelegramChatsAdminController`)
+    - Route: `/admin/channels/conversations`
+  - Update `DashboardController`: `buildTelegramStats()` → `buildChannelStats()`, use `channel_stats` template var
+  - Move templates: `templates/admin/telegram/` → `templates/admin/channels/`
+    - `bots.html.twig` → `instances.html.twig`
+    - `bot_form.html.twig` → `instance_form.html.twig`
+    - `chats.html.twig` → `conversations.html.twig`
+  - Update `templates/admin/layout.html.twig`: nav link → `admin_channel_instances`, label "Channels"
+  - Update `templates/admin/dashboard.html.twig`: `telegram_stats` → `channel_stats`, links to new routes
   - Channel-specific form fields loaded dynamically based on `channel_type`
-  - Admin actions (test-connection, set-webhook) go through `ChannelManager` → agent A2A
-  - **Verify:** admin pages render, CRUD operations work, channel-specific actions delegated
+  - Delete old controllers: `TelegramBotsController.php`, `TelegramChatsAdminController.php`
+  - Delete old templates: `templates/admin/telegram/` directory
+  - **Verify:** admin pages render at new URLs, CRUD operations work, admin actions delegated via A2A, dashboard shows channel stats
+  - **Impl:** 2 new controllers, 3 new templates, 3 modified files (Dashboard, layout, dashboard template), 2 deleted controllers, 3 deleted templates
 
 - [ ] **5.6** Update console commands
-  - `app:telegram:set-webhook` → `app:channel:set-webhook --type telegram`
-  - `app:telegram:poll` → `app:channel:poll --type telegram`
-  - `app:telegram:webhook-info` → `app:channel:webhook-info --type telegram`
-  - `app:telegram:delete-webhook` → `app:channel:delete-webhook --type telegram`
-  - Old command names kept as aliases during transition
-  - **Verify:** commands work with new names, old aliases still functional
+  - Create `src/Command/ChannelSetWebhookCommand.php` (`app:channel:set-webhook --type telegram`)
+  - Create `src/Command/ChannelPollCommand.php` (`app:channel:poll --type telegram`)
+  - Create `src/Command/ChannelWebhookInfoCommand.php` (`app:channel:webhook-info --type telegram`)
+  - Create `src/Command/ChannelDeleteWebhookCommand.php` (`app:channel:delete-webhook --type telegram`)
+  - All commands accept `--type` option (default: `"telegram"`)
+  - All commands delegate via `ChannelManager.adminAction()` instead of direct `TelegramApiClient`
+  - Old names kept as aliases via `getAliases()` with deprecation notice in output
+  - Delete old commands: `TelegramWebhookCommand.php`, `TelegramPollCommand.php`, `TelegramWebhookInfoCommand.php`, `TelegramDeleteWebhookCommand.php`
+  - **Verify:** `php bin/console app:channel:set-webhook --type telegram` works, old aliases functional, `php bin/console list app:channel` shows all 4
+  - **Impl:** 4 new command files, 4 deleted command files
+
+- [ ] **5.3** Remove deprecated Telegram namespace (**must run after 5.1, 5.2, 5.5, 5.6**)
+  - Delete 14 deprecated alias files (DTOs, Delivery wrappers, Command wrappers, EventBus wrapper)
+  - Delete 10 active service files (Api/, Delivery/TelegramDeliveryAdapter, Service/*)
+  - Keep `src/Telegram/Repository/TelegramBotRepository.php` (still used by admin)
+  - Keep `src/Telegram/Repository/TelegramChatRepository.php` (still used by admin)
+  - Delete empty subdirectories: `Api/`, `Command/`, `Delivery/`, `DTO/`, `EventBus/`, `Service/`
+  - Remove Symfony service definitions for deleted classes from `config/services.yaml`
+  - **Verify:** `src/Telegram/` contains only `Repository/` with 2 files, zero `use App\Telegram\` imports (except Repository), PHPStan level max passes, all tests green, `php bin/console cache:clear` succeeds
+  - **Impl:** delete 24 files, clean `services.yaml`
+
+- [ ] **5.4** Remove standalone telegram-qa (**independent, can run anytime after Phase 4.5**)
+  - Delete `agentic-development/telegram-qa/` directory (5 files: package.json, tsconfig.json, src/bot.ts, src/qa-bridge.ts, src/formatter.ts)
+  - Update `agentic-development/README.md`: remove telegram-qa reference, note HITL is now in telegram-channel-agent
+  - **Verify:** directory gone, no pipeline references to telegram-qa, HITL works via agent A2A
+  - **Impl:** delete directory, update README
 
 ## Phase 6: Validation
 

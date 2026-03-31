@@ -13,10 +13,20 @@ import { promoteNextTodoToPending } from "../cli/batch.js";
 import { loadModelInventory, formatModelUsage } from "../lib/model-inventory.js";
 import { getAllBlacklistEntries } from "../agents/executor.js";
 import { recheckModel, recheckAllModels, formatReasonCode } from "../agents/model-probe.js";
+import { restoreOrCreateSession, createSession, appendMessage, compactSession, addWatchJob, removeWatchJob, updateContextTokens, updateWatchJobLastRun, } from "../state/chat-session.js";
+import { getSlashSuggestions, matchSlashCommand, isSlashInput } from "../lib/slash-commands.js";
+import { assembleMonitorContext, formatSnapshotForChat } from "../lib/context-assembler.js";
+import { parseWatchRequest, parseCancelRequest, estimateContextTokens, shouldAutoCompact, executeChatTurn, getDueWatchJobs, processWatchJob, AUTO_COMPACT_THRESHOLD, } from "../agents/chat-agent.js";
 const VERSION = "2.5.0";
 const REFRESH_MS = 3000;
 const PROC_REFRESH_MS = 15000; // Process status refresh — less frequent (was 3s, now 15s)
 const ENV_REFRESH_MS = 30000; // Environment status refresh — 30s (docker compose ps is slow)
+/** Minimum terminal width to show sidebar (below this, sidebar is hidden) */
+const SIDEBAR_MIN_COLS = 120;
+/** Sidebar width in columns */
+const SIDEBAR_WIDTH = 45;
+/** Watch job check interval in ms */
+const WATCH_JOB_CHECK_MS = 30_000;
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const COMMANDS = [
     // Foundry
@@ -105,6 +115,17 @@ export function App({ tasksRoot }) {
     const [modelBlacklistEntries, setModelBlacklistEntries] = useState([]);
     const [modelCheckAllInProgress, setModelCheckAllInProgress] = useState(false);
     const [modelCheckAllProgress, setModelCheckAllProgress] = useState({ current: 0, total: 0, modelId: "" });
+    // Sidebar chat state
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [sidebarFocused, setSidebarFocused] = useState(false);
+    const [chatSession, setChatSession] = useState(null);
+    const [chatInput, setChatInput] = useState("");
+    const [chatLoading, setChatLoading] = useState(false);
+    const [slashSuggestions, setSlashSuggestions] = useState([]);
+    const [slashSuggestionIdx, setSlashSuggestionIdx] = useState(0);
+    const [modelPickerOpen, setModelPickerOpen] = useState(false);
+    const [modelPickerIdx, setModelPickerIdx] = useState(0);
+    const [chatScrollOffset, setChatScrollOffset] = useState(0);
     // Auto-watcher tick counter (triggers every ~5 refreshes = 15s)
     const autoWatchCounter = React.useRef(0);
     // Refresh task data periodically (fast — pure file reads)
@@ -179,6 +200,39 @@ export function App({ tasksRoot }) {
         const id = setTimeout(() => setMsg(""), 5000);
         return () => clearTimeout(id);
     }, [msg]);
+    // Initialize sidebar chat session on mount
+    useEffect(() => {
+        try {
+            const session = restoreOrCreateSession(repoRoot);
+            setChatSession(session);
+        }
+        catch { /* ignore — sidebar is non-critical */ }
+    }, [repoRoot]);
+    // Watch job scheduler — check every 30s for due jobs
+    useEffect(() => {
+        if (!chatSession)
+            return;
+        const id = setInterval(() => {
+            const dueJobs = getDueWatchJobs(chatSession);
+            if (dueJobs.length === 0)
+                return;
+            const snapshot = assembleMonitorContext(repoRoot, root, procStatus);
+            for (const job of dueJobs) {
+                try {
+                    const response = processWatchJob(job, snapshot, chatSession, {
+                        repoRoot,
+                        model: chatSession.model ?? "anthropic/claude-sonnet-4-6",
+                        supervisorMdPath: join(repoRoot, "agentic-development", "supervisor.md"),
+                    });
+                    const updated = appendMessage(repoRoot, chatSession, "assistant", `[Watch: ${job.description}]\n\n${response}`);
+                    const updated2 = updateWatchJobLastRun(repoRoot, updated, job.id);
+                    setChatSession({ ...updated2 });
+                }
+                catch { /* ignore watch job errors */ }
+            }
+        }, WATCH_JOB_CHECK_MS);
+        return () => clearInterval(id);
+    }, [chatSession, repoRoot, root, procStatus]);
     // Refresh proc log when selection or tick changes
     useEffect(() => {
         const allProcs = [...procStatus.workers, ...procStatus.zombies];
@@ -205,7 +259,210 @@ export function App({ tasksRoot }) {
     }, [data.tasks.length]);
     const selected = data.tasks[idx];
     const allProcs = [...procStatus.workers, ...procStatus.zombies];
+    // Sidebar chat: send message handler
+    const handleChatSend = () => {
+        if (!chatInput.trim() || !chatSession || chatLoading)
+            return;
+        const input = chatInput.trim();
+        setChatInput("");
+        setSlashSuggestions([]);
+        // Handle slash commands
+        const cmd = matchSlashCommand(input);
+        if (cmd) {
+            if (cmd.name === "/new") {
+                try {
+                    const newSession = createSession(repoRoot, chatSession.model);
+                    const withMsg = appendMessage(repoRoot, newSession, "system", "New chat session started.");
+                    setChatSession({ ...withMsg });
+                    setMsg("New chat session started");
+                }
+                catch {
+                    setMsg("Failed to create new session");
+                }
+                return;
+            }
+            if (cmd.name === "/compact") {
+                if (!chatSession || chatSession.messages.length < 3) {
+                    const updated = appendMessage(repoRoot, chatSession, "system", "Not enough messages to compact (need at least 3).");
+                    setChatSession({ ...updated });
+                    return;
+                }
+                const summary = `Compacted ${chatSession.messages.length} messages at ${new Date().toLocaleTimeString()}.`;
+                const compacted = compactSession(repoRoot, chatSession, summary);
+                if (compacted) {
+                    const updated = appendMessage(repoRoot, compacted, "system", "Chat history compacted. Continuing in same session.");
+                    setChatSession({ ...updated });
+                    setMsg("Chat compacted");
+                }
+                return;
+            }
+            if (cmd.name === "/model") {
+                setModelPickerOpen(true);
+                setModelPickerIdx(0);
+                return;
+            }
+            return;
+        }
+        // Check for watch/cancel requests
+        const watchReq = parseWatchRequest(input);
+        const cancelJobId = parseCancelRequest(input, chatSession.watchJobs);
+        // Append user message
+        let session = appendMessage(repoRoot, chatSession, "user", input);
+        if (cancelJobId) {
+            session = removeWatchJob(repoRoot, session, cancelJobId);
+            const updated = appendMessage(repoRoot, session, "assistant", "Watch job cancelled.");
+            setChatSession({ ...updated });
+            return;
+        }
+        // Check auto-compact before sending
+        if (shouldAutoCompact(session)) {
+            const summary = `Auto-compacted at ${new Date().toLocaleTimeString()} (context exceeded ${AUTO_COMPACT_THRESHOLD / 1000}k tokens).`;
+            const compacted = compactSession(repoRoot, session, summary);
+            if (compacted) {
+                session = appendMessage(repoRoot, compacted, "system", "Context auto-compacted to stay within limits.");
+                setChatSession({ ...session });
+            }
+        }
+        setChatLoading(true);
+        setChatSession({ ...session });
+        // Execute chat turn asynchronously
+        setTimeout(() => {
+            try {
+                const snapshot = assembleMonitorContext(repoRoot, root, procStatus);
+                const contextText = formatSnapshotForChat(snapshot);
+                const response = executeChatTurn(input, contextText, session, {
+                    repoRoot,
+                    model: session.model ?? "anthropic/claude-sonnet-4-6",
+                    supervisorMdPath: join(repoRoot, "agentic-development", "supervisor.md"),
+                });
+                let updated = appendMessage(repoRoot, session, "assistant", response);
+                // Handle watch request
+                if (watchReq) {
+                    updated = addWatchJob(repoRoot, updated, watchReq.description, watchReq.intervalSeconds);
+                }
+                // Update context token estimate
+                const tokens = estimateContextTokens(updated);
+                updated = updateContextTokens(repoRoot, updated, tokens);
+                setChatSession({ ...updated });
+            }
+            catch (err) {
+                const errSession = appendMessage(repoRoot, session, "assistant", `Error: ${err?.message ?? String(err)}`);
+                setChatSession({ ...errSession });
+            }
+            finally {
+                setChatLoading(false);
+            }
+        }, 0);
+    };
     useInput((input, key) => {
+        // Sidebar focus mode — capture all input for chat
+        if (sidebarFocused && sidebarOpen) {
+            // Model picker navigation
+            if (modelPickerOpen) {
+                const healthyModels = modelInventory.filter((m) => !modelBlacklistEntries.some((b) => b.model === m.modelId));
+                if (key.upArrow) {
+                    setModelPickerIdx((i) => Math.max(0, i - 1));
+                    return;
+                }
+                if (key.downArrow) {
+                    setModelPickerIdx((i) => Math.min(Math.max(0, healthyModels.length - 1), i + 1));
+                    return;
+                }
+                if (key.return) {
+                    const selected = healthyModels[modelPickerIdx];
+                    if (selected && chatSession) {
+                        const updated = { ...chatSession, model: selected.modelId };
+                        setChatSession(updated);
+                        try {
+                            const { writeSession } = require("../state/chat-session.js");
+                            writeSession(repoRoot, updated);
+                        }
+                        catch { /* ignore */ }
+                        setMsg(`Chat model: ${selected.modelId}`);
+                    }
+                    setModelPickerOpen(false);
+                    return;
+                }
+                if (key.escape) {
+                    setModelPickerOpen(false);
+                    return;
+                }
+                return;
+            }
+            // Slash suggestion navigation
+            if (slashSuggestions.length > 0) {
+                if (key.upArrow) {
+                    setSlashSuggestionIdx((i) => Math.max(0, i - 1));
+                    return;
+                }
+                if (key.downArrow) {
+                    setSlashSuggestionIdx((i) => Math.min(slashSuggestions.length - 1, i + 1));
+                    return;
+                }
+                if (key.tab || key.return) {
+                    const selected = slashSuggestions[slashSuggestionIdx];
+                    if (selected) {
+                        setChatInput(selected.name);
+                        setSlashSuggestions([]);
+                        if (key.return)
+                            handleChatSend();
+                    }
+                    return;
+                }
+            }
+            // Chat scroll
+            if (key.pageUp) {
+                setChatScrollOffset((o) => Math.max(0, o - 5));
+                return;
+            }
+            if (key.pageDown) {
+                setChatScrollOffset((o) => o + 5);
+                return;
+            }
+            // Escape: unfocus sidebar
+            if (key.escape) {
+                setSidebarFocused(false);
+                return;
+            }
+            // Enter: send message
+            if (key.return) {
+                handleChatSend();
+                return;
+            }
+            // Backspace
+            if (key.backspace || key.delete) {
+                setChatInput((prev) => {
+                    const next = prev.slice(0, -1);
+                    setSlashSuggestions(isSlashInput(next) ? getSlashSuggestions(next) : []);
+                    return next;
+                });
+                return;
+            }
+            // Regular character input
+            if (input && !key.ctrl && !key.meta) {
+                setChatInput((prev) => {
+                    const next = prev + input;
+                    setSlashSuggestions(isSlashInput(next) ? getSlashSuggestions(next) : []);
+                    setSlashSuggestionIdx(0);
+                    return next;
+                });
+                return;
+            }
+            return;
+        }
+        // Global sidebar toggle: Tab key (when not in detail view)
+        if (key.tab && view !== "detail" && !sidebarFocused) {
+            if (cols >= SIDEBAR_MIN_COLS) {
+                if (!sidebarOpen) {
+                    setSidebarOpen(true);
+                    setSidebarFocused(true);
+                }
+                else {
+                    setSidebarFocused(true);
+                }
+                return;
+            }
+        }
         // Quit / back
         if (input === "q" || input === "Q") {
             if (view !== "list") {
@@ -216,6 +473,14 @@ export function App({ tasksRoot }) {
             return;
         }
         if (key.escape) {
+            if (sidebarFocused) {
+                setSidebarFocused(false);
+                return;
+            }
+            if (sidebarOpen) {
+                setSidebarOpen(false);
+                return;
+            }
             if (view !== "list")
                 setView("list");
             return;
@@ -512,24 +777,31 @@ export function App({ tasksRoot }) {
     const time = new Date().toLocaleTimeString("en-GB", { hour12: false });
     // Footer hint per tab/view
     let footerHint = "";
-    if (tab === 1 && view === "list")
-        footerHint = "  ↑/↓ select  Enter detail/qa  [a] agents  [l] logs  [d] archive  [x] doctor  [s] start  [k] stop  [e] env  [q] quit";
-    if (tab === 1 && view === "detail")
-        footerHint = "  ←/→ tabs  ↑/↓ scroll  PgUp/PgDn  [g] top  [G] end  [y] copy  [Esc] back  [q] quit";
-    if (tab === 1 && view === "qa")
-        footerHint = "  ↑/↓ select question  Tab switch panel  Esc save & back  Ctrl+S save  1-9 quick-select option";
-    if (tab === 1 && view !== "list" && view !== "detail" && view !== "qa")
-        footerHint = "  [y] copy slug  [Esc] back  [q] quit";
-    if (tab === 2)
-        footerHint = "  ↑/↓ select  Enter run/toggle  ←/→ tabs  [q] quit";
-    if (tab === 3)
-        footerHint = "  ↑/↓ select process  [z] clean zombies  ←/→ tabs  [q] quit";
-    if (tab === 4)
-        footerHint = modelCheckAllInProgress
-            ? `  Checking ${modelCheckAllProgress.current}/${modelCheckAllProgress.total}: ${modelCheckAllProgress.modelId}…`
-            : modelRecheckInProgress
-                ? "  Recheck in progress…"
-                : "  ↑/↓ select model  [r] recheck  [c] check all  ←/→ tabs  [q] quit";
+    if (sidebarFocused) {
+        footerHint = "  [Chat] type message  Enter send  / slash commands  PgUp/Dn scroll  Esc unfocus";
+    }
+    else {
+        if (tab === 1 && view === "list")
+            footerHint = "  ↑/↓ select  Enter detail/qa  [a] agents  [l] logs  [d] archive  [x] doctor  [s] start  [k] stop  [e] env  [q] quit";
+        if (tab === 1 && view === "detail")
+            footerHint = "  ←/→ tabs  ↑/↓ scroll  PgUp/PgDn  [g] top  [G] end  [y] copy  [Esc] back  [q] quit";
+        if (tab === 1 && view === "qa")
+            footerHint = "  ↑/↓ select question  Tab switch panel  Esc save & back  Ctrl+S save  1-9 quick-select option";
+        if (tab === 1 && view !== "list" && view !== "detail" && view !== "qa")
+            footerHint = "  [y] copy slug  [Esc] back  [q] quit";
+        if (tab === 2)
+            footerHint = "  ↑/↓ select  Enter run/toggle  ←/→ tabs  [q] quit";
+        if (tab === 3)
+            footerHint = "  ↑/↓ select process  [z] clean zombies  ←/→ tabs  [q] quit";
+        if (tab === 4)
+            footerHint = modelCheckAllInProgress
+                ? `  Checking ${modelCheckAllProgress.current}/${modelCheckAllProgress.total}: ${modelCheckAllProgress.modelId}…`
+                : modelRecheckInProgress
+                    ? "  Recheck in progress…"
+                    : "  ↑/↓ select model  [r] recheck  [c] check all  ←/→ tabs  [q] quit";
+        if (cols >= SIDEBAR_MIN_COLS)
+            footerHint += "  [Tab] chat";
+    }
     // ENV indicator
     const envLoading = envStatus.checkedAt === 0;
     const envColor = envLoading
@@ -551,7 +823,9 @@ export function App({ tasksRoot }) {
         : !envStatus.ready && envStatus.errors.length > 0 && !envLoading
             ? envStatus.errors.slice(0, 3).join(" | ")
             : "";
-    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time, "  "] }), _jsxs(Text, { bold: true, color: envColor, children: [envIcon, " ENV"] }), envHint ? _jsxs(Text, { color: envStatus.configMissing ? "yellow" : "red", dimColor: true, children: [" ", envHint] }) : null, envStatus.ready && _jsxs(Text, { dimColor: true, children: [" (", envStatus.services.length, " services)"] }), envStatus.configMissing && _jsx(Text, { color: "yellow", children: "  [i] generate" }), !envStatus.ready && !envStatus.configMissing && !envLoading && _jsx(Text, { dimColor: true, children: "  [e] up env" })] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 }), _jsx(TabLabel, { n: 3, label: "Processes", active: tab === 3, hasAlert: procStatus.zombies.length > 0 || procStatus.lock?.zombie === true }), _jsx(TabLabel, { n: 4, label: "Models", active: tab === 4, hasAlert: modelBlacklistEntries.length > 0 })] }), _jsx(Text, { children: " " }), tab === 1 && (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: cols, rows: rows, tick: tick, detailTab: detailTab, detailScrollOffsets: detailScrollOffsets, setDetailScrollOffsets: setDetailScrollOffsets, setMsg: setMsg, setView: setView })), tab === 2 && _jsx(CommandsTab, { cols: cols, selectedIdx: cmdIdx, repoRoot: repoRoot }), tab === 3 && (_jsx(ProcessesTab, { procStatus: procStatus, selectedIdx: procIdx, logLines: procLogLines, cols: cols, rows: rows, tick: tick })), tab === 4 && (_jsx(ModelsTab, { inventory: modelInventory, blacklistEntries: modelBlacklistEntries, selectedIdx: modelIdx, recheckInProgress: modelRecheckInProgress, checkAllInProgress: modelCheckAllInProgress, checkAllProgress: modelCheckAllProgress, cols: cols, rows: rows })), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsx(Text, { dimColor: true, children: footerHint })] }));
+    const showSidebar = sidebarOpen && cols >= SIDEBAR_MIN_COLS;
+    const mainCols = showSidebar ? cols - SIDEBAR_WIDTH - 1 : cols;
+    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time, "  "] }), _jsxs(Text, { bold: true, color: envColor, children: [envIcon, " ENV"] }), envHint ? _jsxs(Text, { color: envStatus.configMissing ? "yellow" : "red", dimColor: true, children: [" ", envHint] }) : null, envStatus.ready && _jsxs(Text, { dimColor: true, children: [" (", envStatus.services.length, " services)"] }), envStatus.configMissing && _jsx(Text, { color: "yellow", children: "  [i] generate" }), !envStatus.ready && !envStatus.configMissing && !envLoading && _jsx(Text, { dimColor: true, children: "  [e] up env" }), cols >= SIDEBAR_MIN_COLS && (_jsx(Text, { dimColor: true, color: sidebarFocused ? "cyan" : undefined, children: sidebarOpen ? "  [Tab] chat" : "  [Tab] open chat" }))] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 }), _jsx(TabLabel, { n: 3, label: "Processes", active: tab === 3, hasAlert: procStatus.zombies.length > 0 || procStatus.lock?.zombie === true }), _jsx(TabLabel, { n: 4, label: "Models", active: tab === 4, hasAlert: modelBlacklistEntries.length > 0 })] }), _jsx(Text, { children: " " }), _jsxs(Box, { flexDirection: "row", children: [_jsxs(Box, { flexDirection: "column", width: mainCols, children: [tab === 1 && (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: mainCols, rows: rows, tick: tick, detailTab: detailTab, detailScrollOffsets: detailScrollOffsets, setDetailScrollOffsets: setDetailScrollOffsets, setMsg: setMsg, setView: setView })), tab === 2 && _jsx(CommandsTab, { cols: mainCols, selectedIdx: cmdIdx, repoRoot: repoRoot }), tab === 3 && (_jsx(ProcessesTab, { procStatus: procStatus, selectedIdx: procIdx, logLines: procLogLines, cols: mainCols, rows: rows, tick: tick })), tab === 4 && (_jsx(ModelsTab, { inventory: modelInventory, blacklistEntries: modelBlacklistEntries, selectedIdx: modelIdx, recheckInProgress: modelRecheckInProgress, checkAllInProgress: modelCheckAllInProgress, checkAllProgress: modelCheckAllProgress, cols: mainCols, rows: rows }))] }), showSidebar && (_jsx(Box, { flexDirection: "column", width: 1, children: Array.from({ length: rows - 6 }).map((_, i) => (_jsx(Text, { dimColor: true, color: sidebarFocused ? "cyan" : undefined, children: "\u2502" }, i))) })), showSidebar && chatSession && (_jsx(SidebarChat, { session: chatSession, input: chatInput, loading: chatLoading, focused: sidebarFocused, slashSuggestions: slashSuggestions, slashSuggestionIdx: slashSuggestionIdx, modelPickerOpen: modelPickerOpen, modelPickerIdx: modelPickerIdx, healthyModels: modelInventory.filter((m) => !modelBlacklistEntries.some((b) => b.model === m.modelId)), scrollOffset: chatScrollOffset, width: SIDEBAR_WIDTH, rows: rows }))] }), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsx(Text, { dimColor: true, children: footerHint })] }));
 }
 // ── Tab label ─────────────────────────────────────────────────────
 function TabLabel({ n, label, active, hasAlert }) {
@@ -977,6 +1251,42 @@ function CommandsTab({ cols, selectedIdx, repoRoot }) {
 }
 function CmdLine({ k, desc, cursor, executable }) {
     return (_jsxs(Box, { children: [_jsx(Text, { color: "cyan", children: cursor ? "  ▶ " : "    " }), _jsx(Text, { bold: executable, dimColor: !executable, children: k.padEnd(8) }), _jsx(Text, { dimColor: !cursor, children: desc }), cursor && _jsx(Text, { color: "green", children: " \u23CE" })] }));
+}
+// ── Sidebar Chat ──────────────────────────────────────────────────
+function SidebarChat({ session, input, loading, focused, slashSuggestions, slashSuggestionIdx, modelPickerOpen, modelPickerIdx, healthyModels, scrollOffset, width, rows, }) {
+    const contextK = Math.round(session.contextTokens / 1000);
+    const contextPct = Math.min(100, Math.round((session.contextTokens / AUTO_COMPACT_THRESHOLD) * 100));
+    const contextColor = contextPct >= 90 ? "red" : contextPct >= 70 ? "yellow" : "green";
+    const modelShort = session.model
+        ? session.model.replace(/^(anthropic|openai|google|openrouter)\//, "").slice(0, 20)
+        : "default";
+    // Message history for display
+    const allMessages = session.messages;
+    const historyLines = [];
+    if (session.compactMemory) {
+        historyLines.push("── [compacted memory] ──");
+        historyLines.push("");
+    }
+    for (const msg of allMessages) {
+        const prefix = msg.role === "user" ? "You: " : msg.role === "assistant" ? "AI:  " : "Sys: ";
+        const color = msg.role === "user" ? "" : "";
+        const lines = msg.content.split("\n");
+        historyLines.push(`${prefix}${lines[0].slice(0, width - 6)}`);
+        for (const line of lines.slice(1, 4)) {
+            if (line.trim())
+                historyLines.push(`     ${line.slice(0, width - 6)}`);
+        }
+        historyLines.push("");
+    }
+    const viewportH = rows - 10;
+    const maxOffset = Math.max(0, historyLines.length - viewportH);
+    const clampedOffset = Math.min(scrollOffset, maxOffset);
+    const visibleLines = historyLines.slice(clampedOffset, clampedOffset + viewportH);
+    return (_jsxs(Box, { flexDirection: "column", width: width, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: focused ? "cyan" : "white", children: " Chat" }), _jsxs(Text, { dimColor: true, children: [" ", modelShort] }), _jsxs(Text, { color: contextColor, dimColor: true, children: [" ", contextK, "k/", Math.round(AUTO_COMPACT_THRESHOLD / 1000), "k"] }), session.watchJobs.length > 0 && (_jsxs(Text, { color: "yellow", dimColor: true, children: [" \u23F1", session.watchJobs.length] }))] }), _jsx(Text, { dimColor: true, children: "─".repeat(width - 1) }), _jsxs(Box, { flexDirection: "column", height: viewportH, children: [visibleLines.length === 0 && !session.compactMemory ? (_jsx(Text, { dimColor: true, children: " Type a message or / for commands" })) : (visibleLines.map((line, i) => {
+                        const isUser = line.startsWith("You: ");
+                        const isSystem = line.startsWith("Sys: ");
+                        return (_jsx(Text, { color: isUser ? "cyan" : isSystem ? "yellow" : undefined, dimColor: !isUser && !isSystem, children: " " + line.slice(0, width - 2) }, i));
+                    })), loading && _jsx(Text, { color: "yellow", children: " \u27F3 thinking\u2026" })] }), slashSuggestions.length > 0 && (_jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { dimColor: true, children: "─".repeat(width - 1) }), slashSuggestions.map((cmd, i) => (_jsxs(Box, { children: [_jsxs(Text, { color: i === slashSuggestionIdx ? "cyan" : undefined, dimColor: i !== slashSuggestionIdx, children: [i === slashSuggestionIdx ? " ▶ " : "   ", cmd.name.padEnd(10)] }), _jsx(Text, { dimColor: true, children: cmd.description.slice(0, width - 14) })] }, cmd.name)))] })), modelPickerOpen && (_jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { dimColor: true, children: "─".repeat(width - 1) }), _jsx(Text, { bold: true, color: "cyan", children: " Select model (Enter confirm, Esc cancel)" }), healthyModels.length === 0 ? (_jsx(Text, { color: "red", children: " No healthy models available" })) : (healthyModels.slice(0, 8).map((m, i) => (_jsx(Box, { children: _jsxs(Text, { color: i === modelPickerIdx ? "cyan" : undefined, dimColor: i !== modelPickerIdx, children: [i === modelPickerIdx ? " ▶ " : "   ", m.modelId.replace(/^(anthropic|openai|google|openrouter)\//, "").slice(0, width - 5)] }) }, m.modelId))))] })), _jsx(Text, { dimColor: true, children: "─".repeat(width - 1) }), _jsxs(Box, { children: [_jsx(Text, { color: focused ? "cyan" : "white", children: focused ? "▶ " : "  " }), _jsx(Text, { children: input || (focused ? "" : "(Tab to focus)") }), focused && _jsx(Text, { color: "cyan", children: "\u2588" })] })] }));
 }
 // ── Q&A View ──────────────────────────────────────────────────────
 function QAView({ task, cols, rows, onBack }) {

@@ -216,3 +216,46 @@ export function countRootCauseReports(taskDir: string): number {
     return 0;
   }
 }
+
+// ── Chat session fixtures ─────────────────────────────────────────────
+
+import type { ChatSession, ChatMessage, WatchJob } from "../../state/chat-session.js";
+
+/** Build a minimal chat session fixture */
+export function createChatSessionFixture(overrides: Partial<ChatSession> = {}): ChatSession {
+  return {
+    chatId: "test-chat-id",
+    createdAt: new Date().toISOString(),
+    lastOpenedAt: new Date().toISOString(),
+    model: null,
+    messages: [],
+    compactMemory: null,
+    watchJobs: [],
+    contextTokens: 0,
+    ...overrides,
+  };
+}
+
+/** Build a chat message fixture */
+export function createChatMessageFixture(
+  role: ChatMessage["role"],
+  content: string,
+): ChatMessage {
+  return {
+    role,
+    content,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+/** Build a watch job fixture */
+export function createWatchJobFixture(overrides: Partial<WatchJob> = {}): WatchJob {
+  return {
+    id: "test-watch-job-id",
+    description: "Watch failed tasks",
+    intervalSeconds: 300,
+    createdAt: new Date().toISOString(),
+    lastRunAt: null,
+    ...overrides,
+  };
+}

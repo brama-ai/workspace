@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Box, Text, useInput, useApp, useStdout } from "ink";
 import { readdirSync, readFileSync, existsSync, statSync, writeFileSync } from "node:fs";
 import { join, basename } from "node:path";
@@ -34,11 +34,42 @@ import { promoteNextTodoToPending } from "../cli/batch.js";
 import { loadModelInventory, formatModelUsage, type ModelInventoryEntry } from "../lib/model-inventory.js";
 import { getBlacklistEntry, getAllBlacklistEntries, type BlacklistEntry } from "../agents/executor.js";
 import { recheckModel, recheckAllModels, formatReasonCode, type ProbeResult } from "../agents/model-probe.js";
+import {
+  restoreOrCreateSession,
+  createSession,
+  appendMessage,
+  compactSession,
+  addWatchJob,
+  removeWatchJob,
+  updateContextTokens,
+  updateWatchJobLastRun,
+  type ChatSession,
+  type ChatMessage,
+} from "../state/chat-session.js";
+import { getSlashSuggestions, matchSlashCommand, isSlashInput, type SlashCommand } from "../lib/slash-commands.js";
+import { assembleMonitorContext, formatSnapshotForChat } from "../lib/context-assembler.js";
+import {
+  parseWatchRequest,
+  parseCancelRequest,
+  estimateContextTokens,
+  shouldAutoCompact,
+  executeChatTurn,
+  getDueWatchJobs,
+  processWatchJob,
+  AUTO_COMPACT_THRESHOLD,
+} from "../agents/chat-agent.js";
 
 const VERSION = "2.5.0";
 const REFRESH_MS = 3000;
 const PROC_REFRESH_MS = 15000; // Process status refresh — less frequent (was 3s, now 15s)
 const ENV_REFRESH_MS = 30000; // Environment status refresh — 30s (docker compose ps is slow)
+
+/** Minimum terminal width to show sidebar (below this, sidebar is hidden) */
+const SIDEBAR_MIN_COLS = 120;
+/** Sidebar width in columns */
+const SIDEBAR_WIDTH = 45;
+/** Watch job check interval in ms */
+const WATCH_JOB_CHECK_MS = 30_000;
 
 type ViewMode = "list" | "detail" | "logs" | "agents" | "qa";
 type DetailTab = "summary" | "agents" | "state" | "task" | "handoff";
@@ -154,6 +185,18 @@ export function App({ tasksRoot }: Props) {
   const [modelCheckAllInProgress, setModelCheckAllInProgress] = useState(false);
   const [modelCheckAllProgress, setModelCheckAllProgress] = useState({ current: 0, total: 0, modelId: "" });
 
+  // Sidebar chat state
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarFocused, setSidebarFocused] = useState(false);
+  const [chatSession, setChatSession] = useState<ChatSession | null>(null);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [slashSuggestions, setSlashSuggestions] = useState<SlashCommand[]>([]);
+  const [slashSuggestionIdx, setSlashSuggestionIdx] = useState(0);
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  const [modelPickerIdx, setModelPickerIdx] = useState(0);
+  const [chatScrollOffset, setChatScrollOffset] = useState(0);
+
   // Auto-watcher tick counter (triggers every ~5 refreshes = 15s)
   const autoWatchCounter = React.useRef(0);
 
@@ -234,6 +277,38 @@ export function App({ tasksRoot }: Props) {
     return () => clearTimeout(id);
   }, [msg]);
 
+  // Initialize sidebar chat session on mount
+  useEffect(() => {
+    try {
+      const session = restoreOrCreateSession(repoRoot);
+      setChatSession(session);
+    } catch { /* ignore — sidebar is non-critical */ }
+  }, [repoRoot]);
+
+  // Watch job scheduler — check every 30s for due jobs
+  useEffect(() => {
+    if (!chatSession) return;
+    const id = setInterval(() => {
+      const dueJobs = getDueWatchJobs(chatSession);
+      if (dueJobs.length === 0) return;
+
+      const snapshot = assembleMonitorContext(repoRoot, root, procStatus);
+      for (const job of dueJobs) {
+        try {
+          const response = processWatchJob(job, snapshot, chatSession, {
+            repoRoot,
+            model: chatSession.model ?? "anthropic/claude-sonnet-4-6",
+            supervisorMdPath: join(repoRoot, "agentic-development", "supervisor.md"),
+          });
+          const updated = appendMessage(repoRoot, chatSession, "assistant", `[Watch: ${job.description}]\n\n${response}`);
+          const updated2 = updateWatchJobLastRun(repoRoot, updated, job.id);
+          setChatSession({ ...updated2 });
+        } catch { /* ignore watch job errors */ }
+      }
+    }, WATCH_JOB_CHECK_MS);
+    return () => clearInterval(id);
+  }, [chatSession, repoRoot, root, procStatus]);
+
   // Refresh proc log when selection or tick changes
   useEffect(() => {
     const allProcs = [...procStatus.workers, ...procStatus.zombies];
@@ -262,7 +337,198 @@ export function App({ tasksRoot }: Props) {
   const selected: TaskInfo | undefined = data.tasks[idx];
   const allProcs: ProcessEntry[] = [...procStatus.workers, ...procStatus.zombies];
 
+  // Sidebar chat: send message handler
+  const handleChatSend = () => {
+    if (!chatInput.trim() || !chatSession || chatLoading) return;
+
+    const input = chatInput.trim();
+    setChatInput("");
+    setSlashSuggestions([]);
+
+    // Handle slash commands
+    const cmd = matchSlashCommand(input);
+    if (cmd) {
+      if (cmd.name === "/new") {
+        try {
+          const newSession = createSession(repoRoot, chatSession.model);
+          const withMsg = appendMessage(repoRoot, newSession, "system", "New chat session started.");
+          setChatSession({ ...withMsg });
+          setMsg("New chat session started");
+        } catch { setMsg("Failed to create new session"); }
+        return;
+      }
+
+      if (cmd.name === "/compact") {
+        if (!chatSession || chatSession.messages.length < 3) {
+          const updated = appendMessage(repoRoot, chatSession, "system", "Not enough messages to compact (need at least 3).");
+          setChatSession({ ...updated });
+          return;
+        }
+        const summary = `Compacted ${chatSession.messages.length} messages at ${new Date().toLocaleTimeString()}.`;
+        const compacted = compactSession(repoRoot, chatSession, summary);
+        if (compacted) {
+          const updated = appendMessage(repoRoot, compacted, "system", "Chat history compacted. Continuing in same session.");
+          setChatSession({ ...updated });
+          setMsg("Chat compacted");
+        }
+        return;
+      }
+
+      if (cmd.name === "/model") {
+        setModelPickerOpen(true);
+        setModelPickerIdx(0);
+        return;
+      }
+      return;
+    }
+
+    // Check for watch/cancel requests
+    const watchReq = parseWatchRequest(input);
+    const cancelJobId = parseCancelRequest(input, chatSession.watchJobs);
+
+    // Append user message
+    let session = appendMessage(repoRoot, chatSession, "user", input);
+
+    if (cancelJobId) {
+      session = removeWatchJob(repoRoot, session, cancelJobId);
+      const updated = appendMessage(repoRoot, session, "assistant", "Watch job cancelled.");
+      setChatSession({ ...updated });
+      return;
+    }
+
+    // Check auto-compact before sending
+    if (shouldAutoCompact(session)) {
+      const summary = `Auto-compacted at ${new Date().toLocaleTimeString()} (context exceeded ${AUTO_COMPACT_THRESHOLD / 1000}k tokens).`;
+      const compacted = compactSession(repoRoot, session, summary);
+      if (compacted) {
+        session = appendMessage(repoRoot, compacted, "system", "Context auto-compacted to stay within limits.");
+        setChatSession({ ...session });
+      }
+    }
+
+    setChatLoading(true);
+    setChatSession({ ...session });
+
+    // Execute chat turn asynchronously
+    setTimeout(() => {
+      try {
+        const snapshot = assembleMonitorContext(repoRoot, root, procStatus);
+        const contextText = formatSnapshotForChat(snapshot);
+        const response = executeChatTurn(input, contextText, session, {
+          repoRoot,
+          model: session.model ?? "anthropic/claude-sonnet-4-6",
+          supervisorMdPath: join(repoRoot, "agentic-development", "supervisor.md"),
+        });
+
+        let updated = appendMessage(repoRoot, session, "assistant", response);
+
+        // Handle watch request
+        if (watchReq) {
+          updated = addWatchJob(repoRoot, updated, watchReq.description, watchReq.intervalSeconds);
+        }
+
+        // Update context token estimate
+        const tokens = estimateContextTokens(updated);
+        updated = updateContextTokens(repoRoot, updated, tokens);
+
+        setChatSession({ ...updated });
+      } catch (err: any) {
+        const errSession = appendMessage(repoRoot, session, "assistant", `Error: ${err?.message ?? String(err)}`);
+        setChatSession({ ...errSession });
+      } finally {
+        setChatLoading(false);
+      }
+    }, 0);
+  };
+
   useInput((input, key) => {
+    // Sidebar focus mode — capture all input for chat
+    if (sidebarFocused && sidebarOpen) {
+      // Model picker navigation
+      if (modelPickerOpen) {
+        const healthyModels = modelInventory.filter((m) => !modelBlacklistEntries.some((b) => b.model === m.modelId));
+        if (key.upArrow) { setModelPickerIdx((i) => Math.max(0, i - 1)); return; }
+        if (key.downArrow) { setModelPickerIdx((i) => Math.min(Math.max(0, healthyModels.length - 1), i + 1)); return; }
+        if (key.return) {
+          const selected = healthyModels[modelPickerIdx];
+          if (selected && chatSession) {
+            const updated = { ...chatSession, model: selected.modelId };
+            setChatSession(updated);
+            try {
+              const { writeSession } = require("../state/chat-session.js");
+              writeSession(repoRoot, updated);
+            } catch { /* ignore */ }
+            setMsg(`Chat model: ${selected.modelId}`);
+          }
+          setModelPickerOpen(false);
+          return;
+        }
+        if (key.escape) { setModelPickerOpen(false); return; }
+        return;
+      }
+
+      // Slash suggestion navigation
+      if (slashSuggestions.length > 0) {
+        if (key.upArrow) { setSlashSuggestionIdx((i) => Math.max(0, i - 1)); return; }
+        if (key.downArrow) { setSlashSuggestionIdx((i) => Math.min(slashSuggestions.length - 1, i + 1)); return; }
+        if (key.tab || key.return) {
+          const selected = slashSuggestions[slashSuggestionIdx];
+          if (selected) {
+            setChatInput(selected.name);
+            setSlashSuggestions([]);
+            if (key.return) handleChatSend();
+          }
+          return;
+        }
+      }
+
+      // Chat scroll
+      if (key.pageUp) { setChatScrollOffset((o) => Math.max(0, o - 5)); return; }
+      if (key.pageDown) { setChatScrollOffset((o) => o + 5); return; }
+
+      // Escape: unfocus sidebar
+      if (key.escape) { setSidebarFocused(false); return; }
+
+      // Enter: send message
+      if (key.return) { handleChatSend(); return; }
+
+      // Backspace
+      if (key.backspace || key.delete) {
+        setChatInput((prev) => {
+          const next = prev.slice(0, -1);
+          setSlashSuggestions(isSlashInput(next) ? getSlashSuggestions(next) : []);
+          return next;
+        });
+        return;
+      }
+
+      // Regular character input
+      if (input && !key.ctrl && !key.meta) {
+        setChatInput((prev) => {
+          const next = prev + input;
+          setSlashSuggestions(isSlashInput(next) ? getSlashSuggestions(next) : []);
+          setSlashSuggestionIdx(0);
+          return next;
+        });
+        return;
+      }
+
+      return;
+    }
+
+    // Global sidebar toggle: Tab key (when not in detail view)
+    if (key.tab && view !== "detail" && !sidebarFocused) {
+      if (cols >= SIDEBAR_MIN_COLS) {
+        if (!sidebarOpen) {
+          setSidebarOpen(true);
+          setSidebarFocused(true);
+        } else {
+          setSidebarFocused(true);
+        }
+        return;
+      }
+    }
+
     // Quit / back
     if (input === "q" || input === "Q") {
       if (view !== "list") { setView("list"); return; }
@@ -270,6 +536,8 @@ export function App({ tasksRoot }: Props) {
       return;
     }
     if (key.escape) {
+      if (sidebarFocused) { setSidebarFocused(false); return; }
+      if (sidebarOpen) { setSidebarOpen(false); return; }
       if (view !== "list") setView("list");
       return;
     }
@@ -485,17 +753,22 @@ export function App({ tasksRoot }: Props) {
 
   // Footer hint per tab/view
   let footerHint = "";
-  if (tab === 1 && view === "list")   footerHint = "  ↑/↓ select  Enter detail/qa  [a] agents  [l] logs  [d] archive  [x] doctor  [s] start  [k] stop  [e] env  [q] quit";
-  if (tab === 1 && view === "detail") footerHint = "  ←/→ tabs  ↑/↓ scroll  PgUp/PgDn  [g] top  [G] end  [y] copy  [Esc] back  [q] quit";
-  if (tab === 1 && view === "qa")     footerHint = "  ↑/↓ select question  Tab switch panel  Esc save & back  Ctrl+S save  1-9 quick-select option";
-  if (tab === 1 && view !== "list" && view !== "detail" && view !== "qa") footerHint = "  [y] copy slug  [Esc] back  [q] quit";
-  if (tab === 2) footerHint = "  ↑/↓ select  Enter run/toggle  ←/→ tabs  [q] quit";
-  if (tab === 3) footerHint = "  ↑/↓ select process  [z] clean zombies  ←/→ tabs  [q] quit";
-  if (tab === 4) footerHint = modelCheckAllInProgress
-    ? `  Checking ${modelCheckAllProgress.current}/${modelCheckAllProgress.total}: ${modelCheckAllProgress.modelId}…`
-    : modelRecheckInProgress
-      ? "  Recheck in progress…"
-      : "  ↑/↓ select model  [r] recheck  [c] check all  ←/→ tabs  [q] quit";
+  if (sidebarFocused) {
+    footerHint = "  [Chat] type message  Enter send  / slash commands  PgUp/Dn scroll  Esc unfocus";
+  } else {
+    if (tab === 1 && view === "list")   footerHint = "  ↑/↓ select  Enter detail/qa  [a] agents  [l] logs  [d] archive  [x] doctor  [s] start  [k] stop  [e] env  [q] quit";
+    if (tab === 1 && view === "detail") footerHint = "  ←/→ tabs  ↑/↓ scroll  PgUp/PgDn  [g] top  [G] end  [y] copy  [Esc] back  [q] quit";
+    if (tab === 1 && view === "qa")     footerHint = "  ↑/↓ select question  Tab switch panel  Esc save & back  Ctrl+S save  1-9 quick-select option";
+    if (tab === 1 && view !== "list" && view !== "detail" && view !== "qa") footerHint = "  [y] copy slug  [Esc] back  [q] quit";
+    if (tab === 2) footerHint = "  ↑/↓ select  Enter run/toggle  ←/→ tabs  [q] quit";
+    if (tab === 3) footerHint = "  ↑/↓ select process  [z] clean zombies  ←/→ tabs  [q] quit";
+    if (tab === 4) footerHint = modelCheckAllInProgress
+      ? `  Checking ${modelCheckAllProgress.current}/${modelCheckAllProgress.total}: ${modelCheckAllProgress.modelId}…`
+      : modelRecheckInProgress
+        ? "  Recheck in progress…"
+        : "  ↑/↓ select model  [r] recheck  [c] check all  ←/→ tabs  [q] quit";
+    if (cols >= SIDEBAR_MIN_COLS) footerHint += "  [Tab] chat";
+  }
 
   // ENV indicator
   const envLoading = envStatus.checkedAt === 0;
@@ -519,6 +792,9 @@ export function App({ tasksRoot }: Props) {
       ? envStatus.errors.slice(0, 3).join(" | ")
       : "";
 
+  const showSidebar = sidebarOpen && cols >= SIDEBAR_MIN_COLS;
+  const mainCols = showSidebar ? cols - SIDEBAR_WIDTH - 1 : cols;
+
   return (
     <Box flexDirection="column" width={cols}>
       {/* Header */}
@@ -530,6 +806,11 @@ export function App({ tasksRoot }: Props) {
         {envStatus.ready && <Text dimColor> ({envStatus.services.length} services)</Text>}
         {envStatus.configMissing && <Text color="yellow">  [i] generate</Text>}
         {!envStatus.ready && !envStatus.configMissing && !envLoading && <Text dimColor>  [e] up env</Text>}
+        {cols >= SIDEBAR_MIN_COLS && (
+          <Text dimColor color={sidebarFocused ? "cyan" : undefined}>
+            {sidebarOpen ? "  [Tab] chat" : "  [Tab] open chat"}
+          </Text>
+        )}
       </Box>
       <Text dimColor>{"─".repeat(cols)}</Text>
 
@@ -543,46 +824,78 @@ export function App({ tasksRoot }: Props) {
       </Box>
       <Text> </Text>
 
-      {/* Content */}
-      {tab === 1 && (
-        <TasksTab
-          data={data}
-          idx={idx}
-          view={view}
-          selected={selected}
-          cols={cols}
-          rows={rows}
-          tick={tick}
-          detailTab={detailTab}
-          detailScrollOffsets={detailScrollOffsets}
-          setDetailScrollOffsets={setDetailScrollOffsets}
-          setMsg={setMsg}
-          setView={setView}
-        />
-      )}
-      {tab === 2 && <CommandsTab cols={cols} selectedIdx={cmdIdx} repoRoot={repoRoot} />}
-      {tab === 3 && (
-        <ProcessesTab
-          procStatus={procStatus}
-          selectedIdx={procIdx}
-          logLines={procLogLines}
-          cols={cols}
-          rows={rows}
-          tick={tick}
-        />
-      )}
-      {tab === 4 && (
-        <ModelsTab
-          inventory={modelInventory}
-          blacklistEntries={modelBlacklistEntries}
-          selectedIdx={modelIdx}
-          recheckInProgress={modelRecheckInProgress}
-          checkAllInProgress={modelCheckAllInProgress}
-          checkAllProgress={modelCheckAllProgress}
-          cols={cols}
-          rows={rows}
-        />
-      )}
+      {/* Main content + optional sidebar */}
+      <Box flexDirection="row">
+        {/* Main content area */}
+        <Box flexDirection="column" width={mainCols}>
+          {tab === 1 && (
+            <TasksTab
+              data={data}
+              idx={idx}
+              view={view}
+              selected={selected}
+              cols={mainCols}
+              rows={rows}
+              tick={tick}
+              detailTab={detailTab}
+              detailScrollOffsets={detailScrollOffsets}
+              setDetailScrollOffsets={setDetailScrollOffsets}
+              setMsg={setMsg}
+              setView={setView}
+            />
+          )}
+          {tab === 2 && <CommandsTab cols={mainCols} selectedIdx={cmdIdx} repoRoot={repoRoot} />}
+          {tab === 3 && (
+            <ProcessesTab
+              procStatus={procStatus}
+              selectedIdx={procIdx}
+              logLines={procLogLines}
+              cols={mainCols}
+              rows={rows}
+              tick={tick}
+            />
+          )}
+          {tab === 4 && (
+            <ModelsTab
+              inventory={modelInventory}
+              blacklistEntries={modelBlacklistEntries}
+              selectedIdx={modelIdx}
+              recheckInProgress={modelRecheckInProgress}
+              checkAllInProgress={modelCheckAllInProgress}
+              checkAllProgress={modelCheckAllProgress}
+              cols={mainCols}
+              rows={rows}
+            />
+          )}
+        </Box>
+
+        {/* Sidebar divider */}
+        {showSidebar && (
+          <Box flexDirection="column" width={1}>
+            {Array.from({ length: rows - 6 }).map((_, i) => (
+              <Text key={i} dimColor color={sidebarFocused ? "cyan" : undefined}>│</Text>
+            ))}
+          </Box>
+        )}
+
+        {/* Sidebar chat */}
+        {showSidebar && chatSession && (
+          <SidebarChat
+            session={chatSession}
+            input={chatInput}
+            loading={chatLoading}
+            focused={sidebarFocused}
+            slashSuggestions={slashSuggestions}
+            slashSuggestionIdx={slashSuggestionIdx}
+            modelPickerOpen={modelPickerOpen}
+            modelPickerIdx={modelPickerIdx}
+            healthyModels={modelInventory.filter((m) => !modelBlacklistEntries.some((b) => b.model === m.modelId))}
+            scrollOffset={chatScrollOffset}
+            width={SIDEBAR_WIDTH}
+            rows={rows}
+          />
+        )}
+      </Box>
 
       {/* Message bar */}
       {msg ? <Text color="yellow">  {msg}</Text> : null}
@@ -1537,6 +1850,148 @@ function CmdLine({ k, desc, cursor, executable }: { k: string; desc: string; cur
       <Text bold={executable} dimColor={!executable}>{k.padEnd(8)}</Text>
       <Text dimColor={!cursor}>{desc}</Text>
       {cursor && <Text color="green"> ⏎</Text>}
+    </Box>
+  );
+}
+
+// ── Sidebar Chat ──────────────────────────────────────────────────
+function SidebarChat({
+  session,
+  input,
+  loading,
+  focused,
+  slashSuggestions,
+  slashSuggestionIdx,
+  modelPickerOpen,
+  modelPickerIdx,
+  healthyModels,
+  scrollOffset,
+  width,
+  rows,
+}: {
+  session: ChatSession;
+  input: string;
+  loading: boolean;
+  focused: boolean;
+  slashSuggestions: SlashCommand[];
+  slashSuggestionIdx: number;
+  modelPickerOpen: boolean;
+  modelPickerIdx: number;
+  healthyModels: ModelInventoryEntry[];
+  scrollOffset: number;
+  width: number;
+  rows: number;
+}) {
+  const contextK = Math.round(session.contextTokens / 1000);
+  const contextPct = Math.min(100, Math.round((session.contextTokens / AUTO_COMPACT_THRESHOLD) * 100));
+  const contextColor = contextPct >= 90 ? "red" : contextPct >= 70 ? "yellow" : "green";
+  const modelShort = session.model
+    ? session.model.replace(/^(anthropic|openai|google|openrouter)\//, "").slice(0, 20)
+    : "default";
+
+  // Message history for display
+  const allMessages = session.messages;
+  const historyLines: string[] = [];
+
+  if (session.compactMemory) {
+    historyLines.push("── [compacted memory] ──");
+    historyLines.push("");
+  }
+
+  for (const msg of allMessages) {
+    const prefix = msg.role === "user" ? "You: " : msg.role === "assistant" ? "AI:  " : "Sys: ";
+    const color = msg.role === "user" ? "" : "";
+    const lines = msg.content.split("\n");
+    historyLines.push(`${prefix}${lines[0].slice(0, width - 6)}`);
+    for (const line of lines.slice(1, 4)) {
+      if (line.trim()) historyLines.push(`     ${line.slice(0, width - 6)}`);
+    }
+    historyLines.push("");
+  }
+
+  const viewportH = rows - 10;
+  const maxOffset = Math.max(0, historyLines.length - viewportH);
+  const clampedOffset = Math.min(scrollOffset, maxOffset);
+  const visibleLines = historyLines.slice(clampedOffset, clampedOffset + viewportH);
+
+  return (
+    <Box flexDirection="column" width={width}>
+      {/* Sidebar header */}
+      <Box>
+        <Text bold color={focused ? "cyan" : "white"}> Chat</Text>
+        <Text dimColor> {modelShort}</Text>
+        <Text color={contextColor as any} dimColor> {contextK}k/{Math.round(AUTO_COMPACT_THRESHOLD / 1000)}k</Text>
+        {session.watchJobs.length > 0 && (
+          <Text color="yellow" dimColor> ⏱{session.watchJobs.length}</Text>
+        )}
+      </Box>
+      <Text dimColor>{"─".repeat(width - 1)}</Text>
+
+      {/* Message history */}
+      <Box flexDirection="column" height={viewportH}>
+        {visibleLines.length === 0 && !session.compactMemory ? (
+          <Text dimColor> Type a message or / for commands</Text>
+        ) : (
+          visibleLines.map((line, i) => {
+            const isUser = line.startsWith("You: ");
+            const isSystem = line.startsWith("Sys: ");
+            return (
+              <Text
+                key={i}
+                color={isUser ? "cyan" : isSystem ? "yellow" : undefined}
+                dimColor={!isUser && !isSystem}
+              >
+                {" " + line.slice(0, width - 2)}
+              </Text>
+            );
+          })
+        )}
+        {loading && <Text color="yellow"> ⟳ thinking…</Text>}
+      </Box>
+
+      {/* Slash suggestions */}
+      {slashSuggestions.length > 0 && (
+        <Box flexDirection="column">
+          <Text dimColor>{"─".repeat(width - 1)}</Text>
+          {slashSuggestions.map((cmd, i) => (
+            <Box key={cmd.name}>
+              <Text color={i === slashSuggestionIdx ? "cyan" : undefined} dimColor={i !== slashSuggestionIdx}>
+                {i === slashSuggestionIdx ? " ▶ " : "   "}
+                {cmd.name.padEnd(10)}
+              </Text>
+              <Text dimColor>{cmd.description.slice(0, width - 14)}</Text>
+            </Box>
+          ))}
+        </Box>
+      )}
+
+      {/* Model picker popup */}
+      {modelPickerOpen && (
+        <Box flexDirection="column">
+          <Text dimColor>{"─".repeat(width - 1)}</Text>
+          <Text bold color="cyan"> Select model (Enter confirm, Esc cancel)</Text>
+          {healthyModels.length === 0 ? (
+            <Text color="red"> No healthy models available</Text>
+          ) : (
+            healthyModels.slice(0, 8).map((m, i) => (
+              <Box key={m.modelId}>
+                <Text color={i === modelPickerIdx ? "cyan" : undefined} dimColor={i !== modelPickerIdx}>
+                  {i === modelPickerIdx ? " ▶ " : "   "}
+                  {m.modelId.replace(/^(anthropic|openai|google|openrouter)\//, "").slice(0, width - 5)}
+                </Text>
+              </Box>
+            ))
+          )}
+        </Box>
+      )}
+
+      {/* Input box */}
+      <Text dimColor>{"─".repeat(width - 1)}</Text>
+      <Box>
+        <Text color={focused ? "cyan" : "white"}>{focused ? "▶ " : "  "}</Text>
+        <Text>{input || (focused ? "" : "(Tab to focus)")}</Text>
+        {focused && <Text color="cyan">█</Text>}
+      </Box>
     </Box>
   );
 }
