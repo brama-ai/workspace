@@ -12,7 +12,7 @@ import { generateEnvCheck } from "../cli/init-env.js";
 import { promoteNextTodoToPending } from "../cli/batch.js";
 import { loadModelInventory, formatModelUsage } from "../lib/model-inventory.js";
 import { getAllBlacklistEntries } from "../agents/executor.js";
-import { recheckModel, formatReasonCode } from "../agents/model-probe.js";
+import { recheckModel, recheckAllModels, formatReasonCode } from "../agents/model-probe.js";
 const VERSION = "2.5.0";
 const REFRESH_MS = 3000;
 const PROC_REFRESH_MS = 15000; // Process status refresh — less frequent (was 3s, now 15s)
@@ -103,6 +103,8 @@ export function App({ tasksRoot }) {
     const [modelIdx, setModelIdx] = useState(0);
     const [modelRecheckInProgress, setModelRecheckInProgress] = useState(false);
     const [modelBlacklistEntries, setModelBlacklistEntries] = useState([]);
+    const [modelCheckAllInProgress, setModelCheckAllInProgress] = useState(false);
+    const [modelCheckAllProgress, setModelCheckAllProgress] = useState({ current: 0, total: 0, modelId: "" });
     // Auto-watcher tick counter (triggers every ~5 refreshes = 15s)
     const autoWatchCounter = React.useRef(0);
     // Refresh task data periodically (fast — pure file reads)
@@ -305,7 +307,7 @@ export function App({ tasksRoot }) {
                 return;
             }
             // r — recheck selected model
-            if ((input === "r" || input === "R") && !modelRecheckInProgress) {
+            if ((input === "r" || input === "R") && !modelRecheckInProgress && !modelCheckAllInProgress) {
                 const selected = modelInventory[modelIdx];
                 if (selected) {
                     setModelRecheckInProgress(true);
@@ -324,6 +326,26 @@ export function App({ tasksRoot }) {
                         setMsg(`Recheck error: ${err.message}`);
                     });
                 }
+                return;
+            }
+            // c — check all models sequentially
+            if ((input === "c" || input === "C") && !modelRecheckInProgress && !modelCheckAllInProgress && modelInventory.length > 0) {
+                setModelCheckAllInProgress(true);
+                const allModelIds = modelInventory.map((m) => m.modelId);
+                setModelCheckAllProgress({ current: 0, total: allModelIds.length, modelId: "" });
+                setMsg(`Checking all ${allModelIds.length} models…`);
+                recheckAllModels(repoRoot, allModelIds, (progress) => {
+                    setModelCheckAllProgress({ current: progress.current, total: progress.total, modelId: progress.modelId });
+                }).then((results) => {
+                    setModelCheckAllInProgress(false);
+                    setModelBlacklistEntries(getAllBlacklistEntries());
+                    const healthy = results.filter((r) => r.success).length;
+                    const failed = results.filter((r) => !r.success).length;
+                    setMsg(`Check all done: ${healthy} healthy, ${failed} failed`);
+                }).catch((err) => {
+                    setModelCheckAllInProgress(false);
+                    setMsg(`Check all error: ${err.message}`);
+                });
                 return;
             }
             return;
@@ -503,9 +525,11 @@ export function App({ tasksRoot }) {
     if (tab === 3)
         footerHint = "  ↑/↓ select process  [z] clean zombies  ←/→ tabs  [q] quit";
     if (tab === 4)
-        footerHint = modelRecheckInProgress
-            ? "  Recheck in progress…"
-            : "  ↑/↓ select model  [r] recheck selected  ←/→ tabs  [q] quit";
+        footerHint = modelCheckAllInProgress
+            ? `  Checking ${modelCheckAllProgress.current}/${modelCheckAllProgress.total}: ${modelCheckAllProgress.modelId}…`
+            : modelRecheckInProgress
+                ? "  Recheck in progress…"
+                : "  ↑/↓ select model  [r] recheck  [c] check all  ←/→ tabs  [q] quit";
     // ENV indicator
     const envLoading = envStatus.checkedAt === 0;
     const envColor = envLoading
@@ -527,7 +551,7 @@ export function App({ tasksRoot }) {
         : !envStatus.ready && envStatus.errors.length > 0 && !envLoading
             ? envStatus.errors.slice(0, 3).join(" | ")
             : "";
-    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time, "  "] }), _jsxs(Text, { bold: true, color: envColor, children: [envIcon, " ENV"] }), envHint ? _jsxs(Text, { color: envStatus.configMissing ? "yellow" : "red", dimColor: true, children: [" ", envHint] }) : null, envStatus.ready && _jsxs(Text, { dimColor: true, children: [" (", envStatus.services.length, " services)"] }), envStatus.configMissing && _jsx(Text, { color: "yellow", children: "  [i] generate" }), !envStatus.ready && !envStatus.configMissing && !envLoading && _jsx(Text, { dimColor: true, children: "  [e] up env" })] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 }), _jsx(TabLabel, { n: 3, label: "Processes", active: tab === 3, hasAlert: procStatus.zombies.length > 0 || procStatus.lock?.zombie === true }), _jsx(TabLabel, { n: 4, label: "Models", active: tab === 4, hasAlert: modelBlacklistEntries.length > 0 })] }), _jsx(Text, { children: " " }), tab === 1 && (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: cols, rows: rows, tick: tick, detailTab: detailTab, detailScrollOffsets: detailScrollOffsets, setDetailScrollOffsets: setDetailScrollOffsets, setMsg: setMsg, setView: setView })), tab === 2 && _jsx(CommandsTab, { cols: cols, selectedIdx: cmdIdx, repoRoot: repoRoot }), tab === 3 && (_jsx(ProcessesTab, { procStatus: procStatus, selectedIdx: procIdx, logLines: procLogLines, cols: cols, rows: rows, tick: tick })), tab === 4 && (_jsx(ModelsTab, { inventory: modelInventory, blacklistEntries: modelBlacklistEntries, selectedIdx: modelIdx, recheckInProgress: modelRecheckInProgress, cols: cols, rows: rows })), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsx(Text, { dimColor: true, children: footerHint })] }));
+    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time, "  "] }), _jsxs(Text, { bold: true, color: envColor, children: [envIcon, " ENV"] }), envHint ? _jsxs(Text, { color: envStatus.configMissing ? "yellow" : "red", dimColor: true, children: [" ", envHint] }) : null, envStatus.ready && _jsxs(Text, { dimColor: true, children: [" (", envStatus.services.length, " services)"] }), envStatus.configMissing && _jsx(Text, { color: "yellow", children: "  [i] generate" }), !envStatus.ready && !envStatus.configMissing && !envLoading && _jsx(Text, { dimColor: true, children: "  [e] up env" })] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 }), _jsx(TabLabel, { n: 3, label: "Processes", active: tab === 3, hasAlert: procStatus.zombies.length > 0 || procStatus.lock?.zombie === true }), _jsx(TabLabel, { n: 4, label: "Models", active: tab === 4, hasAlert: modelBlacklistEntries.length > 0 })] }), _jsx(Text, { children: " " }), tab === 1 && (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: cols, rows: rows, tick: tick, detailTab: detailTab, detailScrollOffsets: detailScrollOffsets, setDetailScrollOffsets: setDetailScrollOffsets, setMsg: setMsg, setView: setView })), tab === 2 && _jsx(CommandsTab, { cols: cols, selectedIdx: cmdIdx, repoRoot: repoRoot }), tab === 3 && (_jsx(ProcessesTab, { procStatus: procStatus, selectedIdx: procIdx, logLines: procLogLines, cols: cols, rows: rows, tick: tick })), tab === 4 && (_jsx(ModelsTab, { inventory: modelInventory, blacklistEntries: modelBlacklistEntries, selectedIdx: modelIdx, recheckInProgress: modelRecheckInProgress, checkAllInProgress: modelCheckAllInProgress, checkAllProgress: modelCheckAllProgress, cols: cols, rows: rows })), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsx(Text, { dimColor: true, children: footerHint })] }));
 }
 // ── Tab label ─────────────────────────────────────────────────────
 function TabLabel({ n, label, active, hasAlert }) {
@@ -576,14 +600,14 @@ function ProcessesTab({ procStatus, selectedIdx, logLines, cols, rows, tick, }) 
                         })() })] })), lockInfo && (_jsx(Box, { children: _jsx(Text, { dimColor: true, children: "  " + "─".repeat(cols - 4) }) })), lockInfo && (_jsxs(Box, { gap: 2, children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Batch lock:" }), _jsxs(Text, { color: lockInfo.zombie ? "red" : "green", bold: true, children: ["PID ", lockInfo.pid] }), _jsx(Text, { color: lockInfo.zombie ? "red" : "green", children: lockInfo.zombie ? "ZOMBIE — stale lock!" : `state=${lockInfo.state}` })] }))] }));
 }
 // ── Models Tab ────────────────────────────────────────────────────
-function ModelsTab({ inventory, blacklistEntries, selectedIdx, recheckInProgress, cols, rows, }) {
+function ModelsTab({ inventory, blacklistEntries, selectedIdx, recheckInProgress, checkAllInProgress, checkAllProgress, cols, rows, }) {
     const blockedSet = new Map();
     for (const entry of blacklistEntries) {
         blockedSet.set(entry.model, entry);
     }
     const blockedCount = inventory.filter((m) => blockedSet.has(m.modelId)).length;
     const listH = rows - 10;
-    return (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Models" }), blockedCount > 0 && (_jsxs(Text, { color: "red", bold: true, children: ["  \u2717 ", blockedCount, " blocked"] })), recheckInProgress && (_jsx(Text, { color: "yellow", bold: true, children: "  \u27F3 recheck in progress\u2026" }))] }), _jsx(Text, { dimColor: true, children: "  " + "─".repeat(cols - 4) }), inventory.length === 0 ? (_jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { children: " " }), _jsx(Text, { dimColor: true, children: "  No models found in .opencode/oh-my-opencode.jsonc" }), _jsx(Text, { dimColor: true, children: "  Configure agent routing to see the model inventory." })] })) : (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { dimColor: true, children: "   " }), _jsx(Text, { bold: true, dimColor: true, children: "Status".padEnd(8) }), _jsx(Text, { bold: true, dimColor: true, children: "Model ID".padEnd(40) }), _jsx(Text, { bold: true, dimColor: true, children: "Used by" })] }), _jsx(Text, { dimColor: true, children: "   " + "─".repeat(Math.min(cols - 6, 80)) }), inventory.slice(0, listH).map((entry, i) => {
+    return (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Models" }), blockedCount > 0 && (_jsxs(Text, { color: "red", bold: true, children: ["  \u2717 ", blockedCount, " blocked"] })), recheckInProgress && (_jsx(Text, { color: "yellow", bold: true, children: "  \u27F3 recheck in progress\u2026" })), checkAllInProgress && (_jsxs(Text, { color: "yellow", bold: true, children: ["  \u27F3 checking ", checkAllProgress.current, "/", checkAllProgress.total, ": ", checkAllProgress.modelId] }))] }), _jsx(Text, { dimColor: true, children: "  " + "─".repeat(cols - 4) }), inventory.length === 0 ? (_jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { children: " " }), _jsx(Text, { dimColor: true, children: "  No models found in .opencode/oh-my-opencode.jsonc" }), _jsx(Text, { dimColor: true, children: "  Configure agent routing to see the model inventory." })] })) : (_jsxs(Box, { flexDirection: "column", children: [_jsxs(Box, { children: [_jsx(Text, { dimColor: true, children: "   " }), _jsx(Text, { bold: true, dimColor: true, children: "Status".padEnd(8) }), _jsx(Text, { bold: true, dimColor: true, children: "Model ID".padEnd(40) }), _jsx(Text, { bold: true, dimColor: true, children: "Used by" })] }), _jsx(Text, { dimColor: true, children: "   " + "─".repeat(Math.min(cols - 6, 80)) }), inventory.slice(0, listH).map((entry, i) => {
                         const cursor = i === selectedIdx;
                         const blacklistEntry = blockedSet.get(entry.modelId);
                         const isBlocked = !!blacklistEntry;

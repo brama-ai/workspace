@@ -5,10 +5,10 @@ import { discoverSubProjects, checkBranchInAll as checkBranchInAllRepos } from "
 const STATUS_ORDER = {
     in_progress: 0,
     waiting_answer: 1,
-    pending: 2,
-    completed: 3,
-    failed: 4,
-    suspended: 5,
+    completed: 2,
+    failed: 3,
+    suspended: 4,
+    pending: 5,
     todo: 6,
 };
 function readJson(path) {

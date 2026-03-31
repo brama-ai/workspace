@@ -120,7 +120,7 @@ export async function probeModel(repoRoot: string, modelId: string): Promise<Pro
     // Use opencode run with --model flag to target exactly one model, no fallback
     const proc = spawn(
       "opencode",
-      ["run", "--model", modelId, "--no-fallback", PROBE_PROMPT],
+      ["run", "--model", modelId, PROBE_PROMPT],
       {
         cwd: repoRoot,
         stdio: ["ignore", "pipe", "pipe"],

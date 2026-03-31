@@ -37,7 +37,7 @@ Move abstractions from `Telegram/` to `Channel/`. No behavior changes. Old names
 
 New services that route through A2A to channel agents.
 
-- [ ] **2.1** Create `ChannelRegistry`
+- [x] **2.1** Create `ChannelRegistry`
   - Stores channel_type → agent_name mapping
   - Reads from `channel_instances` table (initially `telegram_bots` with added `channel_type` + `agent_name` columns)
   - Methods: `resolveAgent(channelType)`, `register(channelType, agentName)`, `listChannels()`
@@ -45,7 +45,7 @@ New services that route through A2A to channel agents.
   - **Verify:** unit test covers resolve, missing channel, cache invalidation
   - **Impl:** `brama-core/src/src/Channel/ChannelRegistry.php`
 
-- [ ] **2.2** Create `ChannelCredentialVault`
+- [x] **2.2** Create `ChannelCredentialVault`
   - Extract encryption/decryption logic from `TelegramBotRepository`
   - Generic: stores encrypted credentials for any channel_instance by ID
   - Methods: `encrypt(plainToken)`, `decrypt(channelInstanceId)`, `getCredentialRef(channelInstanceId)`
@@ -53,7 +53,7 @@ New services that route through A2A to channel agents.
   - **Verify:** existing encrypted tokens decrypt correctly, new tokens encrypt/decrypt roundtrip
   - **Impl:** `brama-core/src/src/Channel/ChannelCredentialVault.php`
 
-- [ ] **2.3** Create `ChannelManager` — outbound routing
+- [x] **2.3** Create `ChannelManager` — outbound routing
   - `send(channelType, target, payload): DeliveryResult`
   - Resolves channel agent via `ChannelRegistry`
   - Gets credential via `ChannelCredentialVault`
@@ -61,7 +61,7 @@ New services that route through A2A to channel agents.
   - **Verify:** integration test with mocked A2A client, unit test covers channel resolution failure
   - **Impl:** `brama-core/src/src/Channel/ChannelManager.php`
 
-- [ ] **2.4** Create `ChannelWebhookController` — inbound routing
+- [x] **2.4** Create `ChannelWebhookController` — inbound routing
   - Route: `/api/v1/webhook/{channelType}/{channelId}`
   - Calls `channel.validateWebhook` then `channel.normalizeInbound` via A2A
   - Tracks conversation via generic `ConversationTracker`
@@ -71,7 +71,7 @@ New services that route through A2A to channel agents.
   - **Verify:** integration test: raw payload in → NormalizedEvent dispatched
   - **Impl:** `brama-core/src/src/Controller/Api/Webhook/ChannelWebhookController.php`
 
-- [ ] **2.5** Create `ConversationTracker` — generic chat tracking
+- [x] **2.5** Create `ConversationTracker` — generic chat tracking
   - Extract from `TelegramChatTracker`, make channel-agnostic
   - Works with `channel_conversations` table
   - Methods: `track(channelType, NormalizedEvent)`, `findConversation(channelType, chatId)`

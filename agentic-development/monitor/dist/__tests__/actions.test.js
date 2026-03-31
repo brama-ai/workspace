@@ -9,6 +9,7 @@ function createPendingTask(slug) {
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "state.json"), JSON.stringify({ task_id: slug, status: "pending", workflow: "foundry" }, null, 2));
     writeFileSync(join(dir, "task.md"), `# Task ${slug}\n`);
+    writeFileSync(join(dir, "summary.md"), `# Summary\n\nTask ${slug} completed.\n`);
     return dir;
 }
 function readState(dir) {
@@ -71,9 +72,9 @@ describe("archiveTask", () => {
         expect(existsSync(dest)).toBe(true);
         expect(dest).toContain("archives/");
         expect(dest).toContain("archive-me--foundry");
-        // Date folder matches DD-MM-YYYY pattern
+        // Date folder matches YYYY-MM-DD pattern
         const dateDir = dest.split("/archives/")[1].split("/")[0];
-        expect(dateDir).toMatch(/^\d{2}-\d{2}-\d{4}$/);
+        expect(dateDir).toMatch(/^\d{4}-\d{2}-\d{2}$/);
         // State preserved
         const state = readState(dest);
         expect(state.task_id).toBe("archive-me");
@@ -82,6 +83,7 @@ describe("archiveTask", () => {
         const dir = join(root, "done-task--foundry");
         mkdirSync(dir, { recursive: true });
         writeFileSync(join(dir, "state.json"), JSON.stringify({ task_id: "done-task", status: "completed" }, null, 2));
+        writeFileSync(join(dir, "summary.md"), "# Summary\n\nDone task completed.\n");
         const dest = archiveTask(dir);
         expect(existsSync(dest)).toBe(true);
         expect(existsSync(dir)).toBe(false);
@@ -90,6 +92,7 @@ describe("archiveTask", () => {
         const dir = join(root, "fail-task--foundry");
         mkdirSync(dir, { recursive: true });
         writeFileSync(join(dir, "state.json"), JSON.stringify({ task_id: "fail-task", status: "failed" }, null, 2));
+        writeFileSync(join(dir, "summary.md"), "# Summary\n\nFail task summary.\n");
         const dest = archiveTask(dir);
         expect(existsSync(dest)).toBe(true);
     });
