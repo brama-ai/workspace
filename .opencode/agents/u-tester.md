@@ -1,6 +1,6 @@
 ---
 description: "Tester (unified): runs tests, writes missing tests, and applies minimal test-driven fixes"
-model: opencode-go/kimi-k2.5
+model: anthropic/claude-sonnet-4-6
 temperature: 0
 tools:
   edit: true

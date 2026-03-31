@@ -92,6 +92,15 @@ vi.mock("../lib/model-routing.js", () => ({
   })),
 }));
 
+vi.mock("../lib/sub-projects.js", () => ({
+  createBranchInAll: vi.fn(() => []),
+  clearSubProjectCache: vi.fn(),
+  getCurrentBranch: vi.fn((repoRoot: string) => "test-branch"),
+  isGitClean: vi.fn(() => true),
+  discoverSubProjects: vi.fn(() => []),
+  checkBranchInAll: vi.fn(() => ({})),
+}));
+
 describe("runner", () => {
   beforeEach(() => {
     vi.clearAllMocks();

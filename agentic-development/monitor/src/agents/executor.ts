@@ -199,6 +199,14 @@ export function filterBlacklisted(models: string[]): string[] {
   return models.filter((m) => !isModelBlacklisted(m));
 }
 
+/**
+ * Clear all entries from the in-memory blacklist.
+ * Intended for use in tests to ensure isolation between test cases.
+ */
+export function clearBlacklist(): void {
+  modelBlacklist.clear();
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
