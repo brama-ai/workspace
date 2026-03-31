@@ -80,21 +80,33 @@ New services that route through A2A to channel agents.
 
 ## Phase 3: Database Migration
 
-- [ ] **3.1** Add generic columns to existing tables
+- [x] **3.1** Add generic columns to existing tables *(completed in Phase 2)*
   - `telegram_bots`: add `channel_type` (default 'telegram'), `agent_name`
   - `telegram_chats`: add `channel_type` (default 'telegram')
   - Backfill existing rows with defaults
+  - **Status:** Already implemented in `Version20260331000001.php` during Phase 2 (Core Services)
   - **Verify:** migration runs clean, existing queries unaffected
-  - **Impl:** Symfony migration `Version2026MMDD000001.php`
+  - **Impl:** `brama-core/src/migrations/Version20260331000001.php` (exists)
 
-- [ ] **3.2** Rename tables and columns
-  - `telegram_bots` → `channel_instances`
-  - `telegram_chats` → `channel_conversations`
-  - `bot_token_encrypted` → `credential_encrypted`
-  - `bot_username` → `channel_username`
-  - Update all repository queries
-  - **Verify:** all CRUD operations work, admin UI renders correctly
-  - **Impl:** Symfony migration `Version2026MMDD000002.php` + repository updates
+- [x] **3.2** Create rename migration `Version20260331000002.php`
+  - Rename tables: `telegram_bots` → `channel_instances`, `telegram_chats` → `channel_conversations`
+  - Rename columns: `bot_token_encrypted` → `credential_encrypted`, `bot_username` → `channel_username`
+  - Rename all indexes (`idx_telegram_bots_*` → `idx_channel_instances_*`, `idx_telegram_chats_*` → `idx_channel_conversations_*`)
+  - Drop old triggers, recreate with new names on renamed tables
+  - Rename FK constraint `fk_telegram_chat_bot` → `fk_channel_conversation_instance`
+  - Migration must be fully reversible (`down()` restores original names)
+  - **Verify:** `php bin/console doctrine:migrations:migrate` succeeds, `migrate prev` reverses cleanly
+  - **Impl:** `brama-core/src/migrations/Version20260331000002.php`
+
+- [x] **3.3** Update repository SQL queries for new table/column names
+  - `TelegramBotRepository`: all `telegram_bots` → `channel_instances`, `bot_token_encrypted` → `credential_encrypted`, `bot_username` → `channel_username`
+  - `TelegramChatRepository`: all `telegram_chats` → `channel_conversations`, join references `channel_instances`
+  - `ChannelRegistry`: `telegram_bots` → `channel_instances` in `loadFromDatabase()`
+  - `ConversationTracker`: all `telegram_chats` → `channel_conversations` (12 SQL references)
+  - `ChannelCredentialVault`: `telegram_bots` → `channel_instances`, `bot_token_encrypted` → `credential_encrypted`
+  - **Verify:** PHPStan passes, all CRUD operations work, admin UI renders correctly
+  - **Impl:** 5 files updated (see spec for full list)
+  - **Spec:** `specs/phase3-database-migration/spec.md`
 
 ## Phase 4: Telegram Channel Agent
 
