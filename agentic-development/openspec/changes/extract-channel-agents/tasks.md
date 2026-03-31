@@ -6,7 +6,7 @@
 
 Move abstractions from `Telegram/` to `Channel/`. No behavior changes. Old namespace gets thin wrappers with `@deprecated`.
 
-- [ ] **1.1** Create `src/Channel/DTO/` namespace and move DTOs
+- [x] **1.1** Create `src/Channel/DTO/` namespace and move DTOs
   - Move `NormalizedEvent`, `NormalizedChat`, `NormalizedSender`, `NormalizedMessage` from `Telegram/DTO/`
   - Move `DeliveryPayload`, `DeliveryResult`, `DeliveryTarget` from `Telegram/Delivery/`
   - Create `ChannelCapabilities` DTO
@@ -14,20 +14,20 @@ Move abstractions from `Telegram/` to `Channel/`. No behavior changes. Old names
   - **Verify:** all existing imports resolve, PHPStan passes, existing tests green
   - **Impl:** `brama-core/src/src/Channel/DTO/*.php`
 
-- [ ] **1.2** Move `ChannelAdapterInterface` to `src/Channel/Contract/`
+- [x] **1.2** Move `ChannelAdapterInterface` to `src/Channel/Contract/`
   - Move from `Telegram/Delivery/ChannelAdapterInterface.php`
   - Deprecated alias in old location
   - **Verify:** `TelegramDeliveryAdapter` still implements the interface, PHPStan clean
   - **Impl:** `brama-core/src/src/Channel/Contract/ChannelAdapterInterface.php`
 
-- [ ] **1.3** Move command handlers to `src/Channel/Command/`
+- [x] **1.3** Move command handlers to `src/Channel/Command/`
   - Rename `TelegramCommandRouter` → `PlatformCommandRouter`
   - Move `HelpHandler`, `AgentsListHandler`, `AgentEnableHandler`, `AgentDisableHandler`
   - Make handlers channel-agnostic: accept `NormalizedEvent`, return `DeliveryPayload` (no direct TelegramSender calls)
   - **Verify:** `/help`, `/agents` commands work via existing Telegram webhook
   - **Impl:** `brama-core/src/src/Channel/Command/`
 
-- [ ] **1.4** Create `ChannelEventPublisher`
+- [x] **1.4** Create `ChannelEventPublisher`
   - Rename `TelegramEventPublisher` → `ChannelEventPublisher`
   - Accept `NormalizedEvent` with any `platform` value, not just "telegram"
   - **Verify:** events still dispatch to subscribed agents

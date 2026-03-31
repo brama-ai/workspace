@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -16,6 +16,27 @@ import {
   checkStall,
   type ErrorCategory,
 } from "../cli/supervisor.js";
+
+// ── Mock db-info — no real DB calls ──────────────────────────────────
+vi.mock("../lib/db-info.js", () => ({
+  getProcessHealth: vi.fn(() => ({
+    alive: true,
+    pidAlive: false,
+    pid: null,
+    lastModel: null,
+    messageCount: 0,
+    idleSeconds: 0,
+  })),
+  getRootCauseInfo: vi.fn(() => ({
+    sessionId: null,
+    possibleCause: "Could not determine (DB unavailable)",
+    totalMessages: 0,
+    idleSeconds: 0,
+    lastModel: null,
+    lastMessages: [],
+    cacheStats: [],
+  })),
+}));
 
 describe("supervisor", () => {
   let root: string;
