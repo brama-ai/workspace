@@ -64,3 +64,6 @@ agentic-development/monitor/node_modules/
 .foundry-blacklist.json
 .claude/
 .foundry-runner.lock
+
+# Log files
+*.log
