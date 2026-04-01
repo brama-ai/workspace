@@ -653,7 +653,8 @@ function buildPrompt(agent: string, config: PipelineConfig): string {
     "u-merger": `Merge the branch ${branch} and resolve conflicts`,
   };
 
-  return prompts[agent] || taskMessage;
+  const base = prompts[agent] || taskMessage;
+  return taskDir ? `${base}\n\nTASK_DIR=${taskDir}` : base;
 }
 
 export { getTimeout };

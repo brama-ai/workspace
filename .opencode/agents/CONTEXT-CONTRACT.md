@@ -28,9 +28,15 @@ When an agent is resumed after human answers:
 - Agents MUST NOT re-ask questions that already have answers in `qa.json`.
 - Agents MUST write questions to `qa.json` (not to handoff.md) when using HITL.
 
+## Task Directory
+
+The pipeline runner appends `TASK_DIR=<path>` to every agent prompt.
+Use this value when writing artifacts or reading task-scoped files (qa.json, handoff.md).
+**Never write artifacts to the repo root** — always use the provided TASK_DIR.
+
 ## Result Artifacts
 
-Every agent SHOULD write `tasks/<slug>--foundry/artifacts/<agent>/result.json` before exit 0:
+Every agent SHOULD write `$TASK_DIR/artifacts/<agent>/result.json` before exit 0:
 
 ```json
 {

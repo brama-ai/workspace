@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, renameSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, readFileSync, readdirSync, statSync, writeFileSync, unlinkSync } from "node:fs";
 import { join, basename, dirname } from "node:path";
 import { execSync, exec } from "node:child_process";
 import { readState, writeState } from "./task-state.js";
@@ -356,7 +356,35 @@ export function getProcessStatusAsync(repoRoot, cb) {
 /** Clean zombie processes and stale batch lock */
 export function cleanZombies(repoRoot) {
     let cleaned = 0;
-    // Check and clean stale batch lock
+    // 1. Reap zombie opencode/foundry processes by sending SIGCHLD to their parent
+    //    or simply wait for them. In containers without proper init, zombies accumulate
+    //    because PID 1 doesn't call waitpid(). We can't waitpid() from Node for
+    //    processes we didn't spawn, but we can kill the zombie's parent (if it's also
+    //    defunct) or use kill(pid, 0) to check and let the kernel clean up.
+    try {
+        const psOut = execSync("ps -eo pid,ppid,stat,args", { encoding: "utf-8", timeout: 3000 });
+        for (const line of psOut.split("\n").slice(1)) {
+            const m = line.trim().match(/^\s*(\d+)\s+(\d+)\s+Z\S*\s+.*(opencode|foundry)/);
+            if (!m)
+                continue;
+            const zombiePid = parseInt(m[1]);
+            try {
+                // Sending SIGCHLD to parent triggers waitpid() if parent is alive
+                const ppid = parseInt(m[2]);
+                if (ppid > 1) {
+                    process.kill(ppid, "SIGCHLD");
+                }
+                // Also try kill(0) on zombie — harmless, but parent may reap it
+                process.kill(zombiePid, 0);
+            }
+            catch {
+                // ESRCH = already gone, that's fine
+            }
+            cleaned++;
+        }
+    }
+    catch { /* ignore ps failure */ }
+    // 2. Check and clean stale batch lock
     const lockfile = join(repoRoot, ".opencode", "pipeline", ".batch.lock");
     if (existsSync(lockfile)) {
         try {
@@ -374,7 +402,6 @@ export function cleanZombies(repoRoot) {
                 }
                 if (!pidAlive || isZombie) {
                     try {
-                        const { unlinkSync } = require("node:fs");
                         unlinkSync(lockfile);
                         cleaned++;
                     }
@@ -384,7 +411,38 @@ export function cleanZombies(repoRoot) {
         }
         catch { /* ignore */ }
     }
-    return { session: "", attachCmd: "", message: `Cleaned: ${cleaned} zombie(s)/stale lock(s)` };
+    // 3. Clean stale .pid files in task directories
+    try {
+        const tasksDir = join(repoRoot, "tasks");
+        if (existsSync(tasksDir)) {
+            const entries = readdirSync(tasksDir).filter(e => e.endsWith("--foundry"));
+            for (const entry of entries) {
+                const pidFile = join(tasksDir, entry, ".pid");
+                if (!existsSync(pidFile))
+                    continue;
+                try {
+                    const pid = parseInt(readFileSync(pidFile, "utf8").trim());
+                    if (isNaN(pid))
+                        continue;
+                    const procStatus = `/proc/${pid}/status`;
+                    if (!existsSync(procStatus)) {
+                        unlinkSync(pidFile);
+                        cleaned++;
+                    }
+                    else {
+                        const content = readFileSync(procStatus, "utf8");
+                        if (/^State:\s+Z/m.test(content)) {
+                            unlinkSync(pidFile);
+                            cleaned++;
+                        }
+                    }
+                }
+                catch { /* ignore */ }
+            }
+        }
+    }
+    catch { /* ignore */ }
+    return { session: "", attachCmd: "", message: `Cleaned: ${cleaned} zombie(s)/stale lock(s)/pid(s)` };
 }
 // ── Doctor diagnostics ──────────────────────────────────────────
 /** Run u-doctor general diagnostics in tmux */

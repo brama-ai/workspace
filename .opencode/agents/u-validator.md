@@ -47,7 +47,7 @@ When you encounter a situation where you cannot proceed without human input:
 
 ## Summary Artifacts
 
-Before completing (exit 0), write `artifacts/u-validator/result.json`:
+Before completing (exit 0), write `$TASK_DIR/artifacts/u-validator/result.json`:
 ```json
 {
   "agent": "u-validator",

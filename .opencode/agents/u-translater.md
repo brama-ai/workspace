@@ -42,7 +42,7 @@ When you encounter a situation where you cannot proceed without human input:
 
 ## Summary Artifacts
 
-Before completing (exit 0), write `artifacts/u-translater/result.json`:
+Before completing (exit 0), write `$TASK_DIR/artifacts/u-translater/result.json`:
 ```json
 {
   "agent": "u-translater",

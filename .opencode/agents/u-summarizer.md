@@ -65,7 +65,7 @@ When you encounter a situation where you cannot proceed without human input:
 
 ## Summary Artifacts
 
-Before completing (exit 0), write `artifacts/u-summarizer/result.json`:
+Before completing (exit 0), write `$TASK_DIR/artifacts/u-summarizer/result.json`:
 ```json
 {
   "agent": "u-summarizer",

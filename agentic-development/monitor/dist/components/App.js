@@ -176,6 +176,12 @@ export function App({ tasksRoot }) {
         const id = setInterval(refreshProcs, PROC_REFRESH_MS);
         return () => clearInterval(id);
     }, [repoRoot]);
+    // Auto-clean zombie processes when they accumulate (>5)
+    useEffect(() => {
+        if (procStatus.zombies.length > 5) {
+            cleanZombies(repoRoot);
+        }
+    }, [procStatus.zombies.length, repoRoot]);
     // Refresh environment status periodically (async, slow — docker compose ps)
     useEffect(() => {
         const refreshEnv = () => {

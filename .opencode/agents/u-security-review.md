@@ -53,7 +53,7 @@ When you encounter a situation where you cannot proceed without human input:
 
 ## Summary Artifacts
 
-Before completing (exit 0), write `artifacts/u-security-review/result.json`:
+Before completing (exit 0), write `$TASK_DIR/artifacts/u-security-review/result.json`:
 ```json
 {
   "agent": "u-security-review",

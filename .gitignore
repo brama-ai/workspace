@@ -5,6 +5,9 @@
 .claude/settings.local.json
 .claude/pipeline/
 
+# Pipeline artifacts (agent run results)
+artifacts/
+
 # Cursor — track skills, ignore the rest
 .cursor/*
 
