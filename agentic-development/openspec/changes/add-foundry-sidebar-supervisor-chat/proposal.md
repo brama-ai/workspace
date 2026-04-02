@@ -11,6 +11,8 @@ Add a persistent right-hand sidebar chat to the Foundry TUI so the operator can 
 
 The sidebar must always reopen into the most recent chat session unless the operator explicitly starts a new one via `/new`. The chat must display context size, support automatic compaction at 100k context, and provide command suggestions when the operator types `/`. Model switching must happen through an in-TUI popup driven by the current healthy models shown in the existing `Models` tab.
 
+The sidebar assistant must be implemented as a first-class Foundry agent contract rather than a thin prompt wrapper. It must use a dedicated agent definition file, consume richer monitor context including summary and handoff artifacts, and answer in an operator-oriented format that is specific, actionable, and supervision-aware.
+
 ## Motivation
 
 ### Problem
@@ -21,6 +23,7 @@ Foundry already has strong task visibility in the TUI and an autonomous `supervi
 2. `foundry supervisor` can monitor a task, but only as a separate command-line flow and mostly for one task at a time.
 3. There is no persistent operator chat that survives TUI restarts.
 4. Context growth, model switching, and slash-command affordances are not exposed inside the monitor.
+5. A thin prompt wrapper without a dedicated agent contract produces generic answers and does not behave like a reliable operator assistant.
 
 This makes supervision feel like a separate tool instead of a natural part of the monitor.
 
@@ -44,6 +47,9 @@ This makes supervision feel like a separate tool instead of a natural part of th
 - Restore the last active chat session on TUI restart
 - Default supervision interval to 5 minutes when the operator asks the chat to watch tasks without specifying an interval
 - Define supervisor-agent instructions in `supervisor.md`
+- Define a dedicated sidebar chat agent file under `.opencode/agents/`
+- Enrich the chat context with summary, handoff, activity, and selected-task detail sources
+- Standardize chat responses so the operator gets concrete status, issues, and next actions instead of generic prose
 - Deprecate `foundry supervisor` into a compatibility wrapper instead of keeping it as the primary UX
 
 ### Out of Scope
@@ -61,6 +67,7 @@ This makes supervision feel like a separate tool instead of a natural part of th
 | `monitor/src/components/App.tsx` | **MODIFIED** - add global sidebar, input box, slash suggestions, popup state, session restore |
 | `monitor/src/...` chat modules | **NEW** - chat state, session persistence, context assembly, slash command handling |
 | `monitor/src/agents/...` | **NEW/MODIFIED** - Foundry chat agent execution path and model switching support |
+| `.opencode/agents/foundry-monitor-chat.md` | **NEW** - dedicated sidebar chat agent contract and operating rules |
 | `monitor/src/cli/supervisor.ts` | **MODIFIED** - mark as deprecated compatibility wrapper or bridge |
 | `agentic-development/foundry` and `monitor/src/cli/foundry.ts` | **MODIFIED** - help text and command routing for the new chat-first supervision model |
 | `agentic-development/supervisor.md` | **NEW** - operator/supervisor behavior contract for periodic monitoring |
@@ -76,6 +83,8 @@ This makes supervision feel like a separate tool instead of a natural part of th
 - `/model` SHALL only offer models that currently show healthy/OK status in the `Models` tab
 - The model picker SHALL use Enter to confirm and Esc to cancel without changing the current model
 - The chat agent SHALL receive the same monitor context the operator sees, including activity, status, handoff, summary, models, and process health
+- The sidebar assistant SHALL be backed by a dedicated agent definition file rather than only by an ad-hoc inline prompt
+- The chat agent SHALL answer in a deterministic operator-facing format that reports current state, detected issues, and recommended next actions
 - Natural-language supervision requests SHALL default to a 5-minute interval when the operator does not specify one
 - `foundry supervisor` SHALL be deprecated before removal so existing scripts do not break immediately
 
@@ -89,3 +98,4 @@ This makes supervision feel like a separate tool instead of a natural part of th
 | `/model` drifts from runtime model health | Medium | Source picker options from the same healthy-model inventory rendered in the `Models` tab |
 | Removing `foundry supervisor` too quickly breaks existing workflows | High | Deprecate first, keep a compatibility wrapper for one release window |
 | Chat agent answers from incomplete monitor context | High | Introduce one explicit context-assembler layer for task, process, model, and summary signals |
+| Chat agent remains too generic to be useful | High | Require a dedicated agent contract, richer context payloads, and response-shape rules in spec and implementation |

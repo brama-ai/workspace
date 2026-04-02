@@ -5,12 +5,28 @@
 
 ## ADDED Requirements
 
+### Requirement: Dedicated sidebar agent contract
+Foundry SHALL implement the sidebar assistant through a dedicated agent definition file rather than only through an ad-hoc inline prompt.
+
+#### Scenario: Sidebar runtime loads dedicated agent definition
+- **WHEN** the sidebar chat handles a user message
+- **THEN** Foundry resolves a dedicated sidebar agent contract from the repository
+- **AND** supervision behavior from `agentic-development/supervisor.md` is applied as part of that agent behavior rather than being the only contract source
+
 ### Requirement: Chat-native Foundry supervision
 Foundry SHALL provide a chat-native supervision agent in the monitor sidebar that can answer questions about the current monitor state and schedule repeated supervision checks.
 
 #### Scenario: Operator asks for current supervision summary
 - **WHEN** the operator asks the sidebar chat what is happening with current tasks
 - **THEN** the Foundry chat agent summarizes the latest queue state, failures, stalls, or waiting-answer tasks from monitor context
+
+### Requirement: Operator-facing response quality
+The sidebar assistant SHALL answer in a concise operator-focused format that highlights current state, detected issues, and recommended next actions.
+
+#### Scenario: Concrete answer beats generic advice
+- **WHEN** the operator asks a status question and the monitor context contains concrete evidence
+- **THEN** the assistant names the relevant pending, failed, stalled, or waiting tasks directly
+- **AND** the assistant recommends the most relevant next action instead of only describing generic expected behavior
 
 #### Scenario: Operator asks for periodic supervision
 - **WHEN** the operator asks the sidebar chat to keep watching execution

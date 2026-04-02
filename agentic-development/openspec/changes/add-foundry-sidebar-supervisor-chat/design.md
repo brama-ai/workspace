@@ -31,12 +31,22 @@ On narrow terminals, the sidebar may collapse to a compact mode or require an ex
 
 The sidebar is backed by a dedicated Foundry chat agent that conceptually evolves the current supervisor behavior. Its job is not only to answer a single prompt, but to reason over the live monitor context and optionally keep watching the system.
 
+This must be implemented as a real Foundry agent contract, not just `opencode run` with an inline prompt. The runtime should resolve a dedicated agent definition such as `.opencode/agents/foundry-monitor-chat.md` so the behavior is inspectable, versioned, and tunable like the rest of the Foundry agent stack.
+
 This agent will:
 
 - answer questions such as "what is happening right now?"
 - summarize queue state, stuck tasks, model health, recent failures, and summaries
 - accept natural-language supervision requests such as "watch this every 5 minutes"
 - use `agentic-development/supervisor.md` as the behavioral contract for periodic supervision
+
+The agent response contract should be operator-first. By default it should answer in a short structured shape:
+
+- `State` — what is happening now
+- `Issues` — what is blocked, stale, failed, or risky
+- `Next` — what the operator should do now, if anything
+
+If the operator asks a narrow question, the agent can stay concise, but it should still prefer concrete statements from monitor data over generic guidance.
 
 ### 3. Build one explicit monitor context assembler
 
@@ -48,6 +58,13 @@ The chat agent should not scrape UI text. Instead, Foundry will assemble a struc
 - QA / waiting-answer state
 - process and zombie status
 - model inventory and blacklist health
+
+The assembler should explicitly include artifact-derived context that operators actually ask about:
+
+- latest `summary.md` status and headline for recent tasks
+- latest `handoff.md` sections for active or failed tasks
+- recent activity/events for active tasks
+- selected-task focus when the operator has a task highlighted in the TUI
 
 This creates one authoritative chat context layer and keeps future additions predictable.
 
@@ -106,6 +123,17 @@ Examples:
 
 The existing `foundry supervisor` command remains temporarily as a compatibility wrapper that forwards into the same underlying supervision engine or prints a deprecation notice plus migration guidance. Removal should happen in a later change after the new flow is proven.
 
+### 9. Avoid a thin prompt-wrapper implementation
+
+The sidebar assistant should not be implemented as a raw shell call that injects one large string into a generic model invocation without an agent contract. That approach makes the behavior hard to audit and tends to produce vague answers.
+
+Instead, implementation should:
+
+- route through a dedicated sidebar-agent identity
+- keep `supervisor.md` as a subordinate behavior contract, not the only source of personality or policy
+- make the response format testable
+- keep context assembly separate from prompt wording so operator quality can improve without changing state collection
+
 ## Data Flow
 
 1. Monitor starts and loads persisted sidebar session state
@@ -139,13 +167,15 @@ The existing `foundry supervisor` command remains temporarily as a compatibility
 | Context assembler | `monitor/src/lib/context-assembler.ts` | Build structured monitor snapshot for chat agent |
 | Slash commands | `monitor/src/lib/slash-commands.ts` | Command registry, filtering, suggestion UX logic |
 | Chat agent | `monitor/src/agents/chat-agent.ts` | Agent execution, supervision scheduling, watch jobs |
+| Sidebar agent contract | `.opencode/agents/foundry-monitor-chat.md` | Versioned agent prompt and operator behavior contract |
 | Supervisor contract | `agentic-development/supervisor.md` | Behavioral rules for supervision passes |
 | Session storage | `agentic-development/runtime/chat/` | Persisted session files and latest pointer |
 
 ## Verification Plan
 
 - **Unit tests (Tier 2):** slash-command filtering, context assembler shape, auto-compact threshold logic, model picker filtering
-- **Integration tests (Tier 3):** session persistence round-trip (real tmpdir), `/new` and `/compact` state transitions, watch job scheduling with default interval, session restore after simulated restart
+- **Unit tests (Tier 2):** slash-command filtering, context assembler shape, auto-compact threshold logic, model picker filtering, response-shape helpers
+- **Integration tests (Tier 3):** session persistence round-trip (real tmpdir), `/new` and `/compact` state transitions, watch job scheduling with default interval, session restore after simulated restart, dedicated agent prompt loading, artifact-enriched context assembly
 - **Manual TUI verification:** sidebar layout on wide/narrow terminals, popup keyboard handling, slash suggestion UX
 - Framework: Vitest (existing `monitor/vitest.config.ts`)
 - All test files in `monitor/src/__tests__/` following `<module>.test.ts` naming convention

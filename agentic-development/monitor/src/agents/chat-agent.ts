@@ -7,7 +7,8 @@
  * - Persists active watch jobs in sidebar session state
  * - Each scheduled check uses a freshly assembled context snapshot
  */
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { env } from "node:process";
 import { join } from "node:path";
 import {
@@ -29,6 +30,9 @@ export const DEFAULT_WATCH_INTERVAL_SECONDS = 300; // 5 minutes
 
 /** Auto-compact threshold in tokens */
 export const AUTO_COMPACT_THRESHOLD = 100_000;
+
+/** Dedicated opencode agent name for sidebar chat */
+export const SIDEBAR_CHAT_AGENT = "foundry-monitor-chat";
 
 function debug(...args: unknown[]): void {
   if (!DEBUG) return;
@@ -166,56 +170,63 @@ export function shouldAutoCompact(session: ChatSession): boolean {
 
 // ── Agent execution ───────────────────────────────────────────────
 
-/**
- * Build the system prompt for the chat agent.
- * Includes supervisor.md content if available.
- */
-export function buildSystemPrompt(supervisorMdPath?: string): string {
-  const lines: string[] = [
-    "You are the Foundry Monitor Chat Agent — an AI assistant embedded in the Foundry TUI.",
-    "",
-    "Your role is to help the operator understand what is happening in the task pool,",
-    "answer questions about task status, model health, process state, and pipeline activity.",
-    "",
-    "You have access to the current monitor context which includes:",
-    "- Task queue state (todo, pending, in_progress, waiting_answer, completed, failed)",
-    "- Active task details (current step, elapsed time, failed agents, HITL questions)",
-    "- Process health (worker count, zombies, stale locks)",
-    "- Model health (healthy models, blacklisted models with reasons)",
-    "",
-    "When the operator asks you to watch or monitor something:",
-    "- Confirm you will check periodically",
-    "- Default to 5-minute intervals if no interval is specified",
-    "- Describe what you will look for",
-    "",
-    "Be concise and actionable. Focus on what matters most to the operator.",
-    "If there are problems, describe them clearly and suggest next steps.",
-  ];
+export function getChatAgentDefinitionPath(repoRoot: string): string {
+  return join(repoRoot, ".opencode", "agents", `${SIDEBAR_CHAT_AGENT}.md`);
+}
 
-  if (supervisorMdPath) {
-    try {
-      const { readFileSync, existsSync } = require("node:fs");
-      if (existsSync(supervisorMdPath)) {
-        const supervisorContent = readFileSync(supervisorMdPath, "utf-8");
-        lines.push("");
-        lines.push("## Supervision Contract");
-        lines.push("");
-        lines.push(supervisorContent);
-      }
-    } catch {
-      debug("failed to read supervisor.md", supervisorMdPath);
-    }
+export function hasDedicatedChatAgent(repoRoot: string): boolean {
+  return existsSync(getChatAgentDefinitionPath(repoRoot));
+}
+
+function readSupervisorContract(supervisorMdPath?: string): string | null {
+  if (!supervisorMdPath || !existsSync(supervisorMdPath)) return null;
+  try {
+    return readFileSync(supervisorMdPath, "utf-8");
+  } catch {
+    debug("failed to read supervisor.md", supervisorMdPath);
+    return null;
   }
+}
 
-  return lines.join("\n");
+export function buildOperatorPrompt(
+  userMessage: string,
+  contextText: string,
+  session: ChatSession,
+  config: ChatAgentConfig,
+): string {
+  const compactMemorySection = session.compactMemory
+    ? `## Previous Conversation Summary\n\n${session.compactMemory}\n`
+    : "";
+  const supervisorContract = readSupervisorContract(config.supervisorMdPath);
+  const supervisorSection = supervisorContract
+    ? `## Supervision Contract\n\n${supervisorContract}\n`
+    : "";
+
+  return [
+    "Use your dedicated Foundry sidebar agent contract to answer as an operator-facing monitor assistant.",
+    "Prefer specific evidence from the monitor context over generic best-practice advice.",
+    "Respond concisely using this shape when applicable:",
+    "State: ...",
+    "Issues: ...",
+    "Next: ...",
+    "",
+    "## Current Monitor Context",
+    "",
+    contextText,
+    "",
+    compactMemorySection,
+    supervisorSection,
+    "## Operator Message",
+    "",
+    userMessage,
+  ].filter(Boolean).join("\n");
 }
 
 /**
  * Execute a chat turn using opencode CLI.
  * Returns the assistant response text.
  *
- * This is a simplified executor that uses opencode run with a prompt.
- * In production, this would use the full agent executor with model fallbacks.
+ * Uses a dedicated opencode agent contract plus monitor context.
  */
 export function executeChatTurn(
   userMessage: string,
@@ -234,28 +245,16 @@ export function executeChatTurn(
 
   debug("executing chat turn", { model, sessionId: session.chatId });
 
-  // Build the full prompt
-  const systemPrompt = buildSystemPrompt(config.supervisorMdPath);
-  const compactMemorySection = session.compactMemory
-    ? `\n\n## Previous Conversation Summary\n\n${session.compactMemory}\n\n---\n\n`
-    : "";
-
-  const fullPrompt = [
-    systemPrompt,
-    "",
-    "## Current Monitor Context",
-    "",
-    contextText,
-    compactMemorySection,
-    "## Operator Message",
-    "",
-    userMessage,
-  ].join("\n");
+  const fullPrompt = buildOperatorPrompt(userMessage, contextText, session, config);
 
   try {
-    // Use opencode run to execute the chat turn
-    const result = execSync(
-      `opencode run --model "${model}" --no-session "${fullPrompt.replace(/"/g, '\\"')}"`,
+    if (!hasDedicatedChatAgent(config.repoRoot)) {
+      return `I cannot start the sidebar agent because ${getChatAgentDefinitionPath(config.repoRoot)} is missing.`;
+    }
+
+    const result = execFileSync(
+      "opencode",
+      ["run", "--agent", SIDEBAR_CHAT_AGENT, "--model", model, "--no-session", fullPrompt],
       {
         encoding: "utf8",
         timeout: 120_000,

@@ -25,6 +25,11 @@ The sidebar chat SHALL receive structured monitor context that includes current 
 - **THEN** the response is derived from live monitor context instead of a generic answer
 - **AND** the response can reference running steps, failed tasks, waiting-answer tasks, model health, or process problems when present
 
+#### Scenario: Operator asks why pending tasks are not moving
+- **WHEN** the operator asks the sidebar chat why pending tasks are not moving
+- **THEN** the response uses monitor facts such as worker availability, stale locks, queue state, waiting-answer blocks, or recent task artifacts
+- **AND** the response does not fall back to generic pipeline advice when concrete monitor evidence exists
+
 ### Requirement: Context size is visible
 The sidebar header SHALL show the current context size for the active chat session.
 

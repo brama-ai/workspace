@@ -33,6 +33,7 @@ export interface TaskSnapshot {
   slug: string;
   status: string;
   title: string;
+  selected: boolean;
   currentStep: string | null;
   workerId: string | null;
   elapsedSeconds: number | null;
@@ -43,6 +44,10 @@ export interface TaskSnapshot {
   qaQuestions: QAQuestion[];
   hasStaleLock: boolean;
   lastEventAgeSeconds: number | null;
+  summaryStatus: string | null;
+  summaryHeadline: string | null;
+  handoffExcerpt: string | null;
+  recentEvents: string[];
 }
 
 export interface ProcessSnapshot {
@@ -60,6 +65,7 @@ export interface ModelSnapshot {
 
 export interface MonitorSnapshot {
   assembledAt: string;
+  selectedTaskSlug: string | null;
   counts: {
     todo: number;
     pending: number;
@@ -93,11 +99,76 @@ function getFailedAgents(task: TaskInfo): string[] {
     .map((a) => a.agent);
 }
 
-function buildTaskSnapshot(task: TaskInfo): TaskSnapshot {
+function readSummaryInfo(taskDir: string): { status: string | null; headline: string | null } {
+  const summaryPath = join(taskDir, "summary.md");
+  if (!existsSync(summaryPath)) return { status: null, headline: null };
+  try {
+    const lines = readFileSync(summaryPath, "utf-8").split("\n").map((line) => line.trim());
+    let status: string | null = null;
+    let headline: string | null = null;
+    for (const line of lines) {
+      if (!status) {
+        const match = line.match(/status\s*[:|-]\s*(pass|fail|warning|ok)/i);
+        if (match) status = match[1].toUpperCase();
+      }
+      if (!headline && line.startsWith("#")) {
+        headline = line.replace(/^#+\s*/, "").trim();
+      }
+      if (status && headline) break;
+    }
+    return { status, headline };
+  } catch {
+    return { status: null, headline: null };
+  }
+}
+
+function readHandoffExcerpt(taskDir: string): string | null {
+  const handoffPath = join(taskDir, "handoff.md");
+  if (!existsSync(handoffPath)) return null;
+  try {
+    const lines = readFileSync(handoffPath, "utf-8")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter((line) => !line.startsWith("#"));
+    if (lines.length === 0) return null;
+    return lines.slice(0, 3).join(" | ");
+  } catch {
+    return null;
+  }
+}
+
+function readRecentEvents(taskDir: string): string[] {
+  const eventsPath = join(taskDir, "events.jsonl");
+  if (!existsSync(eventsPath)) return [];
+  try {
+    const lines = readFileSync(eventsPath, "utf-8")
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .slice(-3);
+    return lines.map((line) => {
+      try {
+        const event = JSON.parse(line);
+        const type = event.type ?? event.event ?? "event";
+        const detail = event.message ?? event.step ?? event.agent ?? "";
+        return detail ? `${type}: ${detail}` : String(type);
+      } catch {
+        return line.slice(0, 120);
+      }
+    });
+  } catch {
+    return [];
+  }
+}
+
+function buildTaskSnapshot(task: TaskInfo, selectedTaskDir?: string): TaskSnapshot {
+  const summary = readSummaryInfo(task.dir);
   return {
     slug: task.dir.split("/").pop()?.replace(/--foundry$/, "") ?? "unknown",
     status: task.status,
     title: task.title,
+    selected: task.dir === selectedTaskDir,
     currentStep: task.currentStep || null,
     workerId: task.workerId || null,
     elapsedSeconds: getElapsedSeconds(task),
@@ -108,6 +179,10 @@ function buildTaskSnapshot(task: TaskInfo): TaskSnapshot {
     qaQuestions: task.qaData?.questions ?? [],
     hasStaleLock: task.hasStaleLock ?? false,
     lastEventAgeSeconds: task.lastEventAge ?? null,
+    summaryStatus: summary.status,
+    summaryHeadline: summary.headline,
+    handoffExcerpt: readHandoffExcerpt(task.dir),
+    recentEvents: readRecentEvents(task.dir),
   };
 }
 
@@ -161,6 +236,7 @@ export function assembleMonitorContext(
   repoRoot: string,
   tasksRoot: string,
   procStatus: ProcessStatus,
+  selectedTaskDir?: string,
 ): MonitorSnapshot {
   debug("assembling monitor context");
 
@@ -168,7 +244,7 @@ export function assembleMonitorContext(
   const readResult = readAllTasks(tasksRoot);
   const { tasks, counts } = readResult;
 
-  const taskSnapshots = tasks.map(buildTaskSnapshot);
+  const taskSnapshots = tasks.map((task) => buildTaskSnapshot(task, selectedTaskDir));
 
   // Models
   const inventory = loadModelInventory(repoRoot);
@@ -180,6 +256,7 @@ export function assembleMonitorContext(
 
   const snapshot: MonitorSnapshot = {
     assembledAt: new Date().toISOString(),
+    selectedTaskSlug: taskSnapshots.find((task) => task.selected)?.slug ?? null,
     counts: {
       todo: counts.todo,
       pending: counts.pending,
@@ -234,7 +311,7 @@ export function formatSnapshotForChat(snapshot: MonitorSnapshot): string {
   if (activeTasks.length > 0) {
     lines.push("## Active Tasks");
     for (const task of activeTasks) {
-      lines.push(`### ${task.title} (${task.status})`);
+      lines.push(`### ${task.title} (${task.status})${task.selected ? " [SELECTED]" : ""}`);
       if (task.currentStep) lines.push(`- Current step: ${task.currentStep}`);
       if (task.elapsedSeconds !== null) {
         const mins = Math.floor(task.elapsedSeconds / 60);
@@ -255,6 +332,14 @@ export function formatSnapshotForChat(snapshot: MonitorSnapshot): string {
           }
         }
       }
+      if (task.summaryStatus || task.summaryHeadline) {
+        lines.push(`- Summary: ${task.summaryStatus ?? "UNKNOWN"}${task.summaryHeadline ? ` — ${task.summaryHeadline}` : ""}`);
+      }
+      if (task.handoffExcerpt) lines.push(`- Handoff: ${task.handoffExcerpt}`);
+      if (task.recentEvents.length > 0) {
+        lines.push(`- Recent activity:`);
+        for (const event of task.recentEvents) lines.push(`  - ${event}`);
+      }
     }
     lines.push("");
   }
@@ -268,7 +353,17 @@ export function formatSnapshotForChat(snapshot: MonitorSnapshot): string {
       if (task.failedAgents.length > 0) {
         lines.push(`  - Failed agents: ${task.failedAgents.join(", ")}`);
       }
+      if (task.summaryStatus || task.summaryHeadline) {
+        lines.push(`  - Summary: ${task.summaryStatus ?? "UNKNOWN"}${task.summaryHeadline ? ` — ${task.summaryHeadline}` : ""}`);
+      }
+      if (task.handoffExcerpt) lines.push(`  - Handoff: ${task.handoffExcerpt}`);
     }
+    lines.push("");
+  }
+
+  if (snapshot.selectedTaskSlug) {
+    lines.push("## Selected Task Focus");
+    lines.push(`- Selected task: ${snapshot.selectedTaskSlug}`);
     lines.push("");
   }
 

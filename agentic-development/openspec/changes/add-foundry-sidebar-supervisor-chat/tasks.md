@@ -99,6 +99,23 @@
     - Watch cancellation removes job from session state
   - **Test pattern:** integration test with mocked agent executor (per CONVENTIONS.md Tier 3)
 
+- [ ] **3.2a** Replace prompt-wrapper execution with a dedicated sidebar agent contract
+  - Add `.opencode/agents/foundry-monitor-chat.md`
+  - Move sidebar-agent role, operator response format, and supervision behavior into the dedicated agent definition
+  - Keep `agentic-development/supervisor.md` as a referenced behavioral contract for periodic monitoring
+  - Avoid relying on a generic raw `opencode run --no-session` prompt as the sole behavior definition
+  - **Verify:** integration test confirms sidebar chat runtime loads the dedicated agent contract
+
+- [ ] **3.2b** Enrich chat context with operator-relevant artifacts
+  - Extend `monitor/src/lib/context-assembler.ts` to include summary, handoff, recent activity, and selected-task focus
+  - Ensure the chat can explain why tasks are pending, blocked, failed, or waiting for input using artifact-derived facts
+  - **Verify:** unit/integration tests confirm context payload includes summary and handoff signals for active or failed tasks
+
+- [ ] **3.2c** Standardize sidebar response quality
+  - Require a concise operator-facing response shape: state, issues, next actions
+  - Ensure answers prefer concrete monitor facts over generic best-practice prose
+  - **Verify:** chat-agent tests cover a queue-health question and assert the response includes concrete pending-task analysis
+
 - [x] **3.3** Introduce `agentic-development/supervisor.md` as the supervision contract
   - Document what the chat agent checks during supervision passes
   - Cover: stalled tasks, failed summaries, zombie workers, pending bottlenecks, model health, waiting-answer tasks
@@ -131,6 +148,7 @@
   - Framework: Vitest (existing `monitor/vitest.config.ts`)
   - Shared helpers: extend `__tests__/helpers/fixtures.ts` with chat session fixtures
   - Run: `cd agentic-development/monitor && npm test`
+  - Add coverage for dedicated sidebar-agent prompt loading and artifact-enriched context assembly
 
 - [x] **4.3** Validate the OpenSpec change
   - Run `openspec validate add-foundry-sidebar-supervisor-chat --strict` from `agentic-development/`

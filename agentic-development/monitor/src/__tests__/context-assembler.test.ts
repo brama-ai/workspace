@@ -12,6 +12,7 @@ import { formatSnapshotForChat, type MonitorSnapshot } from "../lib/context-asse
 function makeEmptySnapshot(): MonitorSnapshot {
   return {
     assembledAt: new Date().toISOString(),
+    selectedTaskSlug: null,
     counts: {
       todo: 0,
       pending: 0,
@@ -43,6 +44,7 @@ function makeRunningTaskSnapshot() {
     title: "My Running Task",
     currentStep: "u-coder",
     workerId: "worker-1",
+    selected: false,
     elapsedSeconds: 120,
     attempt: 1,
     profile: "standard",
@@ -51,6 +53,10 @@ function makeRunningTaskSnapshot() {
     qaQuestions: [],
     hasStaleLock: false,
     lastEventAgeSeconds: 30,
+    summaryStatus: "PASS",
+    summaryHeadline: "Running summary",
+    handoffExcerpt: "current handoff",
+    recentEvents: ["STEP: u-coder"],
   };
 }
 
@@ -61,6 +67,7 @@ function makeFailedTaskSnapshot() {
     title: "Failed Task",
     currentStep: null,
     workerId: null,
+    selected: false,
     elapsedSeconds: null,
     attempt: 2,
     profile: "standard",
@@ -69,6 +76,10 @@ function makeFailedTaskSnapshot() {
     qaQuestions: [],
     hasStaleLock: false,
     lastEventAgeSeconds: null,
+    summaryStatus: "FAIL",
+    summaryHeadline: "Failure summary",
+    handoffExcerpt: "validator failed",
+    recentEvents: ["AGENT_FAIL: u-coder"],
   };
 }
 
@@ -79,6 +90,7 @@ function makeWaitingTaskSnapshot() {
     title: "Waiting Task",
     currentStep: null,
     workerId: null,
+    selected: false,
     elapsedSeconds: null,
     attempt: 1,
     profile: "standard",
@@ -99,6 +111,10 @@ function makeWaitingTaskSnapshot() {
     ],
     hasStaleLock: false,
     lastEventAgeSeconds: null,
+    summaryStatus: null,
+    summaryHeadline: null,
+    handoffExcerpt: "needs operator answer",
+    recentEvents: ["WAITING_ANSWER: u-coder"],
   };
 }
 
@@ -130,6 +146,8 @@ describe("formatSnapshotForChat", () => {
     expect(text).toContain("in_progress");
     expect(text).toContain("u-coder");
     expect(text).toContain("2m"); // 120 seconds = 2 minutes
+    expect(text).toContain("Running summary");
+    expect(text).toContain("current handoff");
   });
 
   it("includes failed task with failed agents", () => {
@@ -141,6 +159,7 @@ describe("formatSnapshotForChat", () => {
 
     expect(text).toContain("Failed Task");
     expect(text).toContain("u-coder");
+    expect(text).toContain("Failure summary");
   });
 
   it("includes waiting-answer task with QA questions", () => {
@@ -153,6 +172,21 @@ describe("formatSnapshotForChat", () => {
     expect(text).toContain("Waiting Task");
     expect(text).toContain("u-coder");
     expect(text).toContain("What should I do?");
+    expect(text).toContain("needs operator answer");
+  });
+
+  it("shows selected task focus when a task is selected", () => {
+    const snapshot = makeEmptySnapshot();
+    const task = makeRunningTaskSnapshot();
+    task.selected = true;
+    snapshot.selectedTaskSlug = task.slug;
+    snapshot.tasks = [task];
+
+    const text = formatSnapshotForChat(snapshot);
+
+    expect(text).toContain("Selected Task Focus");
+    expect(text).toContain("Selected task: my-task");
+    expect(text).toContain("[SELECTED]");
   });
 
   it("includes model health with blacklisted models", () => {

@@ -419,7 +419,7 @@ export function App({ tasksRoot }: Props) {
     // Execute chat turn asynchronously
     setTimeout(() => {
       try {
-        const snapshot = assembleMonitorContext(repoRoot, root, procStatus);
+        const snapshot = assembleMonitorContext(repoRoot, root, procStatus, selected?.dir);
         const contextText = formatSnapshotForChat(snapshot);
         const response = executeChatTurn(input, contextText, session, {
           repoRoot,
