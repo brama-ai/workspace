@@ -3,7 +3,7 @@
         'name' => 'ai-community-platform/telegram-channel-agent',
         'pretty_version' => 'dev-main',
         'version' => 'dev-main',
-        'reference' => '108912e23a0e598ec949abbfcba8d82926af71b8',
+        'reference' => '06c70d09aabbe05743c6cc1a9e21b5075e17802c',
         'type' => 'project',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -13,7 +13,7 @@
         'ai-community-platform/telegram-channel-agent' => array(
             'pretty_version' => 'dev-main',
             'version' => 'dev-main',
-            'reference' => '108912e23a0e598ec949abbfcba8d82926af71b8',
+            'reference' => '06c70d09aabbe05743c6cc1a9e21b5075e17802c',
             'type' => 'project',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
@@ -265,6 +265,18 @@
             'aliases' => array(),
             'dev_requirement' => true,
         ),
+        'php-http/async-client-implementation' => array(
+            'dev_requirement' => false,
+            'provided' => array(
+                0 => '*',
+            ),
+        ),
+        'php-http/client-implementation' => array(
+            'dev_requirement' => false,
+            'provided' => array(
+                0 => '*',
+            ),
+        ),
         'phpstan/extension-installer' => array(
             'pretty_version' => '1.4.3',
             'version' => '1.4.3.0',
@@ -386,6 +398,12 @@
             'dev_requirement' => false,
         ),
         'psr/event-dispatcher-implementation' => array(
+            'dev_requirement' => false,
+            'provided' => array(
+                0 => '1.0',
+            ),
+        ),
+        'psr/http-client-implementation' => array(
             'dev_requirement' => false,
             'provided' => array(
                 0 => '1.0',
@@ -824,6 +842,30 @@
             'aliases' => array(),
             'dev_requirement' => false,
         ),
+        'symfony/http-client' => array(
+            'pretty_version' => 'v7.4.8',
+            'version' => '7.4.8.0',
+            'reference' => '01933e626c3de76bea1e22641e205e78f6a34342',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../symfony/http-client',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'symfony/http-client-contracts' => array(
+            'pretty_version' => 'v3.6.0',
+            'version' => '3.6.0.0',
+            'reference' => '75d7043853a42837e68111812f4d964b01e5101c',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../symfony/http-client-contracts',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
+        'symfony/http-client-implementation' => array(
+            'dev_requirement' => false,
+            'provided' => array(
+                0 => '3.0',
+            ),
+        ),
         'symfony/http-foundation' => array(
             'pretty_version' => 'v7.4.7',
             'version' => '7.4.7.0',
@@ -943,6 +985,15 @@
             'replaced' => array(
                 0 => '*',
             ),
+        ),
+        'symfony/polyfill-php83' => array(
+            'pretty_version' => 'v1.33.0',
+            'version' => '1.33.0.0',
+            'reference' => '17f6f9a6b1735c0f163024d959f700cfbc5155e5',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../symfony/polyfill-php83',
+            'aliases' => array(),
+            'dev_requirement' => false,
         ),
         'symfony/polyfill-php84' => array(
             'pretty_version' => 'v1.33.0',

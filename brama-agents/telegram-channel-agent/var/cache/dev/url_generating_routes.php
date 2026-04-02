@@ -7,9 +7,12 @@ return [
     'api_a2a' => [[], ['_controller' => 'App\\Controller\\Api\\A2AController'], [], [['text', '/api/v1/a2a']], [], [], []],
     'api_manifest' => [[], ['_controller' => 'App\\Controller\\Api\\ManifestController'], [], [['text', '/api/v1/manifest']], [], [], []],
     'health' => [[], ['_controller' => 'App\\Controller\\HealthController::health'], [], [['text', '/health']], [], [], []],
+    'webhook_telegram' => [[], ['_controller' => 'App\\Controller\\WebhookController'], [], [['text', '/webhook/telegram']], [], [], []],
     'App\Controller\Api\A2AController::__invoke' => [[], ['_controller' => 'App\\Controller\\Api\\A2AController'], [], [['text', '/api/v1/a2a']], [], [], []],
     'App\Controller\Api\A2AController' => [[], ['_controller' => 'App\\Controller\\Api\\A2AController'], [], [['text', '/api/v1/a2a']], [], [], []],
     'App\Controller\Api\ManifestController::__invoke' => [[], ['_controller' => 'App\\Controller\\Api\\ManifestController'], [], [['text', '/api/v1/manifest']], [], [], []],
     'App\Controller\Api\ManifestController' => [[], ['_controller' => 'App\\Controller\\Api\\ManifestController'], [], [['text', '/api/v1/manifest']], [], [], []],
     'App\Controller\HealthController::health' => [[], ['_controller' => 'App\\Controller\\HealthController::health'], [], [['text', '/health']], [], [], []],
+    'App\Controller\WebhookController::__invoke' => [[], ['_controller' => 'App\\Controller\\WebhookController'], [], [['text', '/webhook/telegram']], [], [], []],
+    'App\Controller\WebhookController' => [[], ['_controller' => 'App\\Controller\\WebhookController'], [], [['text', '/webhook/telegram']], [], [], []],
 ];

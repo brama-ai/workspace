@@ -11,6 +11,7 @@ return [
         '/api/v1/a2a' => [[['_route' => 'api_a2a', '_controller' => 'App\\Controller\\Api\\A2AController'], null, ['POST' => 0], null, false, false, null]],
         '/api/v1/manifest' => [[['_route' => 'api_manifest', '_controller' => 'App\\Controller\\Api\\ManifestController'], null, ['GET' => 0], null, false, false, null]],
         '/health' => [[['_route' => 'health', '_controller' => 'App\\Controller\\HealthController::health'], null, ['GET' => 0], null, false, false, null]],
+        '/webhook/telegram' => [[['_route' => 'webhook_telegram', '_controller' => 'App\\Controller\\WebhookController'], null, ['POST' => 0], null, false, false, null]],
     ],
     [ // $regexpList
         0 => '{^(?'
