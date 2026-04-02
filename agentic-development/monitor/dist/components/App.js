@@ -16,15 +16,17 @@ import { recheckModel, recheckAllModels, formatReasonCode } from "../agents/mode
 import { restoreOrCreateSession, createSession, appendMessage, compactSession, addWatchJob, removeWatchJob, updateContextTokens, updateWatchJobLastRun, } from "../state/chat-session.js";
 import { getSlashSuggestions, matchSlashCommand, isSlashInput } from "../lib/slash-commands.js";
 import { assembleMonitorContext, formatSnapshotForChat } from "../lib/context-assembler.js";
-import { parseWatchRequest, parseCancelRequest, estimateContextTokens, shouldAutoCompact, executeChatTurn, getDueWatchJobs, processWatchJob, AUTO_COMPACT_THRESHOLD, } from "../agents/chat-agent.js";
+import { parseWatchRequest, parseCancelRequest, estimateContextTokens, shouldAutoCompact, getDueWatchJobs, processWatchJob, AUTO_COMPACT_THRESHOLD, executeChatTurnStreaming, } from "../agents/chat-agent.js";
 const VERSION = "2.5.0";
 const REFRESH_MS = 3000;
 const PROC_REFRESH_MS = 15000; // Process status refresh — less frequent (was 3s, now 15s)
 const ENV_REFRESH_MS = 30000; // Environment status refresh — 30s (docker compose ps is slow)
 /** Minimum terminal width to show sidebar (below this, sidebar is hidden) */
 const SIDEBAR_MIN_COLS = 120;
-/** Sidebar width in columns */
-const SIDEBAR_WIDTH = 45;
+/** Sidebar width ratio of full terminal width */
+const SIDEBAR_WIDTH_RATIO = 0.5;
+/** Minimum sidebar width in columns */
+const SIDEBAR_MIN_WIDTH = 45;
 /** Watch job check interval in ms */
 const WATCH_JOB_CHECK_MS = 30_000;
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -116,11 +118,14 @@ export function App({ tasksRoot }) {
     const [modelCheckAllInProgress, setModelCheckAllInProgress] = useState(false);
     const [modelCheckAllProgress, setModelCheckAllProgress] = useState({ current: 0, total: 0, modelId: "" });
     // Sidebar chat state
-    const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [sidebarOpen, setSidebarOpen] = useState(true);
     const [sidebarFocused, setSidebarFocused] = useState(false);
     const [chatSession, setChatSession] = useState(null);
     const [chatInput, setChatInput] = useState("");
     const [chatLoading, setChatLoading] = useState(false);
+    const [chatLoadingLabel, setChatLoadingLabel] = useState("");
+    const [chatLiveDraft, setChatLiveDraft] = useState("");
+    const [chatActivity, setChatActivity] = useState([]);
     const [slashSuggestions, setSlashSuggestions] = useState([]);
     const [slashSuggestionIdx, setSlashSuggestionIdx] = useState(0);
     const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -263,6 +268,9 @@ export function App({ tasksRoot }) {
         if (idx >= data.tasks.length && data.tasks.length > 0)
             setIdx(data.tasks.length - 1);
     }, [data.tasks.length]);
+    useEffect(() => {
+        setChatScrollOffset(Number.MAX_SAFE_INTEGER);
+    }, [chatSession?.messages.length, chatLoading]);
     const selected = data.tasks[idx];
     const allProcs = [...procStatus.workers, ...procStatus.zombies];
     // Sidebar chat: send message handler
@@ -330,16 +338,29 @@ export function App({ tasksRoot }) {
             }
         }
         setChatLoading(true);
+        setChatLoadingLabel("launching foundry-monitor-chat; it may inspect state, handoff, summary, and runtime logs");
+        setChatLiveDraft("");
+        setChatActivity([]);
         setChatSession({ ...session });
         // Execute chat turn asynchronously
-        setTimeout(() => {
+        setTimeout(async () => {
             try {
-                const snapshot = assembleMonitorContext(repoRoot, root, procStatus);
+                setChatLoadingLabel("assembling monitor context and checking task artifacts");
+                const snapshot = assembleMonitorContext(repoRoot, root, procStatus, selected?.dir);
                 const contextText = formatSnapshotForChat(snapshot);
-                const response = executeChatTurn(input, contextText, session, {
+                setChatLoadingLabel("running foundry-monitor-chat with live diagnostic activity");
+                const response = await executeChatTurnStreaming(input, contextText, session, {
                     repoRoot,
                     model: session.model ?? "anthropic/claude-sonnet-4-6",
                     supervisorMdPath: join(repoRoot, "agentic-development", "supervisor.md"),
+                }, snapshot, {
+                    onActivity: (line) => {
+                        setChatActivity((current) => [...current.slice(-7), line]);
+                        setChatLoadingLabel(line);
+                    },
+                    onText: (text) => {
+                        setChatLiveDraft(text);
+                    },
                 });
                 let updated = appendMessage(repoRoot, session, "assistant", response);
                 // Handle watch request
@@ -357,6 +378,9 @@ export function App({ tasksRoot }) {
             }
             finally {
                 setChatLoading(false);
+                setChatLoadingLabel("");
+                setChatLiveDraft("");
+                setChatActivity([]);
             }
         }, 0);
     };
@@ -830,8 +854,9 @@ export function App({ tasksRoot }) {
             ? envStatus.errors.slice(0, 3).join(" | ")
             : "";
     const showSidebar = sidebarOpen && cols >= SIDEBAR_MIN_COLS;
-    const mainCols = showSidebar ? cols - SIDEBAR_WIDTH - 1 : cols;
-    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time, "  "] }), _jsxs(Text, { bold: true, color: envColor, children: [envIcon, " ENV"] }), envHint ? _jsxs(Text, { color: envStatus.configMissing ? "yellow" : "red", dimColor: true, children: [" ", envHint] }) : null, envStatus.ready && _jsxs(Text, { dimColor: true, children: [" (", envStatus.services.length, " services)"] }), envStatus.configMissing && _jsx(Text, { color: "yellow", children: "  [i] generate" }), !envStatus.ready && !envStatus.configMissing && !envLoading && _jsx(Text, { dimColor: true, children: "  [e] up env" }), cols >= SIDEBAR_MIN_COLS && (_jsx(Text, { dimColor: true, color: sidebarFocused ? "cyan" : undefined, children: sidebarOpen ? "  [Tab] chat" : "  [Tab] open chat" }))] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 }), _jsx(TabLabel, { n: 3, label: "Processes", active: tab === 3, hasAlert: procStatus.zombies.length > 0 || procStatus.lock?.zombie === true }), _jsx(TabLabel, { n: 4, label: "Models", active: tab === 4, hasAlert: modelBlacklistEntries.length > 0 })] }), _jsx(Text, { children: " " }), _jsxs(Box, { flexDirection: "row", children: [_jsxs(Box, { flexDirection: "column", width: mainCols, children: [tab === 1 && (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: mainCols, rows: rows, tick: tick, detailTab: detailTab, detailScrollOffsets: detailScrollOffsets, setDetailScrollOffsets: setDetailScrollOffsets, setMsg: setMsg, setView: setView })), tab === 2 && _jsx(CommandsTab, { cols: mainCols, selectedIdx: cmdIdx, repoRoot: repoRoot }), tab === 3 && (_jsx(ProcessesTab, { procStatus: procStatus, selectedIdx: procIdx, logLines: procLogLines, cols: mainCols, rows: rows, tick: tick })), tab === 4 && (_jsx(ModelsTab, { inventory: modelInventory, blacklistEntries: modelBlacklistEntries, selectedIdx: modelIdx, recheckInProgress: modelRecheckInProgress, checkAllInProgress: modelCheckAllInProgress, checkAllProgress: modelCheckAllProgress, cols: mainCols, rows: rows }))] }), showSidebar && (_jsx(Box, { flexDirection: "column", width: 1, children: Array.from({ length: rows - 6 }).map((_, i) => (_jsx(Text, { dimColor: true, color: sidebarFocused ? "cyan" : undefined, children: "\u2502" }, i))) })), showSidebar && chatSession && (_jsx(SidebarChat, { session: chatSession, input: chatInput, loading: chatLoading, focused: sidebarFocused, slashSuggestions: slashSuggestions, slashSuggestionIdx: slashSuggestionIdx, modelPickerOpen: modelPickerOpen, modelPickerIdx: modelPickerIdx, healthyModels: modelInventory.filter((m) => !modelBlacklistEntries.some((b) => b.model === m.modelId)), scrollOffset: chatScrollOffset, width: SIDEBAR_WIDTH, rows: rows }))] }), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsx(Text, { dimColor: true, children: footerHint })] }));
+    const sidebarWidth = showSidebar ? Math.max(SIDEBAR_MIN_WIDTH, Math.floor(cols * SIDEBAR_WIDTH_RATIO)) : 0;
+    const mainCols = showSidebar ? cols - sidebarWidth - 1 : cols;
+    return (_jsxs(Box, { flexDirection: "column", width: cols, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: "cyan", children: "  Foundry Monitor" }), _jsxs(Text, { dimColor: true, children: [" v", VERSION, "  ", time, "  "] }), _jsxs(Text, { bold: true, color: envColor, children: [envIcon, " ENV"] }), envHint ? _jsxs(Text, { color: envStatus.configMissing ? "yellow" : "red", dimColor: true, children: [" ", envHint] }) : null, envStatus.ready && _jsxs(Text, { dimColor: true, children: [" (", envStatus.services.length, " services)"] }), envStatus.configMissing && _jsx(Text, { color: "yellow", children: "  [i] generate" }), !envStatus.ready && !envStatus.configMissing && !envLoading && _jsx(Text, { dimColor: true, children: "  [e] up env" }), cols >= SIDEBAR_MIN_COLS && (_jsx(Text, { dimColor: true, color: sidebarFocused ? "cyan" : undefined, children: sidebarOpen ? "  [Tab] chat" : "  [Tab] open chat" }))] }), _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsxs(Box, { gap: 1, children: [_jsx(Text, { children: " " }), _jsx(TabLabel, { n: 1, label: "Tasks", active: tab === 1 }), _jsx(TabLabel, { n: 2, label: "Commands", active: tab === 2 }), _jsx(TabLabel, { n: 3, label: "Processes", active: tab === 3, hasAlert: procStatus.zombies.length > 0 || procStatus.lock?.zombie === true }), _jsx(TabLabel, { n: 4, label: "Models", active: tab === 4, hasAlert: modelBlacklistEntries.length > 0 })] }), _jsx(Text, { children: " " }), _jsxs(Box, { flexDirection: "row", children: [_jsxs(Box, { flexDirection: "column", width: mainCols, children: [tab === 1 && (_jsx(TasksTab, { data: data, idx: idx, view: view, selected: selected, cols: mainCols, rows: rows, tick: tick, detailTab: detailTab, detailScrollOffsets: detailScrollOffsets, setDetailScrollOffsets: setDetailScrollOffsets, setMsg: setMsg, setView: setView })), tab === 2 && _jsx(CommandsTab, { cols: mainCols, selectedIdx: cmdIdx, repoRoot: repoRoot }), tab === 3 && (_jsx(ProcessesTab, { procStatus: procStatus, selectedIdx: procIdx, logLines: procLogLines, cols: mainCols, rows: rows, tick: tick })), tab === 4 && (_jsx(ModelsTab, { inventory: modelInventory, blacklistEntries: modelBlacklistEntries, selectedIdx: modelIdx, recheckInProgress: modelRecheckInProgress, checkAllInProgress: modelCheckAllInProgress, checkAllProgress: modelCheckAllProgress, cols: mainCols, rows: rows }))] }), showSidebar && (_jsx(Box, { flexDirection: "column", width: 1, children: Array.from({ length: rows - 6 }).map((_, i) => (_jsx(Text, { dimColor: true, color: sidebarFocused ? "cyan" : undefined, children: "\u2502" }, i))) })), showSidebar && chatSession && (_jsx(SidebarChat, { session: chatSession, input: chatInput, loading: chatLoading, focused: sidebarFocused, slashSuggestions: slashSuggestions, slashSuggestionIdx: slashSuggestionIdx, modelPickerOpen: modelPickerOpen, modelPickerIdx: modelPickerIdx, healthyModels: modelInventory.filter((m) => !modelBlacklistEntries.some((b) => b.model === m.modelId)), scrollOffset: chatScrollOffset, loadingLabel: chatLoadingLabel, liveDraft: chatLiveDraft, activityLines: chatActivity, width: sidebarWidth, rows: rows }))] }), msg ? _jsxs(Text, { color: "yellow", children: ["  ", msg] }) : null, lastAttachCmd ? (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsx(Text, { dimColor: true, children: "Watch stdout: " }), _jsx(Text, { bold: true, color: "green", children: lastAttachCmd })] })) : null, _jsx(Text, { dimColor: true, children: "─".repeat(cols) }), _jsx(Text, { dimColor: true, children: footerHint })] }));
 }
 // ── Tab label ─────────────────────────────────────────────────────
 function TabLabel({ n, label, active, hasAlert }) {
@@ -851,7 +876,7 @@ function TasksTab({ data, idx, view, selected, cols, rows, tick, detailTab, deta
     const { tasks, counts } = data;
     const total = counts.todo + counts.pending + counts.in_progress + counts.waiting_answer + counts.completed + counts.failed + counts.suspended;
     const done = counts.completed + counts.failed;
-    return (_jsxs(Box, { flexDirection: "column", children: [_jsx(ProgressBar, { done: done, total: total, width: cols - 10 }), _jsx(Text, { children: " " }), _jsxs(Box, { gap: 2, children: [_jsx(Text, { children: "  " }), _jsxs(Text, { color: "blue", bold: true, children: ["Pending: ", counts.pending] }), _jsxs(Text, { color: "yellow", bold: true, children: ["Running: ", counts.in_progress] }), counts.waiting_answer > 0 && _jsxs(Text, { color: "cyan", bold: true, children: ["Waiting: ", counts.waiting_answer, " \u2753"] }), _jsxs(Text, { color: "green", bold: true, children: ["Done: ", counts.completed] }), _jsxs(Text, { color: "red", bold: true, children: ["Failed: ", counts.failed] }), counts.suspended > 0 && _jsxs(Text, { color: "magenta", bold: true, children: ["Suspended: ", counts.suspended] }), counts.todo > 0 && _jsxs(Text, { color: "gray", bold: true, children: ["Todo: ", counts.todo] })] }), _jsx(Text, { children: " " }), _jsx(TaskList, { tasks: tasks, selectedIdx: idx, maxLines: rows - 12 })] }));
+    return (_jsxs(Box, { flexDirection: "column", children: [_jsx(ProgressBar, { done: done, total: total, width: cols - 10 }), _jsx(Text, { children: " " }), _jsxs(Box, { gap: 2, children: [_jsx(Text, { children: "  " }), _jsxs(Text, { color: "blue", bold: true, children: ["Pending: ", counts.pending] }), _jsxs(Text, { color: "yellow", bold: true, children: ["Running: ", counts.in_progress] }), counts.waiting_answer > 0 && _jsxs(Text, { color: "cyan", bold: true, children: ["Waiting: ", counts.waiting_answer, " \u2753"] }), _jsxs(Text, { color: "green", bold: true, children: ["Done: ", counts.completed] }), _jsxs(Text, { color: "red", bold: true, children: ["Failed: ", counts.failed] }), counts.suspended > 0 && _jsxs(Text, { color: "magenta", bold: true, children: ["Suspended: ", counts.suspended] }), counts.todo > 0 && _jsxs(Text, { color: "gray", bold: true, children: ["Todo: ", counts.todo] })] }), _jsx(Text, { children: " " }), _jsx(TaskList, { tasks: tasks, selectedIdx: idx, maxLines: rows - 12, cols: cols })] }));
 }
 // ── Processes Tab ─────────────────────────────────────────────────
 function ProcessesTab({ procStatus, selectedIdx, logLines, cols, rows, tick, }) {
@@ -909,8 +934,15 @@ function ProgressBar({ done, total, width }) {
     const empty = w - filled;
     return (_jsxs(Box, { children: [_jsx(Text, { children: "  " }), _jsxs(Text, { color: "green", children: ["[", "█".repeat(filled)] }), _jsx(Text, { dimColor: true, children: "░".repeat(empty) }), _jsx(Text, { color: "green", children: "]" }), _jsxs(Text, { children: [" ", done, "/", total] })] }));
 }
+function truncateText(value, maxWidth) {
+    if (maxWidth <= 1)
+        return "…";
+    if (value.length <= maxWidth)
+        return value;
+    return value.slice(0, Math.max(0, maxWidth - 1)) + "…";
+}
 // ── Task list ─────────────────────────────────────────────────────
-function TaskList({ tasks, selectedIdx, maxLines }) {
+function TaskList({ tasks, selectedIdx, maxLines, cols }) {
     const lines = Math.max(5, maxLines);
     let scrollStart = 0;
     if (selectedIdx >= lines)
@@ -922,7 +954,7 @@ function TaskList({ tasks, selectedIdx, maxLines }) {
                 const header = task.status.split(":")[0] !== prevStatus;
                 prevStatus = task.status.split(":")[0];
                 const cursor = i === selectedIdx;
-                return (_jsxs(React.Fragment, { children: [header && _jsx(StatusHeader, { status: task.status }), _jsx(TaskLine, { task: task, cursor: cursor })] }, task.dir));
+                return (_jsxs(React.Fragment, { children: [header && _jsx(StatusHeader, { status: task.status }), _jsx(TaskLine, { task: task, cursor: cursor, cols: cols })] }, task.dir));
             }), tasks.length === 0 && _jsx(Text, { dimColor: true, children: "  No tasks found." })] }));
 }
 function StatusHeader({ status }) {
@@ -939,7 +971,7 @@ function StatusHeader({ status }) {
     const [label, color] = labels[base] ?? [base, "white"];
     return _jsxs(Text, { bold: true, color: color, children: ["  ", label] });
 }
-function TaskLine({ task, cursor }) {
+function TaskLine({ task, cursor, cols }) {
     const icon = { in_progress: "▸", waiting_answer: "?", completed: "✓", failed: "✗", suspended: "⏸", pending: "○", todo: "·" }[task.status] ?? "·";
     const color = { in_progress: "yellow", waiting_answer: "cyan", completed: "green", failed: "red", suspended: "magenta", pending: undefined, todo: "gray" }[task.status];
     const wfBadge = task.workflow === "ultraworks" ? "U" : "F";
@@ -982,7 +1014,11 @@ function TaskLine({ task, cursor }) {
         suffix = ` #${task.priority}`;
     if (task.attempt && task.attempt > 1)
         suffix += ` attempt#${task.attempt}`;
-    return (_jsxs(Box, { children: [_jsx(Text, { color: "cyan", children: cursor ? "  ▶ " : "    " }), _jsx(Text, { color: wfColor, children: wfBadge }), _jsxs(Text, { color: color, children: [" ", icon] }), _jsxs(Text, { children: [" ", task.title] }), _jsx(Text, { dimColor: true, children: suffix }), warnings.length > 0 && _jsxs(Text, { color: "red", children: [" ", warnings.join(" ")] })] }));
+    const warningText = warnings.length > 0 ? ` ${warnings.join(" ")}` : "";
+    const linePrefixWidth = 9;
+    const availableTitleWidth = Math.max(12, cols - linePrefixWidth - suffix.length - warningText.length);
+    const title = truncateText(task.title, availableTitleWidth);
+    return (_jsxs(Box, { children: [_jsx(Text, { color: "cyan", children: cursor ? "  ▶ " : "    " }), _jsx(Text, { color: wfColor, children: wfBadge }), _jsxs(Text, { color: color, children: [" ", icon] }), _jsxs(Text, { children: [" ", title] }), _jsx(Text, { dimColor: true, children: suffix }), warnings.length > 0 && _jsx(Text, { color: "red", children: warningText })] }));
 }
 // ── Agents View ───────────────────────────────────────────────────
 // 12.1: Per-agent attempt history — group agent entries by attempt, show attempt headers
@@ -1259,7 +1295,7 @@ function CmdLine({ k, desc, cursor, executable }) {
     return (_jsxs(Box, { children: [_jsx(Text, { color: "cyan", children: cursor ? "  ▶ " : "    " }), _jsx(Text, { bold: executable, dimColor: !executable, children: k.padEnd(8) }), _jsx(Text, { dimColor: !cursor, children: desc }), cursor && _jsx(Text, { color: "green", children: " \u23CE" })] }));
 }
 // ── Sidebar Chat ──────────────────────────────────────────────────
-function SidebarChat({ session, input, loading, focused, slashSuggestions, slashSuggestionIdx, modelPickerOpen, modelPickerIdx, healthyModels, scrollOffset, width, rows, }) {
+function SidebarChat({ session, input, loading, focused, slashSuggestions, slashSuggestionIdx, modelPickerOpen, modelPickerIdx, healthyModels, scrollOffset, loadingLabel, liveDraft, activityLines, width, rows, }) {
     const contextK = Math.round(session.contextTokens / 1000);
     const contextPct = Math.min(100, Math.round((session.contextTokens / AUTO_COMPACT_THRESHOLD) * 100));
     const contextColor = contextPct >= 90 ? "red" : contextPct >= 70 ? "yellow" : "green";
@@ -1269,19 +1305,44 @@ function SidebarChat({ session, input, loading, focused, slashSuggestions, slash
     // Message history for display
     const allMessages = session.messages;
     const historyLines = [];
+    function wrapMessage(prefix, content) {
+        const wrapped = [];
+        const continuation = " ".repeat(prefix.length);
+        const maxContentWidth = Math.max(12, width - prefix.length - 2);
+        for (const sourceLine of content.split("\n")) {
+            if (sourceLine.length === 0) {
+                wrapped.push(prefix);
+                continue;
+            }
+            let offset = 0;
+            let firstChunk = true;
+            while (offset < sourceLine.length) {
+                const chunk = sourceLine.slice(offset, offset + maxContentWidth);
+                wrapped.push(`${firstChunk ? prefix : continuation}${chunk}`);
+                firstChunk = false;
+                offset += maxContentWidth;
+            }
+        }
+        return wrapped;
+    }
     if (session.compactMemory) {
         historyLines.push("── [compacted memory] ──");
         historyLines.push("");
     }
     for (const msg of allMessages) {
         const prefix = msg.role === "user" ? "You: " : msg.role === "assistant" ? "AI:  " : "Sys: ";
-        const color = msg.role === "user" ? "" : "";
-        const lines = msg.content.split("\n");
-        historyLines.push(`${prefix}${lines[0].slice(0, width - 6)}`);
-        for (const line of lines.slice(1, 4)) {
-            if (line.trim())
-                historyLines.push(`     ${line.slice(0, width - 6)}`);
+        historyLines.push(...wrapMessage(prefix, msg.content));
+        historyLines.push("");
+    }
+    if (loading && activityLines.length > 0) {
+        historyLines.push("Sys: agent activity");
+        for (const line of activityLines) {
+            historyLines.push(...wrapMessage("  · ", line));
         }
+        historyLines.push("");
+    }
+    if (loading && liveDraft.trim()) {
+        historyLines.push(...wrapMessage("AI*: ", liveDraft));
         historyLines.push("");
     }
     const viewportH = rows - 10;
@@ -1292,7 +1353,7 @@ function SidebarChat({ session, input, loading, focused, slashSuggestions, slash
                         const isUser = line.startsWith("You: ");
                         const isSystem = line.startsWith("Sys: ");
                         return (_jsx(Text, { color: isUser ? "cyan" : isSystem ? "yellow" : undefined, dimColor: !isUser && !isSystem, children: " " + line.slice(0, width - 2) }, i));
-                    })), loading && _jsx(Text, { color: "yellow", children: " \u27F3 thinking\u2026" })] }), slashSuggestions.length > 0 && (_jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { dimColor: true, children: "─".repeat(width - 1) }), slashSuggestions.map((cmd, i) => (_jsxs(Box, { children: [_jsxs(Text, { color: i === slashSuggestionIdx ? "cyan" : undefined, dimColor: i !== slashSuggestionIdx, children: [i === slashSuggestionIdx ? " ▶ " : "   ", cmd.name.padEnd(10)] }), _jsx(Text, { dimColor: true, children: cmd.description.slice(0, width - 14) })] }, cmd.name)))] })), modelPickerOpen && (_jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { dimColor: true, children: "─".repeat(width - 1) }), _jsx(Text, { bold: true, color: "cyan", children: " Select model (Enter confirm, Esc cancel)" }), healthyModels.length === 0 ? (_jsx(Text, { color: "red", children: " No healthy models available" })) : (healthyModels.slice(0, 8).map((m, i) => (_jsx(Box, { children: _jsxs(Text, { color: i === modelPickerIdx ? "cyan" : undefined, dimColor: i !== modelPickerIdx, children: [i === modelPickerIdx ? " ▶ " : "   ", m.modelId.replace(/^(anthropic|openai|google|openrouter)\//, "").slice(0, width - 5)] }) }, m.modelId))))] })), _jsx(Text, { dimColor: true, children: "─".repeat(width - 1) }), _jsxs(Box, { children: [_jsx(Text, { color: focused ? "cyan" : "white", children: focused ? "▶ " : "  " }), _jsx(Text, { children: input || (focused ? "" : "(Tab to focus)") }), focused && _jsx(Text, { color: "cyan", children: "\u2588" })] })] }));
+                    })), loading && _jsxs(Text, { color: "yellow", children: [" \u27F3 ", loadingLabel || "thinking…"] })] }), slashSuggestions.length > 0 && (_jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { dimColor: true, children: "─".repeat(width - 1) }), slashSuggestions.map((cmd, i) => (_jsxs(Box, { children: [_jsxs(Text, { color: i === slashSuggestionIdx ? "cyan" : undefined, dimColor: i !== slashSuggestionIdx, children: [i === slashSuggestionIdx ? " ▶ " : "   ", cmd.name.padEnd(10)] }), _jsx(Text, { dimColor: true, children: cmd.description.slice(0, width - 14) })] }, cmd.name)))] })), modelPickerOpen && (_jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { dimColor: true, children: "─".repeat(width - 1) }), _jsx(Text, { bold: true, color: "cyan", children: " Select model (Enter confirm, Esc cancel)" }), healthyModels.length === 0 ? (_jsx(Text, { color: "red", children: " No healthy models available" })) : (healthyModels.slice(0, 8).map((m, i) => (_jsx(Box, { children: _jsxs(Text, { color: i === modelPickerIdx ? "cyan" : undefined, dimColor: i !== modelPickerIdx, children: [i === modelPickerIdx ? " ▶ " : "   ", m.modelId.replace(/^(anthropic|openai|google|openrouter)\//, "").slice(0, width - 5)] }) }, m.modelId))))] })), _jsx(Text, { dimColor: true, children: "─".repeat(width - 1) }), _jsxs(Box, { children: [_jsx(Text, { color: focused ? "cyan" : "white", children: focused ? "▶ " : "  " }), _jsx(Text, { children: input || (focused ? "" : "(Tab to focus)") }), focused && _jsx(Text, { color: "cyan", children: "\u2588" })] })] }));
 }
 // ── Q&A View ──────────────────────────────────────────────────────
 function QAView({ task, cols, rows, onBack }) {
