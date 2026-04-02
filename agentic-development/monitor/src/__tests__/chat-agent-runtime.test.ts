@@ -4,8 +4,10 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { EventEmitter } from "node:events";
 
-const execFileSyncMock = vi.fn();
-const spawnMock = vi.fn();
+const { execFileSyncMock, spawnMock } = vi.hoisted(() => ({
+  execFileSyncMock: vi.fn(),
+  spawnMock: vi.fn(),
+}));
 
 vi.mock("node:child_process", () => ({
   execFileSync: execFileSyncMock,

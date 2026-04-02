@@ -14,6 +14,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  rmSync,
   writeFileSync,
   readdirSync,
   unlinkSync,
@@ -546,6 +547,26 @@ const DEFAULT_PROFILES: Record<string, string[]> = {
   simple: ["u-coder", "u-summarizer"],
 };
 
+export function deleteInvalidPendingTasks(tasksRoot: string): string[] {
+  if (!existsSync(tasksRoot)) return [];
+
+  const deleted: string[] = [];
+  for (const entry of readdirSync(tasksRoot)) {
+    if (!entry.endsWith("--foundry")) continue;
+    const taskDir = join(tasksRoot, entry);
+    const state = readTaskState(taskDir);
+    if (!state || state.status !== "pending") continue;
+
+    const taskFile = join(taskDir, "task.md");
+    if (!existsSync(taskFile) || !readFileSync(taskFile, "utf8").trim()) {
+      rmSync(taskDir, { recursive: true, force: true });
+      deleted.push(taskDir);
+    }
+  }
+
+  return deleted;
+}
+
 /**
  * Single worker loop: claims tasks and runs them via the TS pipeline runner.
  * Returns exit code (0 = success, 1 = failure).
@@ -554,6 +575,8 @@ async function workerLoop(opts: WorkerOptions): Promise<number> {
   const { workerId, numWorkers, stopOnFailure } = opts;
 
   while (true) {
+    deleteInvalidPendingTasks(TASKS_ROOT);
+
     // Claim the next pending task
     const taskDir = claimNextTask(workerId);
     if (!taskDir) break; // No more tasks
@@ -563,7 +586,7 @@ async function workerLoop(opts: WorkerOptions): Promise<number> {
 
     const taskFile = join(taskDir, "task.md");
     if (!existsSync(taskFile)) {
-      releaseTask(taskDir);
+      rmSync(taskDir, { recursive: true, force: true });
       continue;
     }
 

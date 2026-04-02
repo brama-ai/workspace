@@ -9,7 +9,7 @@ import { formatDuration, formatTokens, formatCost } from "../lib/format.js";
 import { startWorkers, stopWorkers, retryFailed, runAutotest, archiveTask, ultraworksLaunch, ultraworksAttach, ultraworksCleanup, findRepoRoot, cleanZombies, runDoctor, runDoctorTask, getProcessStatusAsync, tailLog, getWorkerCount, cycleWorkerCount, isHeadlessRunning, ensureHeadless, } from "../lib/actions.js";
 import { checkEnvStatusAsync, upEnvironment, invalidateEnvCheckConfigCache } from "../lib/env-status.js";
 import { generateEnvCheck } from "../cli/init-env.js";
-import { promoteNextTodoToPending } from "../cli/batch.js";
+import { promoteNextTodoToPending, deleteInvalidPendingTasks } from "../cli/batch.js";
 import { loadModelInventory, formatModelUsage } from "../lib/model-inventory.js";
 import { getAllBlacklistEntries } from "../agents/executor.js";
 import { recheckModel, recheckAllModels, formatReasonCode } from "../agents/model-probe.js";
@@ -147,6 +147,11 @@ export function App({ tasksRoot }) {
             if (autoWatchCounter.current >= 5) {
                 autoWatchCounter.current = 0;
                 try {
+                    const invalidPending = deleteInvalidPendingTasks(root);
+                    if (invalidPending.length > 0) {
+                        setMsg(`Deleted ${invalidPending.length} invalid pending task(s)`);
+                        return;
+                    }
                     const hasTodo = freshData.tasks.some((t) => t.status === "todo");
                     const hasPending = freshData.tasks.some((t) => t.status === "pending");
                     const hasRunning = freshData.tasks.some((t) => t.status === "in_progress");
@@ -1305,20 +1310,20 @@ function SidebarChat({ session, input, loading, focused, slashSuggestions, slash
     // Message history for display
     const allMessages = session.messages;
     const historyLines = [];
-    function wrapMessage(prefix, content) {
+    function wrapMessage(content, role, prefix = "") {
         const wrapped = [];
         const continuation = " ".repeat(prefix.length);
         const maxContentWidth = Math.max(12, width - prefix.length - 2);
         for (const sourceLine of content.split("\n")) {
             if (sourceLine.length === 0) {
-                wrapped.push(prefix);
+                wrapped.push({ text: prefix, role });
                 continue;
             }
             let offset = 0;
             let firstChunk = true;
             while (offset < sourceLine.length) {
                 const chunk = sourceLine.slice(offset, offset + maxContentWidth);
-                wrapped.push(`${firstChunk ? prefix : continuation}${chunk}`);
+                wrapped.push({ text: `${firstChunk ? prefix : continuation}${chunk}`, role });
                 firstChunk = false;
                 offset += maxContentWidth;
             }
@@ -1326,33 +1331,39 @@ function SidebarChat({ session, input, loading, focused, slashSuggestions, slash
         return wrapped;
     }
     if (session.compactMemory) {
-        historyLines.push("── [compacted memory] ──");
-        historyLines.push("");
+        historyLines.push({ text: "── [compacted memory] ──", role: "meta" });
+        historyLines.push({ text: "", role: "meta" });
     }
     for (const msg of allMessages) {
-        const prefix = msg.role === "user" ? "You: " : msg.role === "assistant" ? "AI:  " : "Sys: ";
-        historyLines.push(...wrapMessage(prefix, msg.content));
-        historyLines.push("");
+        const role = msg.role === "user" ? "user" : msg.role === "assistant" ? "assistant" : "system";
+        const prefix = role === "system" ? "Sys: " : "";
+        historyLines.push(...wrapMessage(msg.content, role, prefix));
+        historyLines.push({ text: "", role: role === "user" ? "user" : "meta" });
     }
     if (loading && activityLines.length > 0) {
-        historyLines.push("Sys: agent activity");
+        historyLines.push({ text: "Sys: agent activity", role: "system" });
         for (const line of activityLines) {
-            historyLines.push(...wrapMessage("  · ", line));
+            historyLines.push(...wrapMessage(line, "activity", "  · "));
         }
-        historyLines.push("");
+        historyLines.push({ text: "", role: "meta" });
     }
     if (loading && liveDraft.trim()) {
-        historyLines.push(...wrapMessage("AI*: ", liveDraft));
-        historyLines.push("");
+        historyLines.push(...wrapMessage(liveDraft, "draft"));
+        historyLines.push({ text: "", role: "meta" });
     }
     const viewportH = rows - 10;
     const maxOffset = Math.max(0, historyLines.length - viewportH);
     const clampedOffset = Math.min(scrollOffset, maxOffset);
     const visibleLines = historyLines.slice(clampedOffset, clampedOffset + viewportH);
     return (_jsxs(Box, { flexDirection: "column", width: width, children: [_jsxs(Box, { children: [_jsx(Text, { bold: true, color: focused ? "cyan" : "white", children: " Chat" }), _jsxs(Text, { dimColor: true, children: [" ", modelShort] }), _jsxs(Text, { color: contextColor, dimColor: true, children: [" ", contextK, "k/", Math.round(AUTO_COMPACT_THRESHOLD / 1000), "k"] }), session.watchJobs.length > 0 && (_jsxs(Text, { color: "yellow", dimColor: true, children: [" \u23F1", session.watchJobs.length] }))] }), _jsx(Text, { dimColor: true, children: "─".repeat(width - 1) }), _jsxs(Box, { flexDirection: "column", height: viewportH, children: [visibleLines.length === 0 && !session.compactMemory ? (_jsx(Text, { dimColor: true, children: " Type a message or / for commands" })) : (visibleLines.map((line, i) => {
-                        const isUser = line.startsWith("You: ");
-                        const isSystem = line.startsWith("Sys: ");
-                        return (_jsx(Text, { color: isUser ? "cyan" : isSystem ? "yellow" : undefined, dimColor: !isUser && !isSystem, children: " " + line.slice(0, width - 2) }, i));
+                        const isUser = line.role === "user";
+                        const isSystem = line.role === "system";
+                        const isDraft = line.role === "draft";
+                        const isActivity = line.role === "activity";
+                        const padded = isUser
+                            ? `${" ".repeat(Math.max(0, width - 2 - line.text.length))}${line.text}`
+                            : line.text;
+                        return (_jsx(Text, { color: isUser ? "cyan" : isSystem ? "yellow" : isDraft ? "green" : undefined, dimColor: !isUser && !isSystem && !isDraft && !isActivity, children: " " + padded.slice(0, width - 2) }, i));
                     })), loading && _jsxs(Text, { color: "yellow", children: [" \u27F3 ", loadingLabel || "thinking…"] })] }), slashSuggestions.length > 0 && (_jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { dimColor: true, children: "─".repeat(width - 1) }), slashSuggestions.map((cmd, i) => (_jsxs(Box, { children: [_jsxs(Text, { color: i === slashSuggestionIdx ? "cyan" : undefined, dimColor: i !== slashSuggestionIdx, children: [i === slashSuggestionIdx ? " ▶ " : "   ", cmd.name.padEnd(10)] }), _jsx(Text, { dimColor: true, children: cmd.description.slice(0, width - 14) })] }, cmd.name)))] })), modelPickerOpen && (_jsxs(Box, { flexDirection: "column", children: [_jsx(Text, { dimColor: true, children: "─".repeat(width - 1) }), _jsx(Text, { bold: true, color: "cyan", children: " Select model (Enter confirm, Esc cancel)" }), healthyModels.length === 0 ? (_jsx(Text, { color: "red", children: " No healthy models available" })) : (healthyModels.slice(0, 8).map((m, i) => (_jsx(Box, { children: _jsxs(Text, { color: i === modelPickerIdx ? "cyan" : undefined, dimColor: i !== modelPickerIdx, children: [i === modelPickerIdx ? " ▶ " : "   ", m.modelId.replace(/^(anthropic|openai|google|openrouter)\//, "").slice(0, width - 5)] }) }, m.modelId))))] })), _jsx(Text, { dimColor: true, children: "─".repeat(width - 1) }), _jsxs(Box, { children: [_jsx(Text, { color: focused ? "cyan" : "white", children: focused ? "▶ " : "  " }), _jsx(Text, { children: input || (focused ? "" : "(Tab to focus)") }), focused && _jsx(Text, { color: "cyan", children: "\u2588" })] })] }));
 }
 // ── Q&A View ──────────────────────────────────────────────────────

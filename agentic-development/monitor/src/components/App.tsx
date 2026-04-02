@@ -30,7 +30,7 @@ import {
 } from "../lib/actions.js";
 import { checkEnvStatusAsync, upEnvironment, invalidateEnvCheckConfigCache, type EnvStatus } from "../lib/env-status.js";
 import { generateEnvCheck } from "../cli/init-env.js";
-import { promoteNextTodoToPending } from "../cli/batch.js";
+import { promoteNextTodoToPending, deleteInvalidPendingTasks } from "../cli/batch.js";
 import { loadModelInventory, formatModelUsage, type ModelInventoryEntry } from "../lib/model-inventory.js";
 import { getBlacklistEntry, getAllBlacklistEntries, type BlacklistEntry } from "../agents/executor.js";
 import { recheckModel, recheckAllModels, formatReasonCode, type ProbeResult } from "../agents/model-probe.js";
@@ -221,6 +221,12 @@ export function App({ tasksRoot }: Props) {
       if (autoWatchCounter.current >= 5) {
         autoWatchCounter.current = 0;
         try {
+          const invalidPending = deleteInvalidPendingTasks(root);
+          if (invalidPending.length > 0) {
+            setMsg(`Deleted ${invalidPending.length} invalid pending task(s)`);
+            return;
+          }
+
           const hasTodo = freshData.tasks.some((t) => t.status === "todo");
           const hasPending = freshData.tasks.some((t) => t.status === "pending");
           const hasRunning = freshData.tasks.some((t) => t.status === "in_progress");
@@ -1943,25 +1949,27 @@ function SidebarChat({
     ? session.model.replace(/^(anthropic|openai|google|openrouter)\//, "").slice(0, 20)
     : "default";
 
+  type DisplayLine = { text: string; role: "user" | "assistant" | "system" | "activity" | "draft" | "meta" };
+
   // Message history for display
   const allMessages = session.messages;
-  const historyLines: string[] = [];
+  const historyLines: DisplayLine[] = [];
 
-  function wrapMessage(prefix: string, content: string): string[] {
-    const wrapped: string[] = [];
+  function wrapMessage(content: string, role: DisplayLine["role"], prefix = ""): DisplayLine[] {
+    const wrapped: DisplayLine[] = [];
     const continuation = " ".repeat(prefix.length);
     const maxContentWidth = Math.max(12, width - prefix.length - 2);
 
     for (const sourceLine of content.split("\n")) {
       if (sourceLine.length === 0) {
-        wrapped.push(prefix);
+        wrapped.push({ text: prefix, role });
         continue;
       }
       let offset = 0;
       let firstChunk = true;
       while (offset < sourceLine.length) {
         const chunk = sourceLine.slice(offset, offset + maxContentWidth);
-        wrapped.push(`${firstChunk ? prefix : continuation}${chunk}`);
+        wrapped.push({ text: `${firstChunk ? prefix : continuation}${chunk}`, role });
         firstChunk = false;
         offset += maxContentWidth;
       }
@@ -1971,27 +1979,28 @@ function SidebarChat({
   }
 
   if (session.compactMemory) {
-    historyLines.push("── [compacted memory] ──");
-    historyLines.push("");
+    historyLines.push({ text: "── [compacted memory] ──", role: "meta" });
+    historyLines.push({ text: "", role: "meta" });
   }
 
   for (const msg of allMessages) {
-    const prefix = msg.role === "user" ? "You: " : msg.role === "assistant" ? "AI:  " : "Sys: ";
-    historyLines.push(...wrapMessage(prefix, msg.content));
-    historyLines.push("");
+    const role = msg.role === "user" ? "user" : msg.role === "assistant" ? "assistant" : "system";
+    const prefix = role === "system" ? "Sys: " : "";
+    historyLines.push(...wrapMessage(msg.content, role, prefix));
+    historyLines.push({ text: "", role: role === "user" ? "user" : "meta" });
   }
 
   if (loading && activityLines.length > 0) {
-    historyLines.push("Sys: agent activity");
+    historyLines.push({ text: "Sys: agent activity", role: "system" });
     for (const line of activityLines) {
-      historyLines.push(...wrapMessage("  · ", line));
+      historyLines.push(...wrapMessage(line, "activity", "  · "));
     }
-    historyLines.push("");
+    historyLines.push({ text: "", role: "meta" });
   }
 
   if (loading && liveDraft.trim()) {
-    historyLines.push(...wrapMessage("AI*: ", liveDraft));
-    historyLines.push("");
+    historyLines.push(...wrapMessage(liveDraft, "draft"));
+    historyLines.push({ text: "", role: "meta" });
   }
 
   const viewportH = rows - 10;
@@ -2018,15 +2027,20 @@ function SidebarChat({
           <Text dimColor> Type a message or / for commands</Text>
         ) : (
           visibleLines.map((line, i) => {
-            const isUser = line.startsWith("You: ");
-            const isSystem = line.startsWith("Sys: ");
+            const isUser = line.role === "user";
+            const isSystem = line.role === "system";
+            const isDraft = line.role === "draft";
+            const isActivity = line.role === "activity";
+            const padded = isUser
+              ? `${" ".repeat(Math.max(0, width - 2 - line.text.length))}${line.text}`
+              : line.text;
             return (
               <Text
                 key={i}
-                color={isUser ? "cyan" : isSystem ? "yellow" : undefined}
-                dimColor={!isUser && !isSystem}
+                color={isUser ? "cyan" : isSystem ? "yellow" : isDraft ? "green" : undefined}
+                dimColor={!isUser && !isSystem && !isDraft && !isActivity}
               >
-                {" " + line.slice(0, width - 2)}
+                {" " + padded.slice(0, width - 2)}
               </Text>
             );
           })

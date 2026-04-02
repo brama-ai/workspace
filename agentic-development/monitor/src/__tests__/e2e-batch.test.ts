@@ -41,6 +41,10 @@ describe("E2E: batch worker — promoteNextTodoToPending", () => {
     return mod.promoteNextTodoToPending;
   }
 
+  async function getBatchHelpers() {
+    return await import("../cli/batch.js");
+  }
+
   beforeEach(() => {
     testRoot = createTestRoot("e2e-batch-");
     process.env.PIPELINE_TASKS_ROOT = testRoot;
@@ -102,6 +106,22 @@ describe("E2E: batch worker — promoteNextTodoToPending", () => {
       expect(result).not.toBeNull();
       const state = readTaskState(taskDir);
       expect(state?.status).toBe("pending");
+    });
+
+    it("deletes pending task when task.md is missing or empty", async () => {
+      const taskDir = join(testRoot, "orphan-pending--foundry");
+      mkdirSync(taskDir, { recursive: true });
+      writeTaskState(taskDir, {
+        task_id: "orphan-pending",
+        workflow: "foundry",
+        status: "pending",
+      } as any);
+
+      const { deleteInvalidPendingTasks } = await getBatchHelpers();
+      const deleted = deleteInvalidPendingTasks(testRoot);
+
+      expect(deleted).toContain(taskDir);
+      expect(existsSync(taskDir)).toBe(false);
     });
   });
 

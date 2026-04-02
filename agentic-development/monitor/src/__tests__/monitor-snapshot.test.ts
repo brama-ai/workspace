@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-const getProcessStatusMock = vi.fn();
-const assembleMonitorContextMock = vi.fn();
+const { getProcessStatusMock, assembleMonitorContextMock } = vi.hoisted(() => ({
+  getProcessStatusMock: vi.fn(),
+  assembleMonitorContextMock: vi.fn(),
+}));
 
 vi.mock("../lib/actions.js", () => ({
   getProcessStatus: getProcessStatusMock,
