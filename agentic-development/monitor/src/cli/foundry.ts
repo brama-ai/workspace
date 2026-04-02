@@ -64,6 +64,7 @@ import { cmdBatch, cmdHeadless } from "./batch.js";
 import { cmdRetry } from "./retry.js";
 import { cmdCleanup } from "./cleanup.js";
 import { cmdInitEnv } from "./init-env.js";
+import { buildMonitorSnapshotPayload } from "../lib/monitor-snapshot.js";
 
 const SCRIPT_DIR = join(REPO_ROOT, "agentic-development");
 
@@ -92,6 +93,7 @@ Commands:
   retry [args]     Retry failed tasks
   stats [args]     Show pipeline statistics
   cleanup [args]   Clean old runtime artifacts
+  snapshot         Emit live monitor snapshot for agents/diagnostics
   render-summary   Render telemetry summary (foundry <slug> | ultraworks [id])
   setup            Initialize directories
   init-env         Auto-generate env-check.json from project structure
@@ -126,7 +128,23 @@ Examples:
   foundry supervisor "Add feature" --poll 120 --retries 5  # DEPRECATED: use monitor sidebar chat
   foundry monitor
   foundry headless
+  foundry snapshot --json --task my-task
 `);
+}
+
+export function cmdSnapshot(args: string[]): number {
+  const { values } = parseArgs({
+    args,
+    options: {
+      json: { type: "boolean" },
+      task: { type: "string" },
+    },
+    allowPositionals: true,
+  });
+
+  const payload = buildMonitorSnapshotPayload(REPO_ROOT, TASKS_ROOT, values.task as string | undefined);
+  console.log(JSON.stringify(payload, null, values.json ? 2 : 0));
+  return 0;
 }
 
 /**
@@ -559,6 +577,9 @@ async function main(): Promise<void> {
       break;
     case "cleanup":
       exitCode = cmdCleanup(args);
+      break;
+    case "snapshot":
+      exitCode = cmdSnapshot(args);
       break;
     case "init-env":
       exitCode = cmdInitEnv(args, REPO_ROOT);

@@ -57,6 +57,7 @@ import {
   getDueWatchJobs,
   processWatchJob,
   AUTO_COMPACT_THRESHOLD,
+  executeChatTurnStreaming,
 } from "../agents/chat-agent.js";
 
 const VERSION = "2.5.0";
@@ -66,8 +67,10 @@ const ENV_REFRESH_MS = 30000; // Environment status refresh — 30s (docker comp
 
 /** Minimum terminal width to show sidebar (below this, sidebar is hidden) */
 const SIDEBAR_MIN_COLS = 120;
-/** Sidebar width in columns */
-const SIDEBAR_WIDTH = 45;
+/** Sidebar width ratio of full terminal width */
+const SIDEBAR_WIDTH_RATIO = 0.5;
+/** Minimum sidebar width in columns */
+const SIDEBAR_MIN_WIDTH = 45;
 /** Watch job check interval in ms */
 const WATCH_JOB_CHECK_MS = 30_000;
 
@@ -191,6 +194,9 @@ export function App({ tasksRoot }: Props) {
   const [chatSession, setChatSession] = useState<ChatSession | null>(null);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const [chatLoadingLabel, setChatLoadingLabel] = useState("");
+  const [chatLiveDraft, setChatLiveDraft] = useState("");
+  const [chatActivity, setChatActivity] = useState<string[]>([]);
   const [slashSuggestions, setSlashSuggestions] = useState<SlashCommand[]>([]);
   const [slashSuggestionIdx, setSlashSuggestionIdx] = useState(0);
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
@@ -341,6 +347,10 @@ export function App({ tasksRoot }: Props) {
     if (idx >= data.tasks.length && data.tasks.length > 0) setIdx(data.tasks.length - 1);
   }, [data.tasks.length]);
 
+  useEffect(() => {
+    setChatScrollOffset(Number.MAX_SAFE_INTEGER);
+  }, [chatSession?.messages.length, chatLoading]);
+
   const selected: TaskInfo | undefined = data.tasks[idx];
   const allProcs: ProcessEntry[] = [...procStatus.workers, ...procStatus.zombies];
 
@@ -414,17 +424,30 @@ export function App({ tasksRoot }: Props) {
     }
 
     setChatLoading(true);
+    setChatLoadingLabel("launching foundry-monitor-chat; it may inspect state, handoff, summary, and runtime logs");
+    setChatLiveDraft("");
+    setChatActivity([]);
     setChatSession({ ...session });
 
     // Execute chat turn asynchronously
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
+        setChatLoadingLabel("assembling monitor context and checking task artifacts");
         const snapshot = assembleMonitorContext(repoRoot, root, procStatus, selected?.dir);
         const contextText = formatSnapshotForChat(snapshot);
-        const response = executeChatTurn(input, contextText, session, {
+        setChatLoadingLabel("running foundry-monitor-chat with live diagnostic activity");
+        const response = await executeChatTurnStreaming(input, contextText, session, {
           repoRoot,
           model: session.model ?? "anthropic/claude-sonnet-4-6",
           supervisorMdPath: join(repoRoot, "agentic-development", "supervisor.md"),
+        }, snapshot, {
+          onActivity: (line) => {
+            setChatActivity((current) => [...current.slice(-7), line]);
+            setChatLoadingLabel(line);
+          },
+          onText: (text) => {
+            setChatLiveDraft(text);
+          },
         });
 
         let updated = appendMessage(repoRoot, session, "assistant", response);
@@ -444,6 +467,9 @@ export function App({ tasksRoot }: Props) {
         setChatSession({ ...errSession });
       } finally {
         setChatLoading(false);
+        setChatLoadingLabel("");
+        setChatLiveDraft("");
+        setChatActivity([]);
       }
     }, 0);
   };
@@ -800,7 +826,8 @@ export function App({ tasksRoot }: Props) {
       : "";
 
   const showSidebar = sidebarOpen && cols >= SIDEBAR_MIN_COLS;
-  const mainCols = showSidebar ? cols - SIDEBAR_WIDTH - 1 : cols;
+  const sidebarWidth = showSidebar ? Math.max(SIDEBAR_MIN_WIDTH, Math.floor(cols * SIDEBAR_WIDTH_RATIO)) : 0;
+  const mainCols = showSidebar ? cols - sidebarWidth - 1 : cols;
 
   return (
     <Box flexDirection="column" width={cols}>
@@ -898,7 +925,10 @@ export function App({ tasksRoot }: Props) {
             modelPickerIdx={modelPickerIdx}
             healthyModels={modelInventory.filter((m) => !modelBlacklistEntries.some((b) => b.model === m.modelId))}
             scrollOffset={chatScrollOffset}
-            width={SIDEBAR_WIDTH}
+            loadingLabel={chatLoadingLabel}
+            liveDraft={chatLiveDraft}
+            activityLines={chatActivity}
+            width={sidebarWidth}
             rows={rows}
           />
         )}
@@ -1884,6 +1914,9 @@ function SidebarChat({
   modelPickerIdx,
   healthyModels,
   scrollOffset,
+  loadingLabel,
+  liveDraft,
+  activityLines,
   width,
   rows,
 }: {
@@ -1897,6 +1930,9 @@ function SidebarChat({
   modelPickerIdx: number;
   healthyModels: ModelInventoryEntry[];
   scrollOffset: number;
+  loadingLabel: string;
+  liveDraft: string;
+  activityLines: string[];
   width: number;
   rows: number;
 }) {
@@ -1911,6 +1947,29 @@ function SidebarChat({
   const allMessages = session.messages;
   const historyLines: string[] = [];
 
+  function wrapMessage(prefix: string, content: string): string[] {
+    const wrapped: string[] = [];
+    const continuation = " ".repeat(prefix.length);
+    const maxContentWidth = Math.max(12, width - prefix.length - 2);
+
+    for (const sourceLine of content.split("\n")) {
+      if (sourceLine.length === 0) {
+        wrapped.push(prefix);
+        continue;
+      }
+      let offset = 0;
+      let firstChunk = true;
+      while (offset < sourceLine.length) {
+        const chunk = sourceLine.slice(offset, offset + maxContentWidth);
+        wrapped.push(`${firstChunk ? prefix : continuation}${chunk}`);
+        firstChunk = false;
+        offset += maxContentWidth;
+      }
+    }
+
+    return wrapped;
+  }
+
   if (session.compactMemory) {
     historyLines.push("── [compacted memory] ──");
     historyLines.push("");
@@ -1918,12 +1977,20 @@ function SidebarChat({
 
   for (const msg of allMessages) {
     const prefix = msg.role === "user" ? "You: " : msg.role === "assistant" ? "AI:  " : "Sys: ";
-    const color = msg.role === "user" ? "" : "";
-    const lines = msg.content.split("\n");
-    historyLines.push(`${prefix}${lines[0].slice(0, width - 6)}`);
-    for (const line of lines.slice(1, 4)) {
-      if (line.trim()) historyLines.push(`     ${line.slice(0, width - 6)}`);
+    historyLines.push(...wrapMessage(prefix, msg.content));
+    historyLines.push("");
+  }
+
+  if (loading && activityLines.length > 0) {
+    historyLines.push("Sys: agent activity");
+    for (const line of activityLines) {
+      historyLines.push(...wrapMessage("  · ", line));
     }
+    historyLines.push("");
+  }
+
+  if (loading && liveDraft.trim()) {
+    historyLines.push(...wrapMessage("AI*: ", liveDraft));
     historyLines.push("");
   }
 
@@ -1964,7 +2031,7 @@ function SidebarChat({
             );
           })
         )}
-        {loading && <Text color="yellow"> ⟳ thinking…</Text>}
+        {loading && <Text color="yellow"> ⟳ {loadingLabel || "thinking…"}</Text>}
       </Box>
 
       {/* Slash suggestions */}

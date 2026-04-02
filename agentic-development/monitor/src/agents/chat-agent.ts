@@ -7,7 +7,7 @@
  * - Persists active watch jobs in sidebar session state
  * - Each scheduled check uses a freshly assembled context snapshot
  */
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { env } from "node:process";
 import { join } from "node:path";
@@ -55,6 +55,11 @@ export interface ChatTurn {
   contextTokensUsed: number;
   watchJobCreated: WatchJob | null;
   watchJobCancelled: string | null;
+}
+
+export interface ChatTurnStreamCallbacks {
+  onActivity?: (line: string) => void;
+  onText?: (text: string) => void;
 }
 
 export interface WatchRequest {
@@ -190,9 +195,9 @@ function readSupervisorContract(supervisorMdPath?: string): string | null {
 
 export function buildOperatorPrompt(
   userMessage: string,
-  contextText: string,
   session: ChatSession,
   config: ChatAgentConfig,
+  snapshot?: MonitorSnapshot,
 ): string {
   const compactMemorySection = session.compactMemory
     ? `## Previous Conversation Summary\n\n${session.compactMemory}\n`
@@ -204,21 +209,129 @@ export function buildOperatorPrompt(
 
   return [
     "Use your dedicated Foundry sidebar agent contract to answer as an operator-facing monitor assistant.",
-    "Prefer specific evidence from the monitor context over generic best-practice advice.",
+    "You are a real diagnostic agent, not a passive chat summarizer.",
+    "Prefer specific evidence from runtime artifacts over generic best-practice advice.",
+    "Before answering, gather fresh context yourself with the snapshot command and then inspect relevant files as needed.",
+    "Primary command:",
+    snapshot?.selectedTaskSlug
+      ? `./agentic-development/foundry snapshot --json --task ${snapshot.selectedTaskSlug}`
+      : "./agentic-development/foundry snapshot --json",
+    "Useful diagnostic targets after snapshot:",
+    "- tasks/<slug>--foundry/state.json",
+    "- tasks/<slug>--foundry/events.jsonl",
+    "- tasks/<slug>--foundry/handoff.md",
+    "- tasks/<slug>--foundry/summary.md",
+    "- tasks/<slug>--foundry/qa.json",
+    "- agentic-development/runtime/logs/foundry.log",
+    "- agentic-development/runtime/logs/foundry-headless.log",
+    "- .opencode/pipeline/logs/",
     "Respond concisely using this shape when applicable:",
     "State: ...",
     "Issues: ...",
     "Next: ...",
-    "",
-    "## Current Monitor Context",
-    "",
-    contextText,
+    "Always provide a concrete Next step. If nothing is needed, say 'nothing urgent right now'.",
+    "Do not use markdown headings in the final answer.",
+    snapshot?.selectedTaskSlug ? `Selected task hint: ${snapshot.selectedTaskSlug}` : "",
     "",
     compactMemorySection,
     supervisorSection,
     "## Operator Message",
     "",
     userMessage,
+  ].filter(Boolean).join("\n");
+}
+
+function deriveIssueSummary(snapshot: MonitorSnapshot): string {
+  const issues: string[] = [];
+  const waitingTasks = snapshot.tasks.filter((task) => task.status === "waiting_answer");
+  const failedTasks = snapshot.tasks.filter((task) => task.status === "failed");
+  const stalledTasks = snapshot.tasks.filter(
+    (task) => task.status === "in_progress" && (task.hasStaleLock || (task.lastEventAgeSeconds ?? 0) > 300),
+  );
+
+  if (waitingTasks.length > 0) {
+    issues.push(`waiting for operator input on ${waitingTasks.slice(0, 2).map((task) => task.slug).join(", ")}`);
+  }
+  if (snapshot.processes.workerCount === 0 && snapshot.counts.pending > 0) {
+    issues.push(`${snapshot.counts.pending} pending task(s) with no active worker`);
+  }
+  if (snapshot.processes.zombieCount > 0) {
+    issues.push(`${snapshot.processes.zombieCount} zombie worker(s)`);
+  }
+  if (snapshot.processes.hasStalelock) {
+    issues.push("stale batch lock detected");
+  }
+  if (stalledTasks.length > 0) {
+    issues.push(`stalled task(s): ${stalledTasks.slice(0, 2).map((task) => task.slug).join(", ")}`);
+  }
+  if (failedTasks.length > 0) {
+    issues.push(`failed task(s): ${failedTasks.slice(0, 2).map((task) => task.slug).join(", ")}`);
+  }
+  if (snapshot.models.blacklistedModels.length > 0) {
+    issues.push(`${snapshot.models.blacklistedModels.length} blacklisted model(s)`);
+  }
+
+  return issues.length > 0 ? issues.join("; ") : "none";
+}
+
+function deriveNextStep(snapshot: MonitorSnapshot): string {
+  const waitingTask = snapshot.tasks.find((task) => task.status === "waiting_answer");
+  if (waitingTask) {
+    return `open the waiting task and answer its QA in tasks/${waitingTask.slug}--foundry/qa.json or the TUI Q&A view`;
+  }
+  if (snapshot.processes.workerCount === 0 && snapshot.counts.pending > 0) {
+    return "start or recover the queue worker with ./agentic-development/foundry headless and then recheck the Processes tab";
+  }
+  if (snapshot.processes.zombieCount > 0 || snapshot.processes.hasStalelock) {
+    return "inspect the Processes tab and clean stale workers/locks before expecting pending tasks to move";
+  }
+  const failedTask = snapshot.tasks.find((task) => task.status === "failed");
+  if (failedTask) {
+    return `review tasks/${failedTask.slug}--foundry/handoff.md and tasks/${failedTask.slug}--foundry/summary.md for the failure cause`;
+  }
+  if (snapshot.models.blacklistedModels.length > 0) {
+    return "open the Models tab and recheck unhealthy models before retrying impacted tasks";
+  }
+  if (snapshot.counts.pending > 0) {
+    return "verify whether the pending queue is simply waiting for the single active worker slot or if a selected task is blocked upstream";
+  }
+  return "nothing urgent right now";
+}
+
+export function normalizeAssistantResponse(response: string, snapshot?: MonitorSnapshot): string {
+  const trimmed = response.trim();
+  if (!trimmed) {
+    const issues = snapshot ? deriveIssueSummary(snapshot) : "none";
+    const next = snapshot ? deriveNextStep(snapshot) : "nothing urgent right now";
+    return `State: no response content\nIssues: ${issues}\nNext: ${next}`;
+  }
+
+  const hasState = /^State:/mi.test(trimmed);
+  const hasIssues = /^Issues:/mi.test(trimmed);
+  const hasNext = /^Next:/mi.test(trimmed);
+  if (hasState && hasIssues && hasNext) return trimmed;
+
+  const hasRichFormatting = /^(##|[-*] |\d+\. )/m.test(trimmed) && trimmed.split("\n").length >= 4;
+  if (hasRichFormatting) {
+    if (hasNext) return trimmed;
+    const next = snapshot ? deriveNextStep(snapshot) : "nothing urgent right now";
+    return `${trimmed}\n\nNext: ${next}`;
+  }
+
+  const cleanedLines = trimmed
+    .split("\n")
+    .map((line) => line.replace(/^#+\s*/, "").trim())
+    .filter(Boolean);
+  const state = cleanedLines[0] ?? "response received";
+  const details = cleanedLines.slice(1).join(" ").trim();
+  const issues = snapshot ? deriveIssueSummary(snapshot) : (details || "none");
+  const next = snapshot ? deriveNextStep(snapshot) : "nothing urgent right now";
+
+  return [
+    `State: ${state}`,
+    `Issues: ${issues}`,
+    `Next: ${next}`,
+    details ? `Details: ${details}` : "",
   ].filter(Boolean).join("\n");
 }
 
@@ -233,6 +346,7 @@ export function executeChatTurn(
   contextText: string,
   session: ChatSession,
   config: ChatAgentConfig,
+  snapshot?: MonitorSnapshot,
 ): string {
   const model = session.model ?? config.model;
 
@@ -245,7 +359,7 @@ export function executeChatTurn(
 
   debug("executing chat turn", { model, sessionId: session.chatId });
 
-  const fullPrompt = buildOperatorPrompt(userMessage, contextText, session, config);
+  const fullPrompt = buildOperatorPrompt(userMessage, session, config, snapshot);
 
   try {
     if (!hasDedicatedChatAgent(config.repoRoot)) {
@@ -269,13 +383,84 @@ export function executeChatTurn(
       responseLength: result.length,
     });
 
-    return result.trim();
+    return normalizeAssistantResponse(result.trim(), snapshot);
   } catch (err: any) {
     const errorMsg = err?.message ?? String(err);
     debug("chat turn failed", errorMsg);
     rlog("chat_turn_error", { model, sessionId: session.chatId, error: errorMsg }, "ERROR");
     return `I encountered an error while processing your request: ${errorMsg.slice(0, 200)}`;
   }
+}
+
+export function executeChatTurnStreaming(
+  userMessage: string,
+  contextText: string,
+  session: ChatSession,
+  config: ChatAgentConfig,
+  snapshot?: MonitorSnapshot,
+  callbacks: ChatTurnStreamCallbacks = {},
+): Promise<string> {
+  const model = session.model ?? config.model;
+  const fullPrompt = buildOperatorPrompt(userMessage, session, config, snapshot);
+
+  return new Promise((resolve) => {
+    if (!hasDedicatedChatAgent(config.repoRoot)) {
+      resolve(`I cannot start the sidebar agent because ${getChatAgentDefinitionPath(config.repoRoot)} is missing.`);
+      return;
+    }
+
+    callbacks.onActivity?.(`launching ${SIDEBAR_CHAT_AGENT}`);
+    const child = spawn(
+      "opencode",
+      ["run", "--agent", SIDEBAR_CHAT_AGENT, "--model", model, "--no-session", fullPrompt],
+      {
+        cwd: config.repoRoot,
+        env: { ...env, OPENCODE_NO_INTERACTIVE: "1" },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const timeout = setTimeout(() => {
+      callbacks.onActivity?.("agent timeout after 120s");
+      try { child.kill("SIGTERM"); } catch {}
+    }, 120_000);
+
+    child.stdout.on("data", (chunk: Buffer | string) => {
+      stdout += chunk.toString();
+      callbacks.onText?.(stdout);
+    });
+
+    child.stderr.on("data", (chunk: Buffer | string) => {
+      stderr += chunk.toString();
+      const lines = stderr.split("\n");
+      stderr = lines.pop() ?? "";
+      for (const line of lines.map((value) => value.trim()).filter(Boolean)) {
+        callbacks.onActivity?.(line);
+      }
+    });
+
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(`I encountered an error while processing your request: ${String(err).slice(0, 200)}`);
+    });
+
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (stderr.trim()) callbacks.onActivity?.(stderr.trim());
+      if (code !== 0 && !stdout.trim()) {
+        resolve(`I encountered an error while processing your request: exit code ${code ?? "unknown"}`);
+        return;
+      }
+      resolve(normalizeAssistantResponse(stdout.trim(), snapshot));
+    });
+  });
 }
 
 // ── Watch job scheduler ───────────────────────────────────────────
@@ -315,5 +500,5 @@ export function processWatchJob(
   const contextText = formatSnapshotForChat(snapshot);
   const watchPrompt = `[Scheduled supervision check — ${job.description}]\n\nPlease review the current monitor state and report any issues, anomalies, or items requiring attention.`;
 
-  return executeChatTurn(watchPrompt, contextText, session, config);
+  return executeChatTurn(watchPrompt, contextText, session, config, snapshot);
 }
