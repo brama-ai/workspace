@@ -233,6 +233,10 @@ final class TelegramSender implements TelegramSenderInterface
             $params['reply_markup'] = $options['reply_markup'];
         }
 
+        if (!empty($options['disable_notification'])) {
+            $params['disable_notification'] = true;
+        }
+
         return $params;
     }
 }

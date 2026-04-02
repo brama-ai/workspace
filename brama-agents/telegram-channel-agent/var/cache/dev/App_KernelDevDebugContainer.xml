@@ -137,13 +137,28 @@
         <argument type="service" id=".service_locator.TJNRSaV.App\Controller\HealthController"/>
       </call>
     </service>
+    <service id="App\Controller\WebhookController" class="App\Controller\WebhookController" public="true" autowire="true" autoconfigure="true">
+      <tag name="controller.service_arguments"/>
+      <tag name="routing.controller"/>
+      <argument type="service" id="App\Telegram\TelegramSender"/>
+      <argument type="service" id="http_client.uri_template"/>
+      <argument type="service" id="monolog.logger"/>
+      <argument>%env(TELEGRAM_BOT_TOKEN)%</argument>
+      <argument>%env(TELEGRAM_WEBHOOK_SECRET)%</argument>
+    </service>
     <service id="App\Telegram\TelegramApiClient" class="App\Telegram\TelegramApiClient" autowire="true" autoconfigure="true">
       <argument type="service" id="monolog.logger"/>
+    </service>
+    <service id=".abstract.App\Telegram\TelegramApiClientInterface" class="App\Telegram\TelegramApiClientInterface" autowire="true" autoconfigure="true" abstract="true">
+      <tag name="container.excluded" source="because the class is abstract"/>
     </service>
     <service id="App\Telegram\TelegramNormalizer" class="App\Telegram\TelegramNormalizer" autowire="true" autoconfigure="true"/>
     <service id="App\Telegram\TelegramSender" class="App\Telegram\TelegramSender" autowire="true" autoconfigure="true">
       <argument type="service" id="App\Telegram\TelegramApiClient"/>
       <argument type="service" id="monolog.logger"/>
+    </service>
+    <service id=".abstract.App\Telegram\TelegramSenderInterface" class="App\Telegram\TelegramSenderInterface" autowire="true" autoconfigure="true" abstract="true">
+      <tag name="container.excluded" source="because the class is abstract"/>
     </service>
     <service id="argument_metadata_factory" class="Symfony\Component\HttpKernel\ControllerMetadata\ArgumentMetadataFactory"/>
     <service id="argument_resolver.backed_enum_resolver" class="Symfony\Component\HttpKernel\Controller\ArgumentResolver\BackedEnumValueResolver">
@@ -307,6 +322,9 @@
         <argument key="cache.validator" type="service" id="cache.validator" on-invalid="ignore_uninitialized"/>
         <argument key="cache.serializer" type="service" id="cache.serializer" on-invalid="ignore_uninitialized"/>
         <argument key="cache.property_info" type="service" id="cache.property_info" on-invalid="ignore_uninitialized"/>
+        <argument key="cache.http_client.pool" type="service" id="cache.http_client.pool" on-invalid="ignore_uninitialized"/>
+        <argument key="http_client.transport" type="service" id="http_client.transport" on-invalid="ignore_uninitialized"/>
+        <argument key="http_client" type="service" id="http_client.uri_template" on-invalid="ignore_uninitialized"/>
         <argument key="debug.stopwatch" type="service" id="debug.stopwatch" on-invalid="ignore_uninitialized"/>
         <argument key="debug.event_dispatcher" type="service" id="debug.event_dispatcher" on-invalid="ignore_uninitialized"/>
         <argument key="debug.log_processor" type="service" id="debug.log_processor" on-invalid="ignore_uninitialized"/>
@@ -337,6 +355,15 @@
         </argument>
         <argument key="cache.property_info" type="collection">
           <argument>reset</argument>
+        </argument>
+        <argument key="cache.http_client.pool" type="collection">
+          <argument>reset</argument>
+        </argument>
+        <argument key="http_client.transport" type="collection">
+          <argument>?reset</argument>
+        </argument>
+        <argument key="http_client" type="collection">
+          <argument>?reset</argument>
         </argument>
         <argument key="debug.stopwatch" type="collection">
           <argument>reset</argument>
@@ -505,6 +532,7 @@
         <argument>cache.validator</argument>
         <argument>cache.serializer</argument>
         <argument>cache.property_info</argument>
+        <argument>cache.http_client.pool</argument>
       </argument>
       <call method="setName">
         <argument>cache:pool:clear</argument>
@@ -527,7 +555,7 @@
     <service id="console.command.cache_pool_invalidate_tags" class="Symfony\Bundle\FrameworkBundle\Command\CachePoolInvalidateTagsCommand">
       <tag name="console.command"/>
       <tag name="container.no_preload"/>
-      <argument type="service" id=".service_locator.YDYHnos"/>
+      <argument type="service" id=".service_locator.6eloqTE"/>
       <call method="setName">
         <argument>cache:pool:invalidate-tags</argument>
       </call>
@@ -545,6 +573,7 @@
         <argument>cache.validator</argument>
         <argument>cache.serializer</argument>
         <argument>cache.property_info</argument>
+        <argument>cache.http_client.pool</argument>
       </argument>
       <call method="setName">
         <argument>cache:pool:delete</argument>
@@ -562,6 +591,7 @@
         <argument>cache.validator</argument>
         <argument>cache.serializer</argument>
         <argument>cache.property_info</argument>
+        <argument>cache.http_client.pool</argument>
       </argument>
       <call method="setName">
         <argument>cache:pool:list</argument>
@@ -963,6 +993,7 @@
       <tag name="cache.pool.clearer"/>
       <argument type="collection">
         <argument key="cache.app" type="service" id="cache.app" on-invalid="ignore_uninitialized"/>
+        <argument key="cache.http_client.pool" type="service" id="cache.http_client.pool" on-invalid="ignore_uninitialized"/>
       </argument>
     </service>
     <service id="cache.system_clearer" class="Symfony\Component\HttpKernel\CacheClearer\Psr6CacheClearer" public="true">
@@ -982,7 +1013,68 @@
         <argument key="cache.validator" type="service" id="cache.validator" on-invalid="ignore_uninitialized"/>
         <argument key="cache.serializer" type="service" id="cache.serializer" on-invalid="ignore_uninitialized"/>
         <argument key="cache.property_info" type="service" id="cache.property_info" on-invalid="ignore_uninitialized"/>
+        <argument key="cache.http_client.pool" type="service" id="cache.http_client.pool" on-invalid="ignore_uninitialized"/>
       </argument>
+    </service>
+    <service id="cache.http_client.pool" class="Symfony\Component\Cache\Adapter\FilesystemAdapter" public="true">
+      <tag name="cache.pool" pruneable="true"/>
+      <tag name="kernel.reset" method="reset"/>
+      <argument>jPtQ5ojLo9</argument>
+      <argument>0</argument>
+      <argument>/workspaces/brama/brama-agents/telegram-channel-agent/var/cache/dev/pools/app</argument>
+      <argument type="service" id="cache.default_marshaller" on-invalid="ignore"/>
+      <call method="setLogger">
+        <argument type="service" id="monolog.logger.cache" on-invalid="ignore"/>
+      </call>
+    </service>
+    <service id="cache.http_client" class="Symfony\Component\Cache\Adapter\TagAwareAdapter">
+      <tag name="cache.taggable" pool="cache.http_client.pool"/>
+      <argument type="service" id="cache.http_client.pool"/>
+    </service>
+    <service id="http_client.transport" class="Symfony\Contracts\HttpClient\HttpClientInterface">
+      <tag name="monolog.logger" channel="http_client"/>
+      <tag name="kernel.reset" method="reset" on_invalid="ignore"/>
+      <argument type="collection"/>
+      <argument>6</argument>
+      <call method="setLogger">
+        <argument type="service" id="monolog.logger.http_client" on-invalid="ignore"/>
+      </call>
+      <factory class="Symfony\Component\HttpClient\HttpClient" method="create"/>
+    </service>
+    <service id="http_client.abstract_retry_strategy" class="Symfony\Component\HttpClient\Retry\GenericRetryStrategy" abstract="true">
+      <argument type="abstract">http codes</argument>
+      <argument type="abstract">delay ms</argument>
+      <argument type="abstract">multiplier</argument>
+      <argument type="abstract">max delay ms</argument>
+      <argument type="abstract">jitter</argument>
+    </service>
+    <service id="http_client.uri_template" class="Symfony\Component\HttpClient\UriTemplateHttpClient">
+      <tag name="http_client.client"/>
+      <tag name="kernel.reset" method="reset" on_invalid="ignore"/>
+      <tag name="container.decorator" id="http_client" inner="http_client.uri_template.inner"/>
+      <argument type="service" id="http_client.uri_template.inner"/>
+      <argument>null</argument>
+      <argument type="collection"/>
+    </service>
+    <service id="http_client.uri_template_expander.guzzle" class="Closure">
+      <argument type="collection">
+        <argument>GuzzleHttp\UriTemplate\UriTemplate</argument>
+        <argument>expand</argument>
+      </argument>
+      <factory class="Closure" method="fromCallable"/>
+    </service>
+    <service id="http_client.uri_template_expander.rize" class="Closure">
+      <argument type="collection">
+        <argument type="service">
+          <service class="Rize\UriTemplate"/>
+        </argument>
+        <argument>expand</argument>
+      </argument>
+      <factory class="Closure" method="fromCallable"/>
+    </service>
+    <service id="http_client.messenger.ping_webhook_handler" class="Symfony\Component\HttpClient\Messenger\PingWebhookMessageHandler">
+      <tag name="messenger.message_handler"/>
+      <argument type="service" id="http_client.uri_template"/>
     </service>
     <service id="debug.error_handler_configurator" class="Symfony\Component\HttpKernel\Debug\ErrorHandlerConfigurator" public="true">
       <tag name="monolog.logger" channel="php"/>
@@ -1284,6 +1376,7 @@
         <argument>App\Controller\Api\A2AController</argument>
         <argument>App\Controller\Api\ManifestController</argument>
         <argument>App\Controller\HealthController</argument>
+        <argument>App\Controller\WebhookController</argument>
       </argument>
     </service>
     <service id="routing.loader.attribute.directory" class="Symfony\Component\Routing\Loader\AttributeDirectoryLoader">
@@ -1310,7 +1403,7 @@
     <service id="router.default" class="Symfony\Bundle\FrameworkBundle\Routing\Router">
       <tag name="monolog.logger" channel="router"/>
       <tag name="container.service_subscriber" id="routing.loader"/>
-      <argument type="service" id=".service_locator.vz2yaMk.router.default"/>
+      <argument type="service" id=".service_locator.Qpt_AX6.router.default"/>
       <argument>kernel::loadRoutes</argument>
       <argument type="collection">
         <argument key="cache_dir">/workspaces/brama/brama-agents/telegram-channel-agent/var/cache/dev</argument>
@@ -1482,6 +1575,8 @@
     <service id=".instanceof.Symfony\Bundle\FrameworkBundle\Controller\AbstractController.0.App\Controller\HealthController" class="App\Controller\HealthController" autowire="true" abstract="true"/>
     <service id=".instanceof.App\Controller\HealthController.0.App\Controller\HealthController" class="App\Controller\HealthController" autowire="true" abstract="true"/>
     <service id=".abstract.instanceof.App\Controller\HealthController" class="App\Controller\HealthController" autowire="true" autoconfigure="true" abstract="true"/>
+    <service id=".instanceof.App\Controller\WebhookController.0.App\Controller\WebhookController" class="App\Controller\WebhookController" autowire="true" abstract="true"/>
+    <service id=".abstract.instanceof.App\Controller\WebhookController" class="App\Controller\WebhookController" autowire="true" autoconfigure="true" abstract="true"/>
     <service id=".service_locator.ryAvHi4" class="Symfony\Component\DependencyInjection\ServiceLocator">
       <tag name="container.service_locator"/>
       <argument type="collection">
@@ -1617,6 +1712,16 @@
         <argument type="service" id="monolog.handler.stderr"/>
       </call>
     </service>
+    <service id="monolog.logger.http_client" class="Monolog\Logger">
+      <tag name="monolog.channel_logger"/>
+      <argument>http_client</argument>
+      <call method="pushHandler">
+        <argument type="service" id="monolog.handler.stdout"/>
+      </call>
+      <call method="pushHandler">
+        <argument type="service" id="monolog.handler.stderr"/>
+      </call>
+    </service>
     <service id="monolog.logger.php" class="Monolog\Logger">
       <tag name="monolog.channel_logger"/>
       <argument>php</argument>
@@ -1681,17 +1786,17 @@
       <argument type="service" id="service_container"/>
       <factory service=".service_locator.TJNRSaV" method="withContext"/>
     </service>
-    <service id=".service_locator.vz2yaMk" class="Symfony\Component\DependencyInjection\ServiceLocator">
+    <service id=".service_locator.Qpt_AX6" class="Symfony\Component\DependencyInjection\ServiceLocator">
       <tag name="container.service_locator"/>
       <argument type="collection">
         <argument key="routing.loader" type="service_closure" id="routing.loader"/>
       </argument>
     </service>
-    <service id=".service_locator.vz2yaMk.router.default" class="Symfony\Component\DependencyInjection\ServiceLocator">
+    <service id=".service_locator.Qpt_AX6.router.default" class="Symfony\Component\DependencyInjection\ServiceLocator">
       <tag name="container.service_locator_context" id="router.default"/>
       <argument>router.default</argument>
       <argument type="service" id="service_container"/>
-      <factory service=".service_locator.vz2yaMk" method="withContext"/>
+      <factory service=".service_locator.Qpt_AX6" method="withContext"/>
     </service>
     <service id=".service_locator.mFBT25N" class="Symfony\Component\DependencyInjection\ServiceLocator">
       <tag name="container.service_locator"/>
@@ -1731,10 +1836,11 @@
       <tag name="container.service_locator"/>
       <argument type="collection"/>
     </service>
-    <service id=".service_locator.YDYHnos" class="Symfony\Component\DependencyInjection\ServiceLocator">
+    <service id=".service_locator.6eloqTE" class="Symfony\Component\DependencyInjection\ServiceLocator">
       <tag name="container.service_locator"/>
       <argument type="collection">
         <argument key="cache.app" type="service_closure" id="cache.app.taggable"/>
+        <argument key="cache.http_client.pool" type="service_closure" id="cache.http_client"/>
       </argument>
     </service>
     <service id=".service_locator.pKmY5Nr" class="Symfony\Component\DependencyInjection\ServiceLocator">
@@ -1748,6 +1854,12 @@
       <argument type="collection">
         <argument key="kernel" type="service_closure" id="kernel"/>
       </argument>
+    </service>
+    <service id="http_client.uri_template.inner" class="Symfony\Contracts\HttpClient\HttpClientInterface">
+      <argument type="collection">
+        <argument type="service" id="http_client.transport"/>
+      </argument>
+      <factory function="current"/>
     </service>
     <service id="debug.event_dispatcher.inner" class="Symfony\Component\EventDispatcher\EventDispatcher"/>
     <service id="debug.controller_resolver.inner" class="Symfony\Bundle\FrameworkBundle\Controller\ControllerResolver">
@@ -1765,6 +1877,7 @@
           <argument>App\Controller\Api\A2AController</argument>
           <argument>App\Controller\Api\ManifestController</argument>
           <argument>App\Controller\HealthController</argument>
+          <argument>App\Controller\WebhookController</argument>
         </argument>
       </call>
     </service>
@@ -2040,6 +2153,8 @@
         <argument key="console.command.error_dumper" type="service_closure" id=".console.command.error_dumper.lazy"/>
       </argument>
     </service>
+    <service id="App\Telegram\TelegramApiClientInterface" alias="App\Telegram\TelegramApiClient"/>
+    <service id="App\Telegram\TelegramSenderInterface" alias="App\Telegram\TelegramSender"/>
     <service id="App\Kernel" alias="kernel" public="true"/>
     <service id="Symfony\Bundle\FrameworkBundle\Controller\ControllerHelper" alias="controller.helper"/>
     <service id="Symfony\Component\DependencyInjection\ParameterBag\ContainerBagInterface" alias="parameter_bag"/>
@@ -2072,6 +2187,7 @@
     <service id="Symfony\Contracts\Cache\CacheInterface" alias="cache.app"/>
     <service id="Symfony\Contracts\Cache\NamespacedPoolInterface" alias="cache.app"/>
     <service id="Symfony\Contracts\Cache\TagAwareCacheInterface" alias="cache.app.taggable"/>
+    <service id="Symfony\Contracts\HttpClient\HttpClientInterface" alias="http_client.uri_template"/>
     <service id="Symfony\Component\ErrorHandler\ErrorRenderer\FileLinkFormatter" alias="debug.file_link_formatter"/>
     <service id="Symfony\Component\Stopwatch\Stopwatch" alias="debug.stopwatch"/>
     <service id="router" alias="router.default" public="true"/>
@@ -2094,12 +2210,15 @@
     <service id="Psr\Log\LoggerInterface $consoleLogger" alias="monolog.logger.console"/>
     <service id=".Psr\Log\LoggerInterface $cache.logger" alias="monolog.logger.cache"/>
     <service id="Psr\Log\LoggerInterface $cacheLogger" alias="monolog.logger.cache"/>
+    <service id=".Psr\Log\LoggerInterface $http_client.logger" alias="monolog.logger.http_client"/>
+    <service id="Psr\Log\LoggerInterface $httpClientLogger" alias="monolog.logger.http_client"/>
     <service id=".Psr\Log\LoggerInterface $php.logger" alias="monolog.logger.php"/>
     <service id="Psr\Log\LoggerInterface $phpLogger" alias="monolog.logger.php"/>
     <service id=".Psr\Log\LoggerInterface $event.logger" alias="monolog.logger.event"/>
     <service id="Psr\Log\LoggerInterface $eventLogger" alias="monolog.logger.event"/>
     <service id=".Psr\Log\LoggerInterface $router.logger" alias="monolog.logger.router"/>
     <service id="Psr\Log\LoggerInterface $routerLogger" alias="monolog.logger.router"/>
+    <service id="http_client" alias="http_client.uri_template"/>
     <service id="event_dispatcher" alias="debug.event_dispatcher" public="true"/>
     <service id="controller_resolver" alias="debug.controller_resolver"/>
     <service id="argument_resolver" alias="debug.argument_resolver"/>

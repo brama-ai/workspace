@@ -20,6 +20,11 @@ services:
     App\Telegram\TelegramApiClient:
         arguments: []
 
+    App\Controller\WebhookController:
+        arguments:
+            $botToken: '%app.telegram_bot_token%'
+            $webhookSecret: '%app.telegram_webhook_secret%'
+
     App\A2A\TelegramChannelA2AHandler:
         arguments:
             $tasksRoot: '%app.tasks_root%'

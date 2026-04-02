@@ -77,6 +77,13 @@ final class ManifestController extends AbstractController
             'commands' => [],
             'events' => [],
             'health_url' => 'http://telegram-channel-agent/health',
+            'public_endpoints' => [
+                [
+                    'path' => '/webhook/telegram',
+                    'methods' => ['POST'],
+                    'description' => 'Telegram Bot API webhook receiver',
+                ],
+            ],
         ]);
     }
 }
