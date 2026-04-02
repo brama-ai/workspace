@@ -974,7 +974,7 @@ function TasksTab({
         {counts.todo > 0 && <Text color="gray" bold>Todo: {counts.todo}</Text>}
       </Box>
       <Text> </Text>
-      <TaskList tasks={tasks} selectedIdx={idx} maxLines={rows - 12} />
+      <TaskList tasks={tasks} selectedIdx={idx} maxLines={rows - 12} cols={cols} />
     </Box>
   );
 }
@@ -1244,8 +1244,14 @@ function ProgressBar({ done, total, width }: { done: number; total: number; widt
   );
 }
 
+function truncateText(value: string, maxWidth: number): string {
+  if (maxWidth <= 1) return "…";
+  if (value.length <= maxWidth) return value;
+  return value.slice(0, Math.max(0, maxWidth - 1)) + "…";
+}
+
 // ── Task list ─────────────────────────────────────────────────────
-function TaskList({ tasks, selectedIdx, maxLines }: { tasks: TaskInfo[]; selectedIdx: number; maxLines: number }) {
+function TaskList({ tasks, selectedIdx, maxLines, cols }: { tasks: TaskInfo[]; selectedIdx: number; maxLines: number; cols: number }) {
   const lines = Math.max(5, maxLines);
   let scrollStart = 0;
   if (selectedIdx >= lines) scrollStart = selectedIdx - lines + 1;
@@ -1262,7 +1268,7 @@ function TaskList({ tasks, selectedIdx, maxLines }: { tasks: TaskInfo[]; selecte
         return (
           <React.Fragment key={task.dir}>
             {header && <StatusHeader status={task.status} />}
-            <TaskLine task={task} cursor={cursor} />
+            <TaskLine task={task} cursor={cursor} cols={cols} />
           </React.Fragment>
         );
       })}
@@ -1286,7 +1292,7 @@ function StatusHeader({ status }: { status: string }) {
   return <Text bold color={color as any}>  {label}</Text>;
 }
 
-function TaskLine({ task, cursor }: { task: TaskInfo; cursor: boolean }) {
+function TaskLine({ task, cursor, cols }: { task: TaskInfo; cursor: boolean; cols: number }) {
   const icon    = { in_progress: "▸", waiting_answer: "?", completed: "✓", failed: "✗", suspended: "⏸", pending: "○", todo: "·" }[task.status] ?? "·";
   const color   = { in_progress: "yellow", waiting_answer: "cyan", completed: "green", failed: "red", suspended: "magenta", pending: undefined, todo: "gray" }[task.status];
   const wfBadge = task.workflow === "ultraworks" ? "U" : "F";
@@ -1324,14 +1330,19 @@ function TaskLine({ task, cursor }: { task: TaskInfo; cursor: boolean }) {
   if (task.status === "pending" && task.priority > 1) suffix = ` #${task.priority}`;
   if (task.attempt && task.attempt > 1) suffix += ` attempt#${task.attempt}`;
 
+  const warningText = warnings.length > 0 ? ` ${warnings.join(" ")}` : "";
+  const linePrefixWidth = 9;
+  const availableTitleWidth = Math.max(12, cols - linePrefixWidth - suffix.length - warningText.length);
+  const title = truncateText(task.title, availableTitleWidth);
+
   return (
     <Box>
       <Text color="cyan">{cursor ? "  ▶ " : "    "}</Text>
       <Text color={wfColor as any}>{wfBadge}</Text>
       <Text color={color as any}> {icon}</Text>
-      <Text> {task.title}</Text>
+      <Text> {title}</Text>
       <Text dimColor>{suffix}</Text>
-      {warnings.length > 0 && <Text color="red"> {warnings.join(" ")}</Text>}
+      {warnings.length > 0 && <Text color="red">{warningText}</Text>}
     </Box>
   );
 }
