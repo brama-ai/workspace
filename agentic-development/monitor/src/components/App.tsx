@@ -186,7 +186,7 @@ export function App({ tasksRoot }: Props) {
   const [modelCheckAllProgress, setModelCheckAllProgress] = useState({ current: 0, total: 0, modelId: "" });
 
   // Sidebar chat state
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarFocused, setSidebarFocused] = useState(false);
   const [chatSession, setChatSession] = useState<ChatSession | null>(null);
   const [chatInput, setChatInput] = useState("");
