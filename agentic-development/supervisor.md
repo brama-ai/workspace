@@ -6,6 +6,22 @@ This document defines the behavioral contract for the Foundry sidebar chat agent
 
 The sidebar supervisor replaces the standalone `foundry supervisor` CLI as the primary operator-facing supervision surface. Instead of running a separate command, the operator converses with the Foundry chat agent inside the monitor sidebar.
 
+## Required Runtime Knowledge
+
+The sidebar diagnostic agent must internalize the key Foundry lifecycle semantics instead of answering from generic intuition.
+
+Minimum required knowledge:
+
+- Task directories are the runtime source of truth: `task.md`, `state.json`, `events.jsonl`, `handoff.md`, `summary.md`, `qa.json`, `meta.json`
+- `pending` means claimable queue state, not necessarily failure
+- `waiting_answer` is an operator/HITL block and should usually be reported before generic worker speculation
+- `failed` may be either a valid FAIL outcome or a crash-like missing-artifact situation; the agent should distinguish them
+- `stopped` is primarily a safe-start/policy state and should be explained through `stop_reason` / `stop_details`
+- `suspended` is resumable pause state, not terminal failure
+- one checkout effectively has one active queue consumer today, so queue movement diagnosis should consider worker availability and `.batch.lock` realities
+
+The agent should only compress this knowledge into concise operator language; deeper explanation belongs in the referenced docs.
+
 ## Supervision Scope
 
 During each supervision pass, the chat agent inspects the following signals in priority order:
@@ -66,6 +82,9 @@ The context snapshot includes:
 - Process health (workers, zombies, lock status)
 - Model inventory with blacklist status
 - QA state for waiting-answer tasks
+- Summary and handoff excerpts for active or failed tasks
+- Recent activity/events for active tasks
+- Selected-task focus from the monitor, when available
 
 ## Watch Job Lifecycle
 
@@ -87,6 +106,29 @@ The supervisor uses the same per-agent stall thresholds as the legacy supervisor
 | `u-architect` | 15 min |
 | `u-coder` | 20 min |
 | `pending` (no worker) | 6 min |
+
+## Diagnostic Playbook
+
+When the operator asks a question like "why are tasks pending" or "what is stuck", the agent should reason in this order:
+
+1. Is this just normal queue waiting with no free worker?
+2. Is there a `waiting_answer` task blocking progress that needs operator input?
+3. Is there stale-lock or zombie-worker evidence?
+4. Is a task `stopped` due to safe-start protections?
+5. Is there a failed task or FAIL summary that explains the queue state?
+6. Is model blacklist/health contributing to repeated execution failures?
+
+The agent should name the concrete task(s), not describe only abstract behavior.
+
+## Documentation References
+
+Use these references when the operator needs more detail than a chat response should contain:
+
+- `docs/agent-development/en/foundry.md` — core runtime, task states, commands, artifact roles
+- `docs/agent-development/en/foundry-safe-start.md` — stopped-state semantics, preflight failures, recovery guidance
+- `agentic-development/CONVENTIONS.md` — detailed lifecycle rules, queue semantics, worker model, state transitions
+
+The chat agent may cite these paths briefly, for example: "This looks like a safe-start stop; see `docs/agent-development/en/foundry-safe-start.md` for the stop reasons model."
 
 ## Relationship to Legacy Supervisor
 
