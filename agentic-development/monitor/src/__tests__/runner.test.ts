@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { runPipeline, PipelineConfig, getTimeout } from "../pipeline/runner.js";
 
 vi.mock("../agents/executor.js", () => ({
@@ -113,7 +114,7 @@ describe("runner", () => {
     branch: "test-branch",
     profile: "quick-fix",
     agents: ["u-coder", "u-validator", "u-summarizer"],
-    skipPlanner: false,
+    skipPlanner: true,
     skipEnvCheck: true,
     audit: false,
     noCommit: false,
@@ -192,6 +193,253 @@ describe("runner", () => {
     it("should return timeout from executor", () => {
       const timeout = getTimeout("u-coder");
       expect(timeout).toBe(1800);
+    });
+  });
+
+  describe("u-planner integration", () => {
+    let plannerTaskDir: string;
+
+    beforeEach(() => {
+      // Create a real temp dir for planner tests (need real filesystem for pipeline-plan.json)
+      plannerTaskDir = join(tmpdir(), `runner-planner-test-${Date.now()}`);
+      mkdirSync(plannerTaskDir, { recursive: true });
+    });
+
+    afterEach(() => {
+      rmSync(plannerTaskDir, { recursive: true, force: true });
+    });
+
+    it("should skip planner when skipPlanner=true and use config agents directly", async () => {
+      const config: PipelineConfig = {
+        repoRoot: "/tmp/repo",
+        taskDir: plannerTaskDir,
+        taskMessage: "Test task",
+        branch: "test-branch",
+        profile: "standard",
+        agents: ["u-coder", "u-summarizer"],
+        skipPlanner: true,
+        skipEnvCheck: true,
+        audit: false,
+        noCommit: false,
+        telegram: false,
+      };
+
+      const result = await runPipeline(config);
+
+      expect(result.success).toBe(true);
+      expect(result.completedAgents).toEqual(["u-coder", "u-summarizer"]);
+    });
+
+    it("should run planner when skipPlanner=false and fall back to standard on missing pipeline-plan.json", async () => {
+      const config: PipelineConfig = {
+        repoRoot: "/tmp/repo",
+        taskDir: plannerTaskDir,
+        taskMessage: "Test task",
+        branch: "test-branch",
+        profile: "standard",
+        agents: ["u-coder", "u-summarizer"],
+        skipPlanner: false,
+        skipEnvCheck: true,
+        audit: false,
+        noCommit: false,
+        telegram: false,
+      };
+
+      const result = await runPipeline(config);
+
+      // Planner runs (mocked as success) but no pipeline-plan.json written
+      // → falls back to standard profile: u-coder, u-validator, u-tester, u-summarizer
+      expect(result.success).toBe(true);
+      expect(result.completedAgents).toEqual(["u-coder", "u-validator", "u-tester", "u-summarizer"]);
+    });
+
+    it("should use planner-selected agents from pipeline-plan.json", async () => {
+      // Pre-write pipeline-plan.json as if planner wrote it
+      // (In real flow, planner writes it; here we simulate by writing before planner mock runs)
+      // We need to write it AFTER planner runs — use a custom executeAgent mock for this test
+      const { executeAgent } = await import("../agents/executor.js");
+      vi.mocked(executeAgent).mockImplementation(async (config, prompt, options) => {
+        if (config.name === "u-planner" && options.taskDir) {
+          // Simulate planner writing pipeline-plan.json
+          writeFileSync(
+            join(options.taskDir, "pipeline-plan.json"),
+            JSON.stringify({
+              profile: "quick-fix",
+              agents: ["u-coder", "u-validator", "u-summarizer"],
+              reasoning: "Simple task, quick-fix profile",
+            }),
+            "utf8"
+          );
+        }
+        if (config.name === "u-summarizer" && options.taskDir) {
+          writeFileSync(join(options.taskDir, "summary.md"), "## Що зроблено\n\n- Тестовий summary\n", "utf8");
+        }
+        return {
+          success: true,
+          exitCode: 0,
+          duration: 30,
+          modelUsed: "test-model",
+          pid: 12345,
+          tokensUsed: { input: 1000, output: 500, cacheRead: 100, cacheWrite: 50, cost: 0.05 },
+          messageCount: 10,
+          toolCalls: [],
+          toolStats: [],
+          filesRead: [],
+          filesChanged: [],
+          fileStats: [],
+          burnSnapshots: [],
+          logFile: "/tmp/test.log",
+          loopDetected: false,
+          stallDetected: false,
+          hitlWaiting: false,
+        };
+      });
+
+      const config: PipelineConfig = {
+        repoRoot: "/tmp/repo",
+        taskDir: plannerTaskDir,
+        taskMessage: "Fix typo in login",
+        branch: "test-branch",
+        profile: "standard",
+        agents: ["u-coder", "u-validator", "u-tester", "u-summarizer"],
+        skipPlanner: false,
+        skipEnvCheck: true,
+        audit: false,
+        noCommit: false,
+        telegram: false,
+      };
+
+      const result = await runPipeline(config);
+
+      // Planner selected quick-fix: u-coder, u-validator, u-summarizer (no u-tester)
+      expect(result.success).toBe(true);
+      expect(result.completedAgents).toEqual(["u-coder", "u-validator", "u-summarizer"]);
+    });
+
+    it("should normalize agent names from pipeline-plan.json (add u- prefix if missing)", async () => {
+      const { executeAgent } = await import("../agents/executor.js");
+      vi.mocked(executeAgent).mockImplementation(async (config, prompt, options) => {
+        if (config.name === "u-planner" && options.taskDir) {
+          writeFileSync(
+            join(options.taskDir, "pipeline-plan.json"),
+            JSON.stringify({
+              profile: "standard",
+              agents: ["coder", "validator", "summarizer"], // no u- prefix
+            }),
+            "utf8"
+          );
+        }
+        if (config.name === "u-summarizer" && options.taskDir) {
+          writeFileSync(join(options.taskDir, "summary.md"), "## Що зроблено\n\n- Тестовий summary\n", "utf8");
+        }
+        return {
+          success: true,
+          exitCode: 0,
+          duration: 30,
+          modelUsed: "test-model",
+          pid: 12345,
+          tokensUsed: { input: 1000, output: 500, cacheRead: 100, cacheWrite: 50, cost: 0.05 },
+          messageCount: 10,
+          toolCalls: [],
+          toolStats: [],
+          filesRead: [],
+          filesChanged: [],
+          fileStats: [],
+          burnSnapshots: [],
+          logFile: "/tmp/test.log",
+          loopDetected: false,
+          stallDetected: false,
+          hitlWaiting: false,
+        };
+      });
+
+      const config: PipelineConfig = {
+        repoRoot: "/tmp/repo",
+        taskDir: plannerTaskDir,
+        taskMessage: "Test task",
+        branch: "test-branch",
+        profile: "standard",
+        agents: ["u-coder", "u-summarizer"],
+        skipPlanner: false,
+        skipEnvCheck: true,
+        audit: false,
+        noCommit: false,
+        telegram: false,
+      };
+
+      const result = await runPipeline(config);
+
+      // Agents should have u- prefix added
+      expect(result.completedAgents).toEqual(["u-coder", "u-validator", "u-summarizer"]);
+    });
+
+    it("should fall back to standard profile when planner fails", async () => {
+      const { executeAgent } = await import("../agents/executor.js");
+      vi.mocked(executeAgent).mockImplementation(async (config, prompt, options) => {
+        if (config.name === "u-planner") {
+          return {
+            success: false,
+            exitCode: 1,
+            duration: 5,
+            modelUsed: "test-model",
+            pid: 0,
+            tokensUsed: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
+            messageCount: 0,
+            toolCalls: [],
+            toolStats: [],
+            filesRead: [],
+            filesChanged: [],
+            fileStats: [],
+            burnSnapshots: [],
+            logFile: "/tmp/test.log",
+            loopDetected: false,
+            stallDetected: false,
+            hitlWaiting: false,
+          };
+        }
+        if (config.name === "u-summarizer" && options.taskDir) {
+          writeFileSync(join(options.taskDir, "summary.md"), "## Що зроблено\n\n- Тестовий summary\n", "utf8");
+        }
+        return {
+          success: true,
+          exitCode: 0,
+          duration: 30,
+          modelUsed: "test-model",
+          pid: 12345,
+          tokensUsed: { input: 1000, output: 500, cacheRead: 100, cacheWrite: 50, cost: 0.05 },
+          messageCount: 10,
+          toolCalls: [],
+          toolStats: [],
+          filesRead: [],
+          filesChanged: [],
+          fileStats: [],
+          burnSnapshots: [],
+          logFile: "/tmp/test.log",
+          loopDetected: false,
+          stallDetected: false,
+          hitlWaiting: false,
+        };
+      });
+
+      const config: PipelineConfig = {
+        repoRoot: "/tmp/repo",
+        taskDir: plannerTaskDir,
+        taskMessage: "Test task",
+        branch: "test-branch",
+        profile: "standard",
+        agents: ["u-coder", "u-summarizer"],
+        skipPlanner: false,
+        skipEnvCheck: true,
+        audit: false,
+        noCommit: false,
+        telegram: false,
+      };
+
+      const result = await runPipeline(config);
+
+      // Planner failed → fall back to standard: u-coder, u-validator, u-tester, u-summarizer
+      expect(result.success).toBe(true);
+      expect(result.completedAgents).toEqual(["u-coder", "u-validator", "u-tester", "u-summarizer"]);
     });
   });
 });

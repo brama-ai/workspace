@@ -80,7 +80,7 @@ function makeConfig(taskDir: string, agents: string[], overrides: Partial<Pipeli
     branch: "pipeline/test-task",
     profile: "quick-fix",
     agents,
-    skipPlanner: false,
+    skipPlanner: true,
     skipEnvCheck: true,
     audit: false,
     noCommit: false,

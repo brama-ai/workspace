@@ -1,11 +1,11 @@
 # Add Foundry Sidebar Supervisor Chat
 
 **Change ID:** `add-foundry-sidebar-supervisor-chat`
-**Status:** proposed
+**Status:** archived
 **Created:** 2026-03-31
 **Author:** OpenCode
 
-## Summary
+## Why
 
 Add a persistent right-hand sidebar chat to the Foundry TUI so the operator can ask what is happening in the task pool, request ongoing supervision, and issue slash commands such as `/model`, `/compact`, and `/new` without leaving the monitor. The chat becomes the operator-facing evolution of the current `foundry supervisor` idea: instead of supervising one task from a separate CLI mode, the operator talks to a Foundry chat agent that can see the full TUI context across activity, status, handoff, summary, models, and process health.
 
@@ -13,7 +13,7 @@ The sidebar must always reopen into the most recent chat session unless the oper
 
 The sidebar assistant must be implemented as a first-class Foundry agent contract rather than a thin prompt wrapper. It must use a dedicated agent definition file, consume richer monitor context including summary and handoff artifacts, and answer in an operator-oriented format that is specific, actionable, and supervision-aware.
 
-## Motivation
+## What Changes
 
 ### Problem
 

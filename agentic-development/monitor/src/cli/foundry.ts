@@ -102,8 +102,8 @@ Commands:
 Run Options:
   --task-file <path>     Read task from file
   --branch <name>        Use specific branch
-  --profile <name>       Task profile (quick-fix, standard, complex, bugfix)
-  --skip-planner         Skip planner agent
+  --profile <name>       Task profile (see Profiles below); if omitted, u-planner selects automatically
+  --skip-planner         Skip planner agent and use profile directly (use with --profile)
   --skip-env-check       Skip environment check
   --audit                Add auditor quality gate
   --no-commit            Skip auto-commits
@@ -113,15 +113,26 @@ Run Options:
   --debug                Enable debug logging
 
 Profiles:
-  quick-fix    — u-coder + u-validator + u-summarizer
-  standard     — u-architect + u-coder + u-validator + u-tester + u-summarizer
-  complex      — standard + u-auditor + extended timeouts
-  bugfix       — u-investigator + u-coder + u-validator + u-tester + u-summarizer
-  docs-only    — u-documenter + u-summarizer
+  docs-only      — u-documenter + u-summarizer
+  quality-gate   — u-coder + u-validator + u-summarizer
+  tests-only     — u-coder + u-tester + u-summarizer
+  quick-fix      — u-coder + u-validator + u-summarizer
+  standard       — u-coder + u-validator + u-tester + u-summarizer
+  standard+docs  — u-coder + u-validator + u-tester + u-documenter + u-summarizer
+  complex        — u-coder + u-validator + u-tester + u-summarizer (multi-service, migrations)
+  complex+agent  — u-coder + u-auditor + u-validator + u-tester + u-summarizer (agent changes)
+  bugfix         — u-investigator + u-coder + u-validator + u-tester + u-summarizer
+  bugfix+spec    — u-investigator + u-architect + u-coder + u-validator + u-tester + u-summarizer
+  merge          — u-merger + u-summarizer
+  merge+test     — u-merger + u-tester + u-summarizer
+  merge+deploy   — u-merger + u-tester + u-deployer + u-summarizer
+  openspec       — u-coder + u-validator + u-tester + u-summarizer (OpenSpec change detected)
+  simple         — u-coder + u-summarizer
 
 Examples:
   foundry run "Add streaming support to API"
   foundry run --profile quick-fix "Fix typo in login"
+  foundry run --skip-planner --profile standard "Implement feature"
   foundry run --only validator "Run PHPStan"
   foundry status my-task
   foundry resume my-task
@@ -185,14 +196,23 @@ function detectOpenSpec(taskMessage: string, repoRoot: string): boolean {
 }
 
 const PROFILES: Record<string, string[]> = {
-  "quick-fix": ["u-coder", "u-validator", "u-summarizer"],
-  "openspec": ["u-coder", "u-validator", "u-tester", "u-summarizer"],
-  standard: ["u-architect", "u-coder", "u-validator", "u-tester", "u-summarizer"],
-  complex: ["u-architect", "u-coder", "u-auditor", "u-validator", "u-tester", "u-summarizer"],
-  bugfix: ["u-investigator", "u-coder", "u-validator", "u-tester", "u-summarizer"],
+  // Planner skill profiles (source of truth: .opencode/skills/planner/SKILL.md)
   "docs-only": ["u-documenter", "u-summarizer"],
-  "tests-only": ["u-coder", "u-tester", "u-summarizer"],
   "quality-gate": ["u-coder", "u-validator", "u-summarizer"],
+  "tests-only": ["u-coder", "u-tester", "u-summarizer"],
+  "quick-fix": ["u-coder", "u-validator", "u-summarizer"],
+  standard: ["u-coder", "u-validator", "u-tester", "u-summarizer"],
+  "standard+docs": ["u-coder", "u-validator", "u-tester", "u-documenter", "u-summarizer"],
+  // complex: NO auditor — auditor only via complex+agent (planner Rule 3)
+  complex: ["u-coder", "u-validator", "u-tester", "u-summarizer"],
+  "complex+agent": ["u-coder", "u-auditor", "u-validator", "u-tester", "u-summarizer"],
+  bugfix: ["u-investigator", "u-coder", "u-validator", "u-tester", "u-summarizer"],
+  "bugfix+spec": ["u-investigator", "u-architect", "u-coder", "u-validator", "u-tester", "u-summarizer"],
+  merge: ["u-merger", "u-summarizer"],
+  "merge+test": ["u-merger", "u-tester", "u-summarizer"],
+  "merge+deploy": ["u-merger", "u-tester", "u-deployer", "u-summarizer"],
+  // Additional profiles
+  openspec: ["u-coder", "u-validator", "u-tester", "u-summarizer"],
   simple: ["u-coder", "u-summarizer"],
 };
 
@@ -236,11 +256,22 @@ async function cmdRun(args: string[], options: Record<string, unknown>): Promise
     return 1;
   }
 
-  let profile = (values.profile as string) || "standard";
+  // Determine if planner should run:
+  // - planner runs when no explicit --profile is given AND --skip-planner is not set
+  const explicitProfile = values.profile as string | undefined;
+  const skipPlannerFlag = values["skip-planner"] as boolean | undefined;
+
+  // If --profile is explicitly provided, skip planner (use profile directly)
+  // If --skip-planner is set, skip planner and fall back to standard
+  // Otherwise (no --profile, no --skip-planner), let planner decide
+  const shouldRunPlanner = !explicitProfile && !skipPlannerFlag && !values.only;
+
+  let profile = explicitProfile || "standard";
 
   // Auto-detect OpenSpec: if task references an existing openspec change,
   // skip architect — the spec already contains the design and task plan.
-  if (profile === "standard" && !values.only) {
+  // Only applies when a profile is explicitly given (planner handles this itself otherwise).
+  if (!shouldRunPlanner && profile === "standard" && !values.only) {
     const hasOpenSpec = detectOpenSpec(taskMessage, REPO_ROOT);
     if (hasOpenSpec) {
       console.log(`   [auto] OpenSpec detected — switching to openspec profile (skipping architect)`);
@@ -285,17 +316,24 @@ async function cmdRun(args: string[], options: Record<string, unknown>): Promise
     branch,
     profile,
     agents,
-    skipPlanner: values["skip-planner"] as boolean,
+    skipPlanner: !shouldRunPlanner,
     skipEnvCheck: values["skip-env-check"] as boolean,
     audit: values.audit as boolean,
     noCommit: values["no-commit"] as boolean,
     telegram: values.telegram as boolean,
   };
 
-  console.log(`\n🚀 Starting pipeline: ${taskMessage.slice(0, 60)}...`);
-  console.log(`   Profile: ${profile}`);
-  console.log(`   Branch: ${branch}`);
-  console.log(`   Agents: ${agents.join(" → ")}\n`);
+  if (shouldRunPlanner) {
+    console.log(`\n🚀 Starting pipeline: ${taskMessage.slice(0, 60)}...`);
+    console.log(`   Profile: (planner will decide)`);
+    console.log(`   Branch: ${branch}`);
+    console.log(`   Agents: (planner will decide)\n`);
+  } else {
+    console.log(`\n🚀 Starting pipeline: ${taskMessage.slice(0, 60)}...`);
+    console.log(`   Profile: ${profile}`);
+    console.log(`   Branch: ${branch}`);
+    console.log(`   Agents: ${agents.join(" → ")}\n`);
+  }
 
   try {
     const result = await runPipeline(config);

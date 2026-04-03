@@ -77,10 +77,13 @@ Determine the task description from the user's request. Launch Foundry:
 ./agentic-development/foundry run "<task description>"
 ```
 
-If the user specifies a profile, add `--profile <profile>`:
-```bash
-./agentic-development/foundry run --profile <profile> "<task description>"
-```
+**IMPORTANT — Profile and agent selection rules:**
+- **NEVER add `--profile`, `--from`, `--only`, or `--skip-planner` unless the user explicitly requests it in the chat.**
+- Default launch (no flags) lets u-planner automatically determine the profile and agent list.
+- `--profile <name>` — ONLY if user says "use profile X" or "run with profile X"
+- `--skip-planner` — ONLY if user says "skip planner" or "don't use planner"
+- `--from <agent>` — ONLY if user says "start from agent X" or "resume from X"
+- `--only <agent>` — ONLY if user says "run only X" or "just run X"
 
 Capture the task slug from the output. The slug is the directory name under `tasks/` (format: `<slug>--foundry`).
 
@@ -188,7 +191,7 @@ Supervisor mode is the fully autonomous version. It handles everything: launch, 
 ### Option A: Use the runner script directly
 
 ```bash
-./agentic-development/foundry runner "<task description>" --profile standard --poll 180 --retries 3
+./agentic-development/foundry runner "<task description>" --poll 180 --retries 3
 ```
 
 For an existing task:
@@ -203,8 +206,10 @@ When the user requests supervisor mode, follow this enhanced loop:
 #### S1 — Launch
 
 ```bash
-./agentic-development/foundry run "<task description>" --profile <profile>
+./agentic-development/foundry run "<task description>"
 ```
+
+**Do NOT add `--profile` here unless the user explicitly specified one.**
 
 Note the task slug from the created directory.
 

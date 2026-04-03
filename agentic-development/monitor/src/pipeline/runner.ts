@@ -287,13 +287,122 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
     rlog("env_check_passed", { services: envResult.services.length });
   }
 
+  // ── u-planner meta-step ─────────────────────────────────────────────────────
+  // When skipPlanner is false, run u-planner BEFORE the main agent list.
+  // u-planner writes pipeline-plan.json to the task dir.
+  // After it completes, read the plan and override agents/profile in state.
+  // u-planner does NOT appear as a regular pipeline agent in telemetry.
+  let plannedAgents = [...agents];
+  let plannedProfile = config.profile;
+
+  if (!config.skipPlanner && taskDir) {
+    console.log("   🧠 Running u-planner to determine workflow...\n");
+    rlog("planner_start", { taskDir, taskMessage });
+    emitEvent("CHECKPOINT", { type: "planner_start", task: taskMessage });
+
+    const plannerConfig: AgentConfig = {
+      name: "u-planner",
+      primaryModel: "",
+      timeout: getTimeout("u-planner"),
+      maxRetries: MAX_RETRIES,
+      retryDelay: RETRY_DELAY,
+      fallbackChain: [],
+    };
+
+    const plannerRouting = resolveAgentRouting(repoRoot, "u-planner");
+    plannerConfig.primaryModel = plannerRouting.primaryModel;
+    plannerConfig.fallbackChain = plannerRouting.fallbackChain;
+
+    if (plannerRouting.warning && taskDir) {
+      try {
+        appendModelAlert(taskDir, plannerRouting.warning);
+      } catch { /* ignore */ }
+      rlog("model_routing_warning", { agent: "u-planner", warning: plannerRouting.warning, source: plannerRouting.source }, "WARN");
+    }
+
+    const plannerPrompt = buildPrompt("u-planner", config);
+
+    const plannerResult = await executeAgent(plannerConfig, plannerPrompt, {
+      repoRoot,
+      logDir,
+      timestamp,
+      taskDir,
+    });
+
+    if (plannerResult.success) {
+      rlog("planner_end", { status: "done", duration: plannerResult.duration, cost: plannerResult.tokensUsed.cost });
+      emitEvent("CHECKPOINT", { type: "planner_done", duration: plannerResult.duration });
+
+      // Read pipeline-plan.json written by u-planner
+      const planPath = join(taskDir, "pipeline-plan.json");
+      try {
+        if (existsSync(planPath)) {
+          const planRaw = readFileSync(planPath, "utf8");
+          const plan = JSON.parse(planRaw) as {
+            profile?: string;
+            agents?: string[];
+            reasoning?: string;
+          };
+
+          if (plan.profile && typeof plan.profile === "string") {
+            plannedProfile = plan.profile;
+          }
+
+          if (Array.isArray(plan.agents) && plan.agents.length > 0) {
+            // Normalize agent names: ensure u- prefix
+            plannedAgents = plan.agents.map((a: string) =>
+              a.startsWith("u-") ? a : `u-${a}`
+            );
+          }
+
+          const reasoning = plan.reasoning ? ` (${plan.reasoning})` : "";
+          console.log(`   ✅ Planner selected profile: ${plannedProfile}${reasoning}`);
+          console.log(`   Agents: ${plannedAgents.join(" → ")}\n`);
+          rlog("planner_plan_loaded", { profile: plannedProfile, agents: plannedAgents, reasoning: plan.reasoning });
+
+          // Update state.json with planner-selected agents
+          if (taskDir) {
+            try {
+              setPlannedAgents(taskDir, plannedProfile, plannedAgents);
+            } catch { /* ignore */ }
+          }
+        } else {
+          rlog("planner_plan_missing", { planPath }, "WARN");
+          console.log(`   ⚠️  pipeline-plan.json not found after planner run — falling back to standard profile\n`);
+          plannedProfile = "standard";
+          plannedAgents = ["u-coder", "u-validator", "u-tester", "u-summarizer"];
+          if (taskDir) {
+            try { setPlannedAgents(taskDir, plannedProfile, plannedAgents); } catch { /* ignore */ }
+          }
+        }
+      } catch (err) {
+        rlog("planner_plan_parse_error", { planPath, error: String(err) }, "WARN");
+        console.log(`   ⚠️  Failed to parse pipeline-plan.json — falling back to standard profile\n`);
+        plannedProfile = "standard";
+        plannedAgents = ["u-coder", "u-validator", "u-tester", "u-summarizer"];
+        if (taskDir) {
+          try { setPlannedAgents(taskDir, plannedProfile, plannedAgents); } catch { /* ignore */ }
+        }
+      }
+    } else {
+      // Planner failed — fall back to standard profile, continue pipeline
+      rlog("planner_failed", { exitCode: plannerResult.exitCode, duration: plannerResult.duration }, "WARN");
+      console.log(`   ⚠️  u-planner failed (exit ${plannerResult.exitCode}) — falling back to standard profile\n`);
+      plannedProfile = "standard";
+      plannedAgents = ["u-coder", "u-validator", "u-tester", "u-summarizer"];
+      if (taskDir) {
+        try { setPlannedAgents(taskDir, plannedProfile, plannedAgents); } catch { /* ignore */ }
+      }
+    }
+  }
+
   const completedAgents: string[] = [];
   let failedAgent: string | null = null;
   let totalCost = 0;
   let hitlWaiting = false;
   let waitingAgent: string | null = null;
 
-  for (const agent of agents) {
+  for (const agent of plannedAgents) {
     currentAgent = agent;
 
     // Check context size and auto-compact if needed (protects GLM, Kimi etc.)
@@ -477,6 +586,7 @@ export async function runPipeline(config: PipelineConfig): Promise<PipelineResul
             tools: result.toolCalls ?? [],
             tool_stats: result.toolStats ?? [],
             files_read: result.filesRead ?? [],
+            files_changed: result.filesChanged ?? [],
             file_stats: result.fileStats ?? [],
             burn: result.burnSnapshots ?? [],
             context: {

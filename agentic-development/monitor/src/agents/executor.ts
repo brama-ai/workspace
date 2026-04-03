@@ -56,6 +56,7 @@ export interface AgentResult {
   toolCalls: string[];
   toolStats: ToolStat[];
   filesRead: string[];
+  filesChanged: string[];
   fileStats: FileReadStat[];
   burnSnapshots: BurnSnapshot[];
   logFile: string;
@@ -250,10 +251,14 @@ interface EventsTelemetry {
   messageCount: number;
   toolCalls: string[];
   filesRead: string[];
+  filesChanged: string[];
   toolStats: ToolStat[];
   fileStats: FileReadStat[];
   burnSnapshots: BurnSnapshot[];
 }
+
+/** Tool names that indicate a file write/edit operation */
+const WRITE_TOOLS = new Set(["Write", "Edit", "write", "edit", "WriteFile", "EditFile", "write_file", "edit_file", "NotebookEdit"]);
 
 /**
  * Parse opencode events JSONL and extract cumulative token usage,
@@ -267,7 +272,7 @@ interface EventsTelemetry {
 export function extractTelemetryFromEvents(eventsFile: string, model: string): EventsTelemetry {
   const result: EventsTelemetry = {
     input: 0, output: 0, cacheRead: 0, totalCacheRead: 0, cacheWrite: 0, cost: 0,
-    messageCount: 0, toolCalls: [], filesRead: [],
+    messageCount: 0, toolCalls: [], filesRead: [], filesChanged: [],
     toolStats: [], fileStats: [], burnSnapshots: [],
   };
 
@@ -282,6 +287,7 @@ export function extractTelemetryFromEvents(eventsFile: string, model: string): E
 
   const toolSet = new Set<string>();
   const fileSet = new Set<string>();
+  const fileChangeSet = new Set<string>();
   const toolMap = new Map<string, { calls: number; outputChars: number }>();
   const fileMap = new Map<string, { reads: number; chars: number }>();
   let stepCount = 0;
@@ -359,6 +365,14 @@ export function extractTelemetryFromEvents(eventsFile: string, model: string): E
         if (input?.path && typeof input.path === "string") {
           fileSet.add(input.path);
         }
+
+        // Track files changed by write/edit tools
+        if (WRITE_TOOLS.has(toolName)) {
+          const changedPath = filePath ?? input?.path;
+          if (changedPath && typeof changedPath === "string") {
+            fileChangeSet.add(changedPath);
+          }
+        }
       }
 
       if (event.type === "step_start") {
@@ -376,6 +390,7 @@ export function extractTelemetryFromEvents(eventsFile: string, model: string): E
 
   result.toolCalls = Array.from(toolSet);
   result.filesRead = Array.from(fileSet);
+  result.filesChanged = Array.from(fileChangeSet);
   result.toolStats = Array.from(toolMap.entries())
     .map(([name, s]) => ({ name, calls: s.calls, outputChars: s.outputChars }))
     .sort((a, b) => b.outputChars - a.outputChars);
@@ -611,6 +626,7 @@ export async function executeAgent(
       toolCalls: [],
       toolStats: [],
       filesRead: [],
+      filesChanged: [],
       fileStats: [],
       burnSnapshots: [],
       logFile,
@@ -635,6 +651,7 @@ export async function executeAgent(
       toolCalls: [],
       toolStats: [],
       filesRead: [],
+      filesChanged: [],
       fileStats: [],
       burnSnapshots: [],
       logFile,
@@ -736,6 +753,7 @@ export async function executeAgent(
         toolCalls: telemetry.toolCalls,
         toolStats: telemetry.toolStats,
         filesRead: telemetry.filesRead,
+      filesChanged: telemetry.filesChanged,
         fileStats: telemetry.fileStats,
         burnSnapshots: telemetry.burnSnapshots,
         logFile,
@@ -768,6 +786,7 @@ export async function executeAgent(
         toolCalls: telemetry.toolCalls,
         toolStats: telemetry.toolStats,
         filesRead: telemetry.filesRead,
+      filesChanged: telemetry.filesChanged,
         fileStats: telemetry.fileStats,
         burnSnapshots: telemetry.burnSnapshots,
         logFile,
@@ -849,6 +868,7 @@ export async function executeAgent(
     toolCalls: telemetry.toolCalls,
     toolStats: telemetry.toolStats,
     filesRead: telemetry.filesRead,
+      filesChanged: telemetry.filesChanged,
     fileStats: telemetry.fileStats,
     burnSnapshots: telemetry.burnSnapshots,
     logFile,
